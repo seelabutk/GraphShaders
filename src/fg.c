@@ -1,0 +1,211 @@
+#include <fg.h>
+#include <stdio.h>
+#include <math.h>
+#include <stdlib.h>
+#include <assert.h>
+#include <inttypes.h>
+#include <string.h>
+#include <zorder.h>
+
+
+void
+emit(int r, int c) {
+	printf("%d,%d\n", r, c);
+}
+
+
+void
+raytrace(float x0, float y0, float x1, float y1, float d, emitter emit) {
+	float X = floor(x0/(1/d));
+	float Y = floor(y0/(1/d));
+	float FX = floor(x1/(1/d));
+	float FY = floor(y1/(1/d));
+	float stepX = x1 > x0 ? 1 : -1;
+	float stepY = y1 > y0 ? 1 : -1;
+	const float dx = x1 - x0;
+	const float dy = y1 - y0;
+	const float nextX = (X+stepX)*(1/d);
+	const float nextY = (Y+stepY)*(1/d);
+	float tMaxX = (nextX - x0) / dx;
+	float tMaxY = (nextY - y0) / dy;
+	const float tDeltaX = (1/d) / dx * stepX;
+	const float tDeltaY = (1/d) / dy * stepY;
+	emit((int)(X/d), (int)(Y/d));
+	for (int iii=0; iii<10000 && !(X == FX && Y == FY); ++iii) {
+		if (tMaxX < tMaxY) {
+			tMaxX += tDeltaX;
+			X += stepX;
+		} else {
+			tMaxY += tDeltaY;
+			Y += stepY;
+		}
+		emit((int)(X/d), (int)(Y/d));
+	}
+}
+
+
+int
+load(char *node_filename, char *edge_filename, struct graph *graph) {
+	FILE *f;
+	char *line;
+	size_t size;
+	ssize_t nread;
+	int n;
+	enum { ORDER_UNKNOWN = 0, ORDER_X_Y_ID, ORDER_SOURCE_TARGET } order = ORDER_UNKNOWN;
+	
+	graph->node_filename = node_filename;
+	graph->edge_filename = edge_filename;
+	graph->ncount = 0;
+	graph->nsize = 16;
+	graph->nx = malloc(graph->nsize * sizeof(*graph->nx));
+	graph->ny = malloc(graph->nsize * sizeof(*graph->ny));
+	graph->nid = malloc(graph->nsize * sizeof(*graph->nid));
+	graph->ecount = 0;
+	graph->esize = 16;
+	graph->es = malloc(graph->esize * sizeof(*graph->es));
+	graph->et = malloc(graph->esize * sizeof(*graph->et));
+	
+	f = fopen(node_filename, "r");
+	assert(f);
+	
+	n = 0;
+	line = NULL;
+	size = 0;
+	while ((nread = getline(&line, &size, f)) > 0) {
+		if (n++ == 0) {
+			if (strcmp(line, "x,y,id\n") == 0) order = ORDER_X_Y_ID;
+			else {
+				fprintf(stderr, "Unknown header line: \"%s\"\n", line);
+			}
+		} else if (order == ORDER_X_Y_ID) {
+			graph->nid[graph->ncount] = malloc(32);
+			sscanf(line, "%f,%f,%31s", 
+			       graph->nx + graph->ncount,
+			       graph->ny + graph->ncount,
+			       graph->nid[graph->ncount]);
+			if (++graph->ncount == graph->nsize) {
+				graph->nsize *= 2;
+				graph->nx = realloc(graph->nx, graph->nsize * sizeof(*graph->nx));
+				graph->ny = realloc(graph->ny, graph->nsize * sizeof(*graph->ny));
+				graph->nid = realloc(graph->nid, graph->nsize * sizeof(*graph->nid));
+			}
+		}
+	}
+	free(line);
+	
+	fclose(f);
+	
+	f = fopen(edge_filename, "r");
+	assert(f);
+	
+	n = 0;
+	line = NULL;
+	size = 0;
+	while ((nread = getline(&line, &size, f)) > 0) {
+		if (n++ == 0) {
+			if (strcmp(line, "source,target\n") == 0) order = ORDER_SOURCE_TARGET;
+			else {
+				fprintf(stderr, "Unknown header line: \"%s\"\n", line);
+			}
+		} else if (order == ORDER_SOURCE_TARGET) {
+			sscanf(line, "%"SCNu16",%"SCNu16,
+			       graph->es + graph->ecount,
+			       graph->et + graph->ecount);
+			if (++graph->ecount == graph->esize) {
+				graph->esize *= 2;
+				graph->es = realloc(graph->es, graph->esize * sizeof(*graph->es));
+				graph->et = realloc(graph->et, graph->esize * sizeof(*graph->et));
+			}
+		}
+	}
+	free(line);
+	
+	fclose(f);
+	
+	return 0;
+}
+
+
+void
+rescale(struct graph *graph, float x0, float y0, float x1, float y1) {
+	float xmin, xmax = xmin = graph->nx[0];
+	float ymin, ymax = ymin = graph->ny[0];
+	for (size_t i=1; i<graph->ncount; ++i) {
+		if (graph->nx[i] < xmin) xmin = graph->nx[i];
+		if (graph->nx[i] > xmax) xmax = graph->nx[i];
+		if (graph->ny[i] < ymin) ymin = graph->ny[i];
+		if (graph->ny[i] > ymax) ymax = graph->ny[i];
+	}
+	
+	for (size_t i=0; i<graph->ncount; ++i) {
+		graph->nx[i] = (graph->nx[i] - xmin) / (xmax - xmin) * (x1 - x0) + x0;
+		graph->ny[i] = (graph->ny[i] - ymin) / (ymax - ymin) * (y1 - y0) + y0;
+	}
+}
+
+
+int
+fg_main(int argc, char **argv) {
+	struct graph graph;
+	
+	int rc = load("data/les-miserables/nodes.csv", "data/les-miserables/edges.csv", &graph);
+	assert(rc == 0);
+	printf("ncount: %zu\n", graph.ncount);
+	printf("ecount: %zu\n", graph.ecount);
+	
+	int n = 16;
+	rescale(&graph, 0.0, 0.0, n-1, n-1);
+	
+	FILE **fs;
+	size_t edge;
+//	float x0, y0, x1, y1;
+	ZOrderStruct *zo = zoInitZOrderIndexing(n, n, 0, ZORDER_LAYOUT);
+	
+	void emit(int r, int c) {
+//		fprintf(stderr, "r: %d, c: %d\n", r, c);
+//		fprintf(stderr, "%f,%f,%f,%f\n", x0, y0, x1, y1);
+		assert(0 <= r);
+		assert(r < n);
+		assert(0 <= c);
+		assert(c < n);
+		size_t i = zoGetIndex(zo, r, c, 0);
+//		fprintf(stderr, "i: %zu\n", i);
+		assert(0 <= i);
+		assert(i < zo->zo_totalSize);
+		fprintf(fs[i], "%zu\n", edge);
+	}
+	
+//	fprintf(stderr, "zo_totalSize: %d\n", (int)zo->zo_totalSize);
+	fs = malloc(zo->zo_totalSize * sizeof(*fs));
+	for (int i=0; i<n; ++i)
+	for (int j=0; j<n; ++j) {
+		int index = zoGetIndex(zo, i, j, 0);
+//		fprintf(stderr, "index: %d\n", index);
+		char filename[32];
+		snprintf(filename, sizeof(filename), "rc_%04d", index);
+		fs[index] = fopen(filename, "w");
+		fprintf(fs[index], "x0,y0,x1,y1\n");
+	}
+	
+	for (edge=0; edge<graph.ecount; ++edge) {
+		float x0 = graph.nx[graph.es[edge]];
+		float y0 = graph.ny[graph.es[edge]];
+		float x1 = graph.nx[graph.et[edge]];
+		float y1 = graph.ny[graph.et[edge]];
+		if (x1 < x0) {
+			float t;
+			t = x0; x0 = x1; x1 = t;
+			t = y0; y0 = y1; y1 = t;
+		}
+		if ((x0 < x1) && (y0 > y1)) continue;
+		raytrace(x0, y0, x1, y1, (float)n, emit);
+	}
+	
+	for (int i=0; i<n; ++i)
+	for (int j=0; j<n; ++j) {
+		int index = zoGetIndex(zo, i, j, 0);
+		fclose(fs[index]);
+	}
+	
+	return 0;
+}
