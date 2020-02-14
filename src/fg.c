@@ -144,68 +144,87 @@ rescale(struct graph *graph, float x0, float y0, float x1, float y1) {
 }
 
 
-int
-fg_main(int argc, char **argv) {
-	struct graph graph;
-	
-	int rc = load("data/les-miserables/nodes.csv", "data/les-miserables/edges.csv", &graph);
-	assert(rc == 0);
-	printf("ncount: %zu\n", graph.ncount);
-	printf("ecount: %zu\n", graph.ecount);
-	
-	int n = 16;
-	rescale(&graph, 0.0, 0.0, n-1, n-1);
-	
-	FILE **fs;
-	size_t edge;
-//	float x0, y0, x1, y1;
-	ZOrderStruct *zo = zoInitZOrderIndexing(n, n, 0, ZORDER_LAYOUT);
-	
-	void emit(int r, int c) {
-//		fprintf(stderr, "r: %d, c: %d\n", r, c);
-//		fprintf(stderr, "%f,%f,%f,%f\n", x0, y0, x1, y1);
-		assert(0 <= r);
-		assert(r < n);
-		assert(0 <= c);
-		assert(c < n);
-		size_t i = zoGetIndex(zo, r, c, 0);
-//		fprintf(stderr, "i: %zu\n", i);
-		assert(0 <= i);
-		assert(i < zo->zo_totalSize);
-		fprintf(fs[i], "%zu\n", edge);
+typedef int row_t;
+typedef int col_t;
+typedef int rc_t;
+typedef int edgenum_t;
+
+
+void
+partition(struct graph *graph, int n, void (*preinit)(rc_t), void (*init)(rc_t), void (*emit)(rc_t, edgenum_t), void (*fini)(rc_t)) {
+	edgenum_t edge;
+	ZOrderStruct *zo;
+
+	void myemit(row_t row, col_t col) {
+		rc_t rc = zoGetIndex(zo, row, col, 0);
+		emit(rc, edge);
 	}
-	
-//	fprintf(stderr, "zo_totalSize: %d\n", (int)zo->zo_totalSize);
-	fs = malloc(zo->zo_totalSize * sizeof(*fs));
+
+	zo = zoInitZOrderIndexing(n, n, 0, ZORDER_LAYOUT);
+	preinit(zo->zo_totalSize);
+
 	for (int i=0; i<n; ++i)
 	for (int j=0; j<n; ++j) {
-		int index = zoGetIndex(zo, i, j, 0);
-//		fprintf(stderr, "index: %d\n", index);
-		char filename[32];
-		snprintf(filename, sizeof(filename), "rc_%04d", index);
-		fs[index] = fopen(filename, "w");
-		fprintf(fs[index], "x0,y0,x1,y1\n");
+		rc_t rc = zoGetIndex(zo, i, j, 0);
+		init(rc);
 	}
-	
-	for (edge=0; edge<graph.ecount; ++edge) {
-		float x0 = graph.nx[graph.es[edge]];
-		float y0 = graph.ny[graph.es[edge]];
-		float x1 = graph.nx[graph.et[edge]];
-		float y1 = graph.ny[graph.et[edge]];
+
+	rescale(graph, 0.0, 0.0, n-1.0, n-1.0);
+
+	for (edge=0; edge<graph->ecount; ++edge) {
+		float x0 = graph->nx[graph->es[edge]];
+		float y0 = graph->ny[graph->es[edge]];
+		float x1 = graph->nx[graph->et[edge]];
+		float y1 = graph->ny[graph->et[edge]];
 		if (x1 < x0) {
 			float t;
 			t = x0; x0 = x1; x1 = t;
 			t = y0; y0 = y1; y1 = t;
 		}
 		if ((x0 < x1) && (y0 > y1)) continue;
-		raytrace(x0, y0, x1, y1, (float)n, emit);
+		raytrace(x0, y0, x1, y1, 1.0, myemit);
 	}
-	
+
 	for (int i=0; i<n; ++i)
 	for (int j=0; j<n; ++j) {
-		int index = zoGetIndex(zo, i, j, 0);
-		fclose(fs[index]);
+		rc_t rc = zoGetIndex(zo, i, j, 0);
+		fini(rc);
 	}
+}
+
+
+int
+fg_main(int argc, char **argv) {
+	FILE **fs;
+
+	void mypreinit(rc_t maxrc) {
+		fs = malloc(maxrc * sizeof(*fs));
+	}
+
+	void myinit(rc_t rc) {
+		char filename[32];
+		snprintf(filename, sizeof(filename), "rc_%04d", rc);
+		fs[rc] = fopen(filename, "w");
+		fprintf(fs[rc], "edgenum\n");
+	}
+
+	void myemit(rc_t rc, edgenum_t edge) {
+		fprintf(fs[rc], "%d\n", edge);
+	}
+
+	void myfini(rc_t rc) {
+		fclose(fs[rc]);
+		fs[rc] = NULL;
+	}
+
+	struct graph graph;
+	
+	int rc = load("data/les-miserables/nodes.csv", "data/les-miserables/edges.csv", &graph);
+	assert(rc == 0);
+	printf("ncount: %zu\n", graph.ncount);
+	printf("ecount: %zu\n", graph.ecount);
+
+	partition(&graph, 10, mypreinit, myinit, myemit, myfini);
 	
 	return 0;
 }
