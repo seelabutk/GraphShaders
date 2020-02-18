@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.5)
 
 include(ExternalProject)
 
@@ -45,3 +45,9 @@ target_link_libraries(main zorder m)
 
 add_executable(test_fg tests/test_fg.c tests/common.o src/fg.c)
 target_link_libraries(test_fg zorder m tap)
+
+set(CMAKE_BUILD_TYPE Debug)
+
+add_executable(render src/render.c src/fg.c src/glad.c)
+target_include_directories(render PUBLIC ./include)
+target_link_libraries(render zorder m tap dl GL GLU glut) 
