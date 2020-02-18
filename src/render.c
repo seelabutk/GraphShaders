@@ -37,7 +37,7 @@ int main(int argc, char **argv){
 	//initialize freeglut
 	{	
 		glutInit(&argc, argv);
-		glutInitDisplayMode(GLUT_RGB);
+		glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH);
 		glutInitWindowSize(1024, 1024);
 		glutInitWindowPosition(0,0);
 		glutCreateWindow(argv[0]);
@@ -147,7 +147,7 @@ void initOpenGL(){
 	glDeleteShader(fragmentShader);
 	
 	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-	glClearColor(0.5f, 0.0f, 0.0f, 1.0f);
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 }
 
 void initGraph(void){
@@ -214,5 +214,7 @@ void display(void){
 	glBindVertexArray(gContext.VAO);
 	glDrawElements(GL_LINES, gContext.numIndeces, GL_UNSIGNED_INT, 0);
 	glBindVertexArray(0);
-
+	
+	glutSwapBuffers();
+	glutPostRedisplay();
 }
