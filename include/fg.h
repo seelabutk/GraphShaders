@@ -38,6 +38,9 @@ void
 rescale(struct graph *graph, float x0, float x1, float y0, float y1);
 
 int
+load_arg(struct graph *graph, int argc, char **argv);
+
+int
 fg_main(int argc, char **argv);
 
 #endif

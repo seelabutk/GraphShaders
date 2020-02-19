@@ -59,7 +59,8 @@ int main(int argc, char **argv){
 	}
 		
 	//load the graph into memory
-	if(load("data/les-miserables/nodes.csv", "data/les-miserables/edges.csv", &gContext.g) != 0){
+	int rc = load_arg(&gContext.g, argc, argv);
+	if (rc != 0) {
 		printf("Could not load graph\n");
 		return 1;
 	}
