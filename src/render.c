@@ -5,9 +5,10 @@
 #include <glad/glad.h>
 //#include <GL/gl.h>
 #include <GL/freeglut.h>
+#include <EGL/egl.h>
 
 typedef struct graph Graph;
-typedef struct graphicsContext{
+struct graphicsContext{
 	Graph g;
 
 	float *vertices;
@@ -17,9 +18,9 @@ typedef struct graphicsContext{
 	unsigned int numIndeces;
 	
 	unsigned int shaderProgram, VBO, EBO, VAO;
-} GC;
+};
 
-GC gContext;
+struct graphicsContext gContext;
 
 void initOpenGL(void);
 void initGraph(void);
@@ -34,24 +35,72 @@ int main(int argc, char **argv){
 		exit(1);
 	}
 
-	//initialize freeglut
-	{	
-		glutInit(&argc, argv);
-		glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH);
-		glutInitWindowSize(1024, 1024);
-		glutInitWindowPosition(0,0);
-		glutCreateWindow(argv[0]);
-		
-		glutDisplayFunc(display);
-		//glutIdleFunc(display);
-		//glutReshapeFunc();
+	static EGLint const configAttribs[] = {
+          EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+          EGL_BLUE_SIZE, 8,
+          EGL_GREEN_SIZE, 8,
+          EGL_RED_SIZE, 8,
+          EGL_DEPTH_SIZE, 8,
+          EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+          EGL_NONE
+	};
 
-		//glutKeyboardFunc(keyboard_handler);
-		//glutMouseFunc(mouse_hanlder);
 	
-		int version = glutGet(GLUT_VERSION);
-		printf("Glut version %d\n", version);
-	}
+  static const int pbufferWidth = 256;
+  static const int pbufferHeight = 256;
+
+  static const EGLint pbufferAttribs[] = {
+        EGL_WIDTH, pbufferWidth,
+        EGL_HEIGHT, pbufferHeight,
+        EGL_NONE,
+  };
+
+// 1. Initialize EGL
+  EGLDisplay eglDpy = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+
+  EGLint major, minor;
+
+  eglInitialize(eglDpy, &major, &minor);
+
+  // 2. Select an appropriate configuration
+  EGLint numConfigs;
+  EGLConfig eglCfg;
+
+  eglChooseConfig(eglDpy, configAttribs, &eglCfg, 1, &numConfigs);
+
+  // 3. Create a surface
+  EGLSurface eglSurf = eglCreatePbufferSurface(eglDpy, eglCfg, 
+                                               pbufferAttribs);
+
+  // 4. Bind the API
+  eglBindAPI(EGL_OPENGL_API);
+
+  // 5. Create a context and make it current
+  EGLContext eglCtx = eglCreateContext(eglDpy, eglCfg, EGL_NO_CONTEXT, 
+                                       NULL);
+
+  eglMakeCurrent(eglDpy, eglSurf, eglSurf, eglCtx);
+
+  // from now on use your OpenGL context
+
+	//initialize freeglut
+//	{	
+//		glutInit(&argc, argv);
+//		glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH);
+//		glutInitWindowSize(1024, 1024);
+//		glutInitWindowPosition(0,0);
+//		glutCreateWindow(argv[0]);
+//		
+//		glutDisplayFunc(display);
+//		//glutIdleFunc(display);
+//		//glutReshapeFunc();
+//
+//		//glutKeyboardFunc(keyboard_handler);
+//		//glutMouseFunc(mouse_hanlder);
+//	
+//		int version = glutGet(GLUT_VERSION);
+//		printf("Glut version %d\n", version);
+//	}
 
 	if(!gladLoadGL()){
 		printf("Error, glad not correctly loaded\n");
@@ -67,7 +116,21 @@ int main(int argc, char **argv){
 	
 	initOpenGL();
 	initGraph();
-	glutMainLoop();
+	//glutMainLoop();
+	display();
+
+	uint8_t *pixels = malloc(256 * 256 * 3 * sizeof(uint8_t));
+
+	glReadPixels(0, 0,
+	             256, 256,
+	             GL_RGB,
+	             GL_UNSIGNED_BYTE,
+	             pixels);
+
+	printf("P6\n");
+	printf("256 256\n");
+	printf("255\n");
+	fwrite(pixels, sizeof(uint8_t), 256 * 256 * 3, stdout);
 
 }
 
@@ -216,6 +279,6 @@ void display(void){
 	glDrawElements(GL_LINES, gContext.numIndeces, GL_UNSIGNED_INT, 0);
 	glBindVertexArray(0);
 	
-	glutSwapBuffers();
-	glutPostRedisplay();
+//	glutSwapBuffers();
+//	glutPostRedisplay();
 }

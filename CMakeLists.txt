@@ -50,4 +50,4 @@ set(CMAKE_BUILD_TYPE Debug)
 
 add_executable(render src/render.c src/fg.c src/glad.c)
 target_include_directories(render PUBLIC ./include)
-target_link_libraries(render zorder m tap dl GL GLU glut) 
+target_link_libraries(render zorder m tap dl GL GLU EGL glut) 
