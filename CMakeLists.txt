@@ -29,13 +29,11 @@ link_directories(eglinfo /usr/lib/x86_64-linux-gnu)
 add_executable(main src/main.c src/fg.c)
 target_link_libraries(main zorder m)
 
-find_library(EGL_NVIDIA_LIBRARY EGL_nvidia HINTS /usr/lib/x86_64-linux-gnu)
-
 set(CMAKE_BUILD_TYPE Debug)
 
 add_executable(render src/render.c src/fg.c src/glad.c)
 target_include_directories(render PUBLIC ./include)
-target_link_libraries(render zorder m dl GL GLU ${EGL_NVIDIA_LIBRARY} EGL glut) 
+target_link_libraries(render zorder m dl GL GLU EGL) 
 
 add_executable(eglinfo src/eglinfo.c)
-target_link_libraries(eglinfo PUBLIC dl GL GLU ${EGL_NVIDIA_LIBRARY} EGL glut) 
+target_link_libraries(eglinfo PUBLIC dl GL GLU EGL) 

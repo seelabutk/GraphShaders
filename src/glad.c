@@ -149,7 +149,6 @@ int gladLoadGL(void) {
     int status = 0;
 
     if(open_gl()) {
-    	printf("opened gl\n");
         status = gladLoadGLLoader(&get_proc);
         close_gl();
     }
@@ -1919,34 +1918,19 @@ int gladLoadGLLoader(GLADloadproc load) {
 	if(glGetString == NULL) { printf("glGetString null\n"); return 0; }
 	if(glGetString(GL_VERSION) == NULL) { printf("glGetString(GL_VERSION) null\n"); return 0; }
 	find_coreGL();
-#define _load(major_minor) printf("load %s\n", #major_minor); load_GL_VERSION_##major_minor(load);
-	_load(1_0);
-	_load(1_1);
-	_load(1_2);
-	_load(1_3);
-	_load(1_4);
-	_load(1_5);
-	_load(2_0);
-	_load(2_1);
-	_load(3_0);
-	_load(3_1);
-	_load(3_2);
-	_load(3_3);
-	_load(4_0);
-
-//	load_GL_VERSION_1_0(load);
-//	load_GL_VERSION_1_1(load);
-//	load_GL_VERSION_1_2(load);
-//	load_GL_VERSION_1_3(load);
-//	load_GL_VERSION_1_4(load);
-//	load_GL_VERSION_1_5(load);
-//	load_GL_VERSION_2_0(load);
-//	load_GL_VERSION_2_1(load);
-//	load_GL_VERSION_3_0(load);
-//	load_GL_VERSION_3_1(load);
-//	load_GL_VERSION_3_2(load);
-//	load_GL_VERSION_3_3(load);
-//	load_GL_VERSION_4_0(load);
+	load_GL_VERSION_1_0(load);
+	load_GL_VERSION_1_1(load);
+	load_GL_VERSION_1_2(load);
+	load_GL_VERSION_1_3(load);
+	load_GL_VERSION_1_4(load);
+	load_GL_VERSION_1_5(load);
+	load_GL_VERSION_2_0(load);
+	load_GL_VERSION_2_1(load);
+	load_GL_VERSION_3_0(load);
+	load_GL_VERSION_3_1(load);
+	load_GL_VERSION_3_2(load);
+	load_GL_VERSION_3_3(load);
+	load_GL_VERSION_4_0(load);
 
 	if (!find_extensionsGL()) return 0;
 	return GLVersion.major != 0 || GLVersion.minor != 0;

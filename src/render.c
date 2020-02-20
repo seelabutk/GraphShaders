@@ -4,7 +4,6 @@
 
 #include <glad/glad.h>
 //#include <GL/gl.h>
-#include <GL/freeglut.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
@@ -55,92 +54,60 @@ const char* eglGetErrorString( EGLint error )
 #undef CASE_STR
 
 int main(int argc, char **argv){
-
 	static EGLint const configAttribs[] = {
-          EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-          EGL_BLUE_SIZE, 8,
-          EGL_GREEN_SIZE, 8,
-          EGL_RED_SIZE, 8,
-          EGL_DEPTH_SIZE, 8,
-          EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
-          EGL_NONE
+		EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+		EGL_BLUE_SIZE, 8,
+		EGL_GREEN_SIZE, 8,
+		EGL_RED_SIZE, 8,
+		EGL_DEPTH_SIZE, 8,
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+		EGL_NONE
 	};
 
-	
-  int pbufferWidth = 256;
-  int pbufferHeight = 256;
+	int pbufferWidth = 256;
+	int pbufferHeight = 256;
 
-  EGLint pbufferAttribs[] = {
-        EGL_WIDTH, pbufferWidth,
-        EGL_HEIGHT, pbufferHeight,
-        EGL_NONE,
-  };
+	EGLint pbufferAttribs[] = {
+		EGL_WIDTH, pbufferWidth,
+		EGL_HEIGHT, pbufferHeight,
+		EGL_NONE,
+	};
 
-  const char *extString = (const char *)eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
-  printf("ext: %s\n", extString);
+	const char *extString = (const char *)eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
 
-// 1. Initialize EGL
-  printf("before\n");
-  EGLDisplay eglDpy = eglGetPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
-  printf("after\n");
-  if (eglDpy == EGL_NO_DISPLAY) {
-  	printf("eglGetDisplay no display\n");
-	return 1;
+	// 1. Initialize EGL
+	EGLDisplay eglDpy = eglGetPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
+	if (eglDpy == EGL_NO_DISPLAY) {
+		printf("eglGetDisplay no display\n");
+		return 1;
 	}
 
-  EGLint major, minor;
- 
+	EGLint major, minor;
+	if (eglInitialize(eglDpy, &major, &minor) == EGL_FALSE) {
+		printf("eglInitialize failed: %s\n", eglGetErrorString(eglGetError()));
+		return 1;
+	}
+	printf("got egl version %d %d\n", major, minor);
 
-  if (eglInitialize(eglDpy, &major, &minor) == EGL_FALSE) {
-  	printf("eglInitialize failed: %s\n", eglGetErrorString(eglGetError()));
-	return 1;
-}
-  printf("got egl version %d %d\n", major, minor);
+	// 2. Select an appropriate configuration
+	EGLint numConfigs;
+	EGLConfig eglCfg;
 
-  // 2. Select an appropriate configuration
-  EGLint numConfigs;
-  EGLConfig eglCfg;
+	eglChooseConfig(eglDpy, configAttribs, &eglCfg, 1, &numConfigs);
 
-  eglChooseConfig(eglDpy, configAttribs, &eglCfg, 1, &numConfigs);
-  printf("eglChooseConfig done\n");
+	// 3. Create a surface
+	EGLSurface eglSurf = eglCreatePbufferSurface(eglDpy, eglCfg, pbufferAttribs);
 
-  // 3. Create a surface
-  EGLSurface eglSurf = eglCreatePbufferSurface(eglDpy, eglCfg, 
-                                               pbufferAttribs);
-  printf("eglCreatePbufferSurface done\n");
+	// 4. Bind the API
+	eglBindAPI(EGL_OPENGL_API);
 
-  // 4. Bind the API
-  eglBindAPI(EGL_OPENGL_API);
-  printf("eglBindAPI done\n");
+	// 5. Create a context and make it current
+	EGLContext eglCtx = eglCreateContext(eglDpy, eglCfg, EGL_NO_CONTEXT, 
+	NULL);
 
-  // 5. Create a context and make it current
-  EGLContext eglCtx = eglCreateContext(eglDpy, eglCfg, EGL_NO_CONTEXT, 
-                                       NULL);
-  printf("eglCreateContext done\n");
+	eglMakeCurrent(eglDpy, eglSurf, eglSurf, eglCtx);
 
-  if (!eglMakeCurrent(eglDpy, eglSurf, eglSurf, eglCtx)) { printf("eglMakeCurrent failed: %s\n", eglGetErrorString(eglGetError())); exit(1); }
-  printf("eglMakeCurrent done\n");
-
-  // from now on use your OpenGL context
-
-	//initialize freeglut
-//	{	
-//		glutInit(&argc, argv);
-//		glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH);
-//		glutInitWindowSize(1024, 1024);
-//		glutInitWindowPosition(0,0);
-//		glutCreateWindow(argv[0]);
-//		
-//		glutDisplayFunc(display);
-//		//glutIdleFunc(display);
-//		//glutReshapeFunc();
-//
-//		//glutKeyboardFunc(keyboard_handler);
-//		//glutMouseFunc(mouse_hanlder);
-//	
-//		int version = glutGet(GLUT_VERSION);
-//		printf("Glut version %d\n", version);
-//	}
+	// from now on use your OpenGL context
 
 	if (!gladLoadGL()) {
 		printf("gladLoadGL failed\n");
@@ -154,25 +121,18 @@ int main(int argc, char **argv){
 		printf("Could not load graph\n");
 		return 1;
 	}
-	printf("load_arg done\n");
 	
 	initOpenGL();
-	printf("initOpenGL done\n");
 	initGraph();
-	printf("initGraph done\n");
-	//glutMainLoop();
 	display();
-	printf("display done\n");
 
 	uint8_t *pixels = malloc(256 * 256 * 3 * sizeof(uint8_t));
-	printf("malloc done\n");
 
 	glReadPixels(0, 0,
 	             256, 256,
 	             GL_RGB,
 	             GL_UNSIGNED_BYTE,
 	             pixels);
-	printf("glReadPixels done\n");
 
 	FILE *f = fopen("temp.ppm", "wb");
 	fprintf(f, "P6\n");
@@ -186,7 +146,6 @@ char* loadFileStr(const char *fileName){
 	FILE *f;
 	char *str;
 	unsigned length;
-	
 	
 	f = fopen(fileName, "r");
 	if(!f){
@@ -213,23 +172,13 @@ void initOpenGL(){
 	int success;
 	char infoLog[512];
 	
-	printf("before\n");
 	VSS = loadFileStr("shaders/graph.vert");
-	printf("loadFileStr done\n");
 	FSS = loadFileStr("shaders/graph.frag");
-	printf("loadFileStr done\n");
-		
-	//printf("%s\n", VSS);
-	//printf("%s\n", FSS);
 	
-	printf("glad_glCreateShader: %p\n", glad_glCreateShader);
 	unsigned int vertexShader = glad_glCreateShader(GL_VERTEX_SHADER);
-	printf("vertexShader: %d\n", vertexShader);
 	if (!vertexShader) { printf("ERROR: glCreateShader\n"); exit(1); }
 	glShaderSource(vertexShader, 1, (const char * const*)&VSS, NULL);
-	printf("glShaderSource done\n");
 	glCompileShader(vertexShader);
-	printf("glCompileShader done\n");
 
 	glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
 	if(!success){
@@ -237,14 +186,10 @@ void initOpenGL(){
 		printf("ERROR: Vertex Shader Compilation Failed\n%s\n", infoLog);
 		exit(1);
 	}
-	printf("glGetShaderiv done\n");
 	
 	unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-	printf("glCreateShader done\n");
 	glShaderSource(fragmentShader, 1, (const char * const*)&FSS, NULL);
-	printf("glShaderSource done\n");
 	glCompileShader(fragmentShader);
-	printf("glCompileShader done\n");
 	
 	glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
 	if(!success){
@@ -252,16 +197,11 @@ void initOpenGL(){
 		printf("ERROR: Fragment Shader Compilation Failed\n%s\n", infoLog);
 		exit(1);	
 	}
-	printf("glGetShaderiv done\n");
 	
 	gContext.shaderProgram = glCreateProgram();
-	printf("glCreateProgram done\n");
 	glAttachShader(gContext.shaderProgram, vertexShader);
-	printf("glAttachShader done\n");
 	glAttachShader(gContext.shaderProgram, fragmentShader);
-	printf("glAttachShader done\n");
 	glLinkProgram(gContext.shaderProgram);
-	printf("glLinkProgram done\n");
 	
 	glGetProgramiv(gContext.shaderProgram, GL_LINK_STATUS, &success);
 	if(!success){
@@ -269,24 +209,17 @@ void initOpenGL(){
 		printf("ERROR: Shader Program Linking Failed\n%s\n", infoLog);
 		exit(1);
 	}
-	printf("glGetProgramiv done\n");
 	
 	glUseProgram(gContext.shaderProgram);
-	printf("glUseProgram done\n");
 
 	glDeleteShader(vertexShader);
-	printf("glDeleteShader done\n");
 	glDeleteShader(fragmentShader);
-	printf("glDeleteShader done\n");
 	
 	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-	printf("glPolygonMode done\n");
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	printf("glClearColor done\n");
 }
 
 void initGraph(void){
-
 	//fills gContext->positions and gContext->edges with correct data
 	Graph * const g = &gContext.g;	
 	rescale(g, -1.0, -1.0, 1.0, 1.0);
@@ -349,7 +282,4 @@ void display(void){
 	glBindVertexArray(gContext.VAO);
 	glDrawElements(GL_LINES, gContext.numIndeces, GL_UNSIGNED_INT, 0);
 	glBindVertexArray(0);
-	
-//	glutSwapBuffers();
-//	glutPostRedisplay();
 }

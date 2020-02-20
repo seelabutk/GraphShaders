@@ -1,4 +1,4 @@
-FROM nvidia/opengl:1.0-glvnd-devel-ubuntu18.04
+FROM ubuntu:bionic
 
 RUN apt-get update && \
     apt-get install -y \
@@ -41,7 +41,7 @@ RUN ln -sf /usr/lib/x86_64-linux-gnu/libEGL_nvidia.so.0 /usr/lib/x86_64-linux-gn
 
 WORKDIR /app
 COPY . /app
+RUN cmake -S . -Bbuild && \
+    make -C build
 
-ENV NVIDIA_VISIBLE_DEVICES all
-ENV NVIDIA_DRIVER_CAPABILITIES graphics
-CMD ["bash", "-c", "cmake -S /app/ -B/tmp/build && make -C /tmp/build && /tmp/build/render"]
+CMD ["/app/build/render"]
