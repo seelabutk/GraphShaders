@@ -144,13 +144,6 @@ rescale(struct graph *graph, float x0, float y0, float x1, float y1) {
 	}
 }
 
-
-typedef int row_t;
-typedef int col_t;
-typedef int rc_t;
-typedef int edgenum_t;
-
-
 void
 partition(struct graph *graph, int n, void (*preinit)(rc_t), void (*init)(rc_t), void (*emit)(rc_t, edgenum_t), void (*fini)(rc_t)) {
 	edgenum_t edge;
@@ -230,6 +223,7 @@ fg_main(int argc, char **argv) {
 
 	void myemit(rc_t rc, edgenum_t edge) {
 		fprintf(fs[rc], "%d\n", edge);
+//		printf("%d\n", rc);
 	}
 
 	void myfini(rc_t rc) {

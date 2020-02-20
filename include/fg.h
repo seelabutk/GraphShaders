@@ -8,6 +8,10 @@
 typedef void (*emitter)(int, int);
 typedef void (*raytracer)(float, float, float, float, float, emitter);
 
+typedef int row_t;
+typedef int col_t;
+typedef int rc_t;
+typedef int edgenum_t;
 
 struct graph {
 	char *node_filename;
@@ -39,6 +43,9 @@ rescale(struct graph *graph, float x0, float x1, float y0, float y1);
 
 int
 load_arg(struct graph *graph, int argc, char **argv);
+
+void
+partition(struct graph *graph, int n, void (*preinit)(rc_t), void (*init)(rc_t), void (*emit)(rc_t, edgenum_t), void (*fini)(rc_t));
 
 int
 fg_main(int argc, char **argv);
