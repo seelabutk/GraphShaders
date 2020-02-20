@@ -7,10 +7,11 @@
 #include <zorder.h> 
 
 #include <glad/glad.h>
-#include <GL/freeglut.h>
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
 
 typedef struct graph Graph;
-typedef struct graphicsContext{
+struct graphicsContext{
 	Graph g;
 
 	float *vertices;
@@ -20,8 +21,9 @@ typedef struct graphicsContext{
 	unsigned int numIndeces;
 	
 	unsigned int shaderProgram, VBO, EBO, VAO;
-} GraphicsContext;
-GraphicsContext gContext;
+};
+
+struct graphicsContext gContext;
 
 void initOpenGL(void);
 void initGraph(int*, int);
@@ -29,7 +31,87 @@ void display(void);
 //void keyboard_handler(void *user_data);
 //void mouse_handler(void *user_data);
 
-int main(int argc, char **argv){	
+#define CASE_STR( value ) case value: return #value; 
+const char* eglGetErrorString( EGLint error )
+{
+    switch( error )
+    {
+    CASE_STR( EGL_SUCCESS             )
+    CASE_STR( EGL_NOT_INITIALIZED     )
+    CASE_STR( EGL_BAD_ACCESS          )
+    CASE_STR( EGL_BAD_ALLOC           )
+    CASE_STR( EGL_BAD_ATTRIBUTE       )
+    CASE_STR( EGL_BAD_CONTEXT         )
+    CASE_STR( EGL_BAD_CONFIG          )
+    CASE_STR( EGL_BAD_CURRENT_SURFACE )
+    CASE_STR( EGL_BAD_DISPLAY         )
+    CASE_STR( EGL_BAD_SURFACE         )
+    CASE_STR( EGL_BAD_MATCH           )
+    CASE_STR( EGL_BAD_PARAMETER       )
+    CASE_STR( EGL_BAD_NATIVE_PIXMAP   )
+    CASE_STR( EGL_BAD_NATIVE_WINDOW   )
+    CASE_STR( EGL_CONTEXT_LOST        )
+    default: return "Unknown";
+    }
+}
+#undef CASE_STR
+
+int main(int argc, char **argv) {
+	static EGLint const configAttribs[] = {
+		EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+		EGL_BLUE_SIZE, 8,
+		EGL_GREEN_SIZE, 8,
+		EGL_RED_SIZE, 8,
+		EGL_DEPTH_SIZE, 8,
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+		EGL_NONE
+	};
+
+	int pbufferWidth = 256;
+	int pbufferHeight = 256;
+
+	EGLint pbufferAttribs[] = {
+		EGL_WIDTH, pbufferWidth,
+		EGL_HEIGHT, pbufferHeight,
+		EGL_NONE,
+	};
+
+	const char *extString = (const char *)eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
+
+	// 1. Initialize EGL
+	EGLDisplay eglDpy = eglGetPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
+	if (eglDpy == EGL_NO_DISPLAY) {
+		printf("eglGetDisplay no display\n");
+		return 1;
+	}
+
+	EGLint major, minor;
+	if (eglInitialize(eglDpy, &major, &minor) == EGL_FALSE) {
+		printf("eglInitialize failed: %s\n", eglGetErrorString(eglGetError()));
+		return 1;
+	}
+	printf("got egl version %d %d\n", major, minor);
+
+	// 2. Select an appropriate configuration
+	EGLint numConfigs;
+	EGLConfig eglCfg;
+
+	eglChooseConfig(eglDpy, configAttribs, &eglCfg, 1, &numConfigs);
+
+	// 3. Create a surface
+	EGLSurface eglSurf = eglCreatePbufferSurface(eglDpy, eglCfg, pbufferAttribs);
+
+	// 4. Bind the API
+	eglBindAPI(EGL_OPENGL_API);
+
+	// 5. Create a context and make it current
+	EGLContext eglCtx = eglCreateContext(eglDpy, eglCfg, EGL_NO_CONTEXT, 
+	NULL);
+
+	eglMakeCurrent(eglDpy, eglSurf, eglSurf, eglCtx);
+
+	// from now on use your OpenGL context
+
 	int *ZorderIndeces;
 	int Zsz;
 
@@ -42,30 +124,12 @@ int main(int argc, char **argv){
 		Zsz = argc - 1;
 	}	
 	//todo: input checking	
-	
-	if(gladLoadGL()){
-		printf("No context loaded!\n");
+
+	if (!gladLoadGL()) {
+		printf("gladLoadGL failed\n");
 		exit(1);
 	}
-
-	//initialize freeglut
-	{	
-		glutInit(&argc, argv);
-		glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH);
-		glutInitWindowSize(1024, 1024);
-		glutInitWindowPosition(0,0);
-		glutCreateWindow(argv[0]);
-		glutDisplayFunc(display);
-		//glutIdleFunc(display);
-		//glutReshapeFunc();
-		//glutKeyboardFunc(keyboard_handler);
-		//glutMouseFunc(mouse_hanlder);
-	}
-
-	if(!gladLoadGL()){
-		printf("Error, glad not correctly loaded\n");
-		exit(1);
-	}
+	printf("OpenGL %d.%d\n", GLVersion.major, GLVersion.minor);
 		
 	//load the graph into memory
 	int rc = load_arg(&gContext.g, 1, argv);
@@ -76,7 +140,22 @@ int main(int argc, char **argv){
 	
 	initOpenGL();
 	initGraph(ZorderIndeces, Zsz);
-	glutMainLoop();
+	display();
+
+	uint8_t *pixels = malloc(256 * 256 * 3 * sizeof(uint8_t));
+
+	glReadPixels(0, 0,
+	             256, 256,
+	             GL_RGB,
+	             GL_UNSIGNED_BYTE,
+	             pixels);
+
+	FILE *f = fopen("temp.ppm", "wb");
+	fprintf(f, "P6\n");
+	fprintf(f, "256 256\n");
+	fprintf(f, "255\n");
+	fwrite(pixels, sizeof(uint8_t), 256 * 256 * 3, f);
+	fclose(f);
 }
 
 char* loadFileStr(const char *fileName){
@@ -111,8 +190,8 @@ void initOpenGL(){
 	
 	VSS = loadFileStr("shaders/graph.vert");
 	FSS = loadFileStr("shaders/graph.frag");
-		
 	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
+	if (!vertexShader) { printf("ERROR: glCreateShader\n"); exit(1); }
 	glShaderSource(vertexShader, 1, (const char * const*)&VSS, NULL);
 	glCompileShader(vertexShader);
 
@@ -171,7 +250,6 @@ void rescale2(float *positions, int sz, float x0, float y0, float x1, float y1) 
 }
 
 void initGraph(int *ZorderIndeces, int sz){
-	
 	Graph * const g = &gContext.g;	
 	float *positions = gContext.vertices;
 	int *edges = gContext.indeces;
@@ -269,7 +347,4 @@ void display(void){
 	glBindVertexArray(gContext.VAO);
 	glDrawElements(GL_LINES, gContext.numIndeces, GL_UNSIGNED_INT, 0);
 	glBindVertexArray(0);
-	
-	glutSwapBuffers();
-	glutPostRedisplay();
 }
