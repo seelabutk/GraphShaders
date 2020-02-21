@@ -14,85 +14,33 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
-enum MAB_CollectorStrategy {
-	MAB_NONE_STRATEGY = 0,
-	MAB_MULT_STRATEGY,
-	MAB_INCR_STRATEGY,
-};
 
-struct MAB_Collector {
+struct MHD_Response *
+MAB_create_response_from_file(char *filename) {
+	FILE *f;
+	size_t size, actual;
 	char *data;
-	size_t length;
-	size_t _size;
-	enum MAB_CollectorStrategy _strategy;
-	size_t _arg;
-};
-
-struct MAB_Collector *
-MAB_create_collector(size_t size, enum MAB_CollectorStrategy strategy, size_t arg) {
-	struct MAB_Collector *coll;
 	
-	coll = malloc(sizeof(*coll));
-	if (coll == NULL) {
-		fprintf(stderr, "create_collector: could not alloc\n");
-		return NULL;
+	f = fopen(filename, "rb");
+	if (f == NULL) {
+		fprintf(stderr, "could not open %s\n", filename);
+		exit(1);
 	}
+	fseek(f, 0, SEEK_END);
+	size = ftell(f);
+	rewind(f);
 	
-	coll->data = malloc(size);
-	coll->_size = size;
-	coll->length = 0;
-	coll->_strategy = strategy;
-	coll->_arg = arg;
-	
-	return coll;
-}
-
-int
-MAB_collect(struct MAB_Collector *coll, const char *data, size_t size) {
-	size_t newsize;
-	char *newdata;
-	
-	while (coll->_size - coll->length < size) {
-		if (coll->_strategy == MAB_NONE_STRATEGY) {
-			newsize = coll->_size;
-		} else if (coll->_strategy == MAB_MULT_STRATEGY) {
-			newsize = coll->_size + (coll->_size * coll->_arg) / 100;
-		} else if (coll->_strategy == MAB_INCR_STRATEGY) {
-			newsize = coll->_size + coll->_arg;
-		}
-		
-		if (newsize <= coll->_size) {
-			return MHD_NO;
-		}
-		
-		newdata = realloc(coll->data, newsize);
-		if (newdata == NULL) {
-			fprintf(stderr, "collect: could not realloc\n");
-			return MHD_NO;
-		}
-		
-		coll->_size = newsize;
-		coll->data = newdata;
+	data = malloc(size);
+	actual = fread(data, 1, size, f);
+	if (actual != size) {
+		fprintf(stderr, "didn't read all of %s\n", filename);
+		exit(1);
 	}
+	fclose(f);
 	
-	memcpy(coll->data + coll->length, data, size);
-	coll->length += size;
-	
-	return MHD_YES;
+	return MHD_create_response_from_buffer(size, data, MHD_RESPMEM_MUST_FREE);
 }
 
-int
-MAB_destroy_collector(struct MAB_Collector *coll) {
-	free(coll->data);
-	coll->data = NULL;
-	coll->length = 0;
-	coll->_size = 0;
-	coll->_strategy = MAB_NONE_STRATEGY;
-	coll->_arg = 0;
-	free(coll);
-	
-	return MHD_YES;
-}
 
 struct MHD_Response *
 MAB_create_response_from_buffer_gzip(size_t size, void *data, enum MHD_ResponseMemoryMode mode, int level) {
@@ -140,9 +88,6 @@ ANSWER(Tile) {
 	if (3 != sscanf(url, "/tile/%d/%d/%d", &z, &x, &y)) {
 		return MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);	
 	}
-
-	printf("Got: [%d][%d][%d]\n", x, y, z);
-	printf("TID: %d\n", (int)pthread_self());
 
 	if (!render_ctx) {
 		char *argv[2] = { "foo", NULL };
@@ -214,7 +159,6 @@ struct {
 	{ NULL, NULL, 0, Error },
 	{ "GET", "/", 1, Index },
 	{ "GET", "/tile/", 0, Tile },
-	/* { "POST", "/collect/", 0, Collect }, */
 };
 
 ANSWER(answer) {
@@ -231,7 +175,11 @@ ANSWER(answer) {
 	return routes[0].cb(cls, conn, url, method, version, data, size, con_cls);
 }
 
-void initialize(void);
+static void
+initialize(void) {
+	index_response = MAB_create_response_from_file("static/index.html");
+	error_response = MAB_create_response_from_file("static/error.html");
+}
 
 int opt_port;
 
@@ -239,8 +187,6 @@ int
 main(int argc, char **argv) {
 	int i, fail;
 	struct MHD_Daemon *daemon;
-	
-	printf("TID: %d\n", (int)pthread_self());
 
 	fail = 0;
 	opt_port = 8874;
@@ -274,36 +220,4 @@ main(int argc, char **argv) {
 	
 	MHD_stop_daemon(daemon);
 	return 0;
-}
-
-struct MHD_Response *
-MAB_create_response_from_file(char *filename) {
-	FILE *f;
-	size_t size, actual;
-	char *data;
-	
-	f = fopen(filename, "rb");
-	if (f == NULL) {
-		fprintf(stderr, "could not open %s\n", filename);
-		exit(1);
-	}
-	fseek(f, 0, SEEK_END);
-	size = ftell(f);
-	rewind(f);
-	
-	data = malloc(size);
-	actual = fread(data, 1, size, f);
-	if (actual != size) {
-		fprintf(stderr, "didn't read all of %s\n", filename);
-		exit(1);
-	}
-	fclose(f);
-	
-	return MHD_create_response_from_buffer(size, data, MHD_RESPMEM_MUST_FREE);
-}
-
-void
-initialize(void) {
-	index_response = MAB_create_response_from_file("static/index.html");
-	error_response = MAB_create_response_from_file("static/error.html");
 }
