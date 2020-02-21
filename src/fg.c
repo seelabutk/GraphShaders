@@ -128,7 +128,7 @@ load(char *node_filename, char *edge_filename, struct graph *graph) {
 
 
 void
-rescale(struct graph *graph, float x0, float y0, float x1, float y1) {
+rescale(float x0, float y0, float x1, float y1, struct graph *graph) {
 	float xmin, xmax = xmin = graph->nx[0];
 	float ymin, ymax = ymin = graph->ny[0];
 	for (size_t i=1; i<graph->ncount; ++i) {
@@ -163,7 +163,7 @@ partition(struct graph *graph, int n, void (*preinit)(rc_t), void (*init)(rc_t),
 		init(rc);
 	}
 
-	rescale(graph, 0.0, 0.0, n-1.0, n-1.0);
+	rescale(0.0, 0.0, n-1.0, n-1.0, graph);
 
 	for (edge=0; edge<graph->ecount; ++edge) {
 		float x0 = graph->nx[graph->es[edge]];
@@ -197,8 +197,8 @@ load_arg(struct graph *graph, int argc, char **argv) {
 		snprintf(nodespath, sizeof(nodespath), "%s/%s", rootdir, "nodes.csv");
 		snprintf(edgespath, sizeof(edgespath), "%s/%s", rootdir, "edges.csv");
 	} else {
-		strcpy(nodespath, "data/les-miserables/nodes.csv");
-		strcpy(edgespath, "data/les-miserables/edges.csv");
+		strcpy(nodespath, "data/R/nodes.csv");
+		strcpy(edgespath, "data/R/edges.csv");
 	}
 	
 	int rc = load(nodespath, edgespath, graph);

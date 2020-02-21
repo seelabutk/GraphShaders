@@ -39,7 +39,7 @@ int
 load(char *node_filename, char *edge_filename, struct graph *graph);
 
 void
-rescale(struct graph *graph, float x0, float x1, float y0, float y1);
+rescale(float x0, float x1, float y0, float y1, struct graph *graph);
 
 int
 load_arg(struct graph *graph, int argc, char **argv);

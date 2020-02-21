@@ -37,6 +37,11 @@ RUN apt-get update && \
         mesa-utils \
     && rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && \
+    apt-get install -y \
+        zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN ln -sf /usr/lib/x86_64-linux-gnu/libEGL_nvidia.so.0 /usr/lib/x86_64-linux-gnu/libEGL_nvidia.so
 
 WORKDIR /app

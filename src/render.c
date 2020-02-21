@@ -1,4 +1,4 @@
-#include <fg.h>
+#include <render.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <inttypes.h>
@@ -10,53 +10,31 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
-typedef struct graph Graph;
-struct graphicsContext{
-	Graph g;
+static void initOpenGL(struct render_ctx *ctx);
+static void initGraph(struct render_ctx *ctx, int*, int);
+static const char *eglGetErrorString(EGLint);
 
-	float *vertices;
-	unsigned int *indeces;
-	
-	unsigned int numVertices;
-	unsigned int numIndeces;
-	
-	unsigned int shaderProgram, VBO, EBO, VAO;
-};
+int render_main(int argc, char **argv) {
+	struct render_ctx ctx;
 
-struct graphicsContext gContext;
+	render_init(&ctx, argc, argv);
+	render_display(&ctx);
 
-void initOpenGL(void);
-void initGraph(int*, int);
-void display(void);
-//void keyboard_handler(void *user_data);
-//void mouse_handler(void *user_data);
+	size_t size;
+	void *pixels;
+	size = 0;
+	pixels = NULL;
+	render_copy_to_buffer(&ctx, &size, &pixels);
 
-#define CASE_STR( value ) case value: return #value; 
-const char* eglGetErrorString( EGLint error )
-{
-    switch( error )
-    {
-    CASE_STR( EGL_SUCCESS             )
-    CASE_STR( EGL_NOT_INITIALIZED     )
-    CASE_STR( EGL_BAD_ACCESS          )
-    CASE_STR( EGL_BAD_ALLOC           )
-    CASE_STR( EGL_BAD_ATTRIBUTE       )
-    CASE_STR( EGL_BAD_CONTEXT         )
-    CASE_STR( EGL_BAD_CONFIG          )
-    CASE_STR( EGL_BAD_CURRENT_SURFACE )
-    CASE_STR( EGL_BAD_DISPLAY         )
-    CASE_STR( EGL_BAD_SURFACE         )
-    CASE_STR( EGL_BAD_MATCH           )
-    CASE_STR( EGL_BAD_PARAMETER       )
-    CASE_STR( EGL_BAD_NATIVE_PIXMAP   )
-    CASE_STR( EGL_BAD_NATIVE_WINDOW   )
-    CASE_STR( EGL_CONTEXT_LOST        )
-    default: return "Unknown";
-    }
+	FILE *f = fopen("temp.ppm", "wb");
+	fprintf(f, "P6\n");
+	fprintf(f, "256 256\n");
+	fprintf(f, "255\n");
+	fwrite(pixels, sizeof(uint8_t), size, f);
+	fclose(f);
 }
-#undef CASE_STR
 
-int main(int argc, char **argv) {
+int render_init(struct render_ctx *ctx, int argc, char **argv) {
 	static EGLint const configAttribs[] = {
 		EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
 		EGL_BLUE_SIZE, 8,
@@ -105,8 +83,7 @@ int main(int argc, char **argv) {
 	eglBindAPI(EGL_OPENGL_API);
 
 	// 5. Create a context and make it current
-	EGLContext eglCtx = eglCreateContext(eglDpy, eglCfg, EGL_NO_CONTEXT, 
-	NULL);
+	EGLContext eglCtx = eglCreateContext(eglDpy, eglCfg, EGL_NO_CONTEXT, NULL);
 
 	eglMakeCurrent(eglDpy, eglSurf, eglSurf, eglCtx);
 
@@ -132,33 +109,54 @@ int main(int argc, char **argv) {
 	printf("OpenGL %d.%d\n", GLVersion.major, GLVersion.minor);
 		
 	//load the graph into memory
-	int rc = load_arg(&gContext.g, 1, argv);
+	int rc = load_arg(&ctx->g, 1, argv);
 	if (rc != 0) {
 		printf("Could not load graph\n");
 		return 1;
 	}
 	
-	initOpenGL();
-	initGraph(ZorderIndeces, Zsz);
-	display();
+	initOpenGL(ctx);
+	initGraph(ctx, ZorderIndeces, Zsz);
+}
 
-	uint8_t *pixels = malloc(256 * 256 * 3 * sizeof(uint8_t));
+void render_focus_tile(struct render_ctx *ctx, int z, int x, int y) {
+	float rz = 1.0;
+	for (int i=0; i<z; ++i) {
+		rz *= 2.0;
+	}
+
+	glUniform1f(ctx->uTranslateX, -1 * x);
+	glUniform1f(ctx->uTranslateY, -1 * y);
+	glUniform1f(ctx->uScale, rz);
+}
+
+void render_display(struct render_ctx *ctx) {
+	glClear(GL_COLOR_BUFFER_BIT);	//remember GL_DEPTH_BUFFER_BIT too
+	
+	glBindVertexArray(ctx->VAO);
+	glDrawElements(GL_LINES, ctx->numIndeces, GL_UNSIGNED_INT, 0);
+	glBindVertexArray(0);
+}
+
+void render_copy_to_buffer(struct render_ctx *ctx, size_t *size, void **pixels) {
+	size_t expsize = 256 * 256 * 3 * sizeof(uint8_t);
+
+	if (*pixels == NULL) {
+		*size = expsize;
+		*pixels = malloc(*size);
+	} else if (*size < expsize) {
+		*size = expsize;
+		*pixels = realloc(*pixels, *size);
+	}
 
 	glReadPixels(0, 0,
 	             256, 256,
 	             GL_RGB,
 	             GL_UNSIGNED_BYTE,
-	             pixels);
-
-	FILE *f = fopen("temp.ppm", "wb");
-	fprintf(f, "P6\n");
-	fprintf(f, "256 256\n");
-	fprintf(f, "255\n");
-	fwrite(pixels, sizeof(uint8_t), 256 * 256 * 3, f);
-	fclose(f);
+	             *pixels);
 }
 
-char* loadFileStr(const char *fileName){
+static char* loadFileStr(const char *fileName){
 	FILE *f;
 	char *str;
 	unsigned length;
@@ -181,7 +179,7 @@ char* loadFileStr(const char *fileName){
 	return str;
 }
 
-void initOpenGL(){
+static void initOpenGL(struct render_ctx *ctx) {
 	char *VSS;
 	char *FSS;
 	
@@ -190,8 +188,8 @@ void initOpenGL(){
 	
 	VSS = loadFileStr("shaders/graph.vert");
 	FSS = loadFileStr("shaders/graph.frag");
+
 	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
-	if (!vertexShader) { printf("ERROR: glCreateShader\n"); exit(1); }
 	glShaderSource(vertexShader, 1, (const char * const*)&VSS, NULL);
 	glCompileShader(vertexShader);
 
@@ -213,53 +211,42 @@ void initOpenGL(){
 		exit(1);	
 	}
 	
-	gContext.shaderProgram = glCreateProgram();
-	glAttachShader(gContext.shaderProgram, vertexShader);
-	glAttachShader(gContext.shaderProgram, fragmentShader);
-	glLinkProgram(gContext.shaderProgram);
+	ctx->shaderProgram = glCreateProgram();
+	glAttachShader(ctx->shaderProgram, vertexShader);
+	glAttachShader(ctx->shaderProgram, fragmentShader);
+	glLinkProgram(ctx->shaderProgram);
 	
-	glGetProgramiv(gContext.shaderProgram, GL_LINK_STATUS, &success);
+	glGetProgramiv(ctx->shaderProgram, GL_LINK_STATUS, &success);
 	if(!success){
-		glGetProgramInfoLog(gContext.shaderProgram, 512, NULL, infoLog);
+		glGetProgramInfoLog(ctx->shaderProgram, 512, NULL, infoLog);
 		printf("ERROR: Shader Program Linking Failed\n%s\n", infoLog);
 		exit(1);
 	}
 	
-	glUseProgram(gContext.shaderProgram);
+	glUseProgram(ctx->shaderProgram);
 
 	glDeleteShader(vertexShader);
 	glDeleteShader(fragmentShader);
+
+	ctx->uTranslateX = glGetUniformLocation(ctx->shaderProgram, "uTranslateX");
+	ctx->uTranslateY = glGetUniformLocation(ctx->shaderProgram, "uTranslateY");
+	ctx->uScale = glGetUniformLocation(ctx->shaderProgram, "uScale");
 	
 	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 }
 
-void rescale2(float *positions, int sz, float x0, float y0, float x1, float y1) {
-	float xmin, xmax = xmin = positions[0];
-	float ymin, ymax = ymin = positions[1];
-	for(size_t i = 2; i < sz; i += 2){
-		if (positions[i] < xmin) xmin = positions[i]; 
-		if (positions[i] > xmax) xmax = positions[i]; 
-	}
-	for(size_t i = 3; i < sz; i += 2){
-		if(positions[i] < ymin) ymin = positions[i];
-		if(positions[i] > ymax) ymax = positions[i];
-	}	
-	for(size_t i = 0; i < sz; i += 2) 	positions[i] = (positions[i] - xmin) / (xmax - xmin) * (x1 - x0) + x0;
-	for(size_t i = 1; i < sz; i += 2) 	positions[i] = (positions[i] - ymin) / (ymax - ymin) * (y1 - y0) + y0;
-}
+static void initGraph(struct render_ctx *ctx, int *ZorderIndeces, int sz){
+	struct graph *const g = &ctx->g;	
+	float *positions = ctx->vertices;
+	int *edges = ctx->indeces;
 
-void initGraph(int *ZorderIndeces, int sz){
-	Graph * const g = &gContext.g;	
-	float *positions = gContext.vertices;
-	int *edges = gContext.indeces;
-
-	gContext.numIndeces = 0;
-	gContext.numVertices = 0;
+	ctx->numIndeces = 0;
+	ctx->numVertices = 0;
 	
 	if(sz == 0){	//render whole graph normally on 1 RC
 		//fills gContext->positions and gContext->edges with correct data
-		rescale(g, -1.0, -1.0, 1.0, 1.0);
+		rescale(0.0, 0.0, 1.0, 1.0, g);
 		
 		//2 floats per position
 		positions = malloc(g->ncount*2 * sizeof(*positions));
@@ -278,8 +265,8 @@ void initGraph(int *ZorderIndeces, int sz){
 			positions[i*2 + 1] = g->ny[i];
 		}
 
-		gContext.numIndeces = g->ecount*2;
-		gContext.numVertices = g->ncount*2;
+		ctx->numIndeces = g->ecount*2;
+		ctx->numVertices = g->ncount*2;
 
 	}else{	//render only the RC specified
 		
@@ -299,7 +286,7 @@ void initGraph(int *ZorderIndeces, int sz){
 				printf("%d\n", rc);
 			}
 			partition(g, sz, preinit, init, emit, finish);
-			rescale(g, -1.0, -1.0, 1.0, 1.0);	
+			rescale(-1.0, -1.0, 1.0, 1.0, g);
 			positions = malloc(2*curr*sizeof(*edges));
 	
 			for(int i = 0; i < curr; ++i){
@@ -309,8 +296,8 @@ void initGraph(int *ZorderIndeces, int sz){
 			
 			for(int i = 0; i < curr; ++i)	edges[i] = i;
 			
-			gContext.numIndeces += curr;
-			gContext.numVertices += curr;
+			ctx->numIndeces += curr;
+			ctx->numVertices += curr;
 		}
 		
 		if(sz == 1){	
@@ -320,31 +307,48 @@ void initGraph(int *ZorderIndeces, int sz){
 
 	//now openGL stuff
 	//gen VBO, VAO, EBO
-	glGenVertexArrays(1, &gContext.VAO);
-	glGenBuffers(1, &gContext.VBO);
-	glGenBuffers(1, &gContext.EBO);
+	glGenVertexArrays(1, &ctx->VAO);
+	glGenBuffers(1, &ctx->VBO);
+	glGenBuffers(1, &ctx->EBO);
 
-	glBindVertexArray(gContext.VAO);
+	glBindVertexArray(ctx->VAO);
 	
-	glBindBuffer(GL_ARRAY_BUFFER, gContext.VBO);
-	glBufferData(GL_ARRAY_BUFFER, gContext.numVertices*2*sizeof(*positions), positions, GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, ctx->VBO);
+	glBufferData(GL_ARRAY_BUFFER, ctx->numVertices*2*sizeof(*positions), positions, GL_STATIC_DRAW);
 	
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gContext.EBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, gContext.numIndeces*sizeof(*edges), edges, GL_STATIC_DRAW);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx->EBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, ctx->numIndeces*sizeof(*edges), edges, GL_STATIC_DRAW);
 
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2*sizeof(*positions), (void*)0);
 	
 	//not needed with layout location extension enabled in shader, but put it here anyway jic
-	glBindAttribLocation(gContext.shaderProgram, 0, "aPos");
+	glBindAttribLocation(ctx->shaderProgram, 0, "aPos");
 	
 	glEnableVertexAttribArray(0);
 
 }
 
-void display(void){
-	glClear(GL_COLOR_BUFFER_BIT);	//remember GL_DEPTH_BUFFER_BIT too
-	
-	glBindVertexArray(gContext.VAO);
-	glDrawElements(GL_LINES, gContext.numIndeces, GL_UNSIGNED_INT, 0);
-	glBindVertexArray(0);
+#define CASE_STR( value ) case value: return #value; 
+static const char* eglGetErrorString( EGLint error )
+{
+    switch( error )
+    {
+    CASE_STR( EGL_SUCCESS             )
+    CASE_STR( EGL_NOT_INITIALIZED     )
+    CASE_STR( EGL_BAD_ACCESS          )
+    CASE_STR( EGL_BAD_ALLOC           )
+    CASE_STR( EGL_BAD_ATTRIBUTE       )
+    CASE_STR( EGL_BAD_CONTEXT         )
+    CASE_STR( EGL_BAD_CONFIG          )
+    CASE_STR( EGL_BAD_CURRENT_SURFACE )
+    CASE_STR( EGL_BAD_DISPLAY         )
+    CASE_STR( EGL_BAD_SURFACE         )
+    CASE_STR( EGL_BAD_MATCH           )
+    CASE_STR( EGL_BAD_PARAMETER       )
+    CASE_STR( EGL_BAD_NATIVE_PIXMAP   )
+    CASE_STR( EGL_BAD_NATIVE_WINDOW   )
+    CASE_STR( EGL_CONTEXT_LOST        )
+    default: return "Unknown";
+    }
 }
+#undef CASE_STR

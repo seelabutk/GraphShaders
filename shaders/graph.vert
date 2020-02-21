@@ -5,7 +5,15 @@
 precision mediump float;
 
 layout(location = 0) in vec2 aPos;
+uniform float uTranslateX;
+uniform float uTranslateY;
+uniform float uScale;
 
 void main(){
-	gl_Position = vec4(aPos.x, aPos.y, 0.0f, 1.0f);
+	gl_Position = vec4(
+		2. * (uScale * aPos.x + uTranslateX) - 1.,
+		2. * (uScale * aPos.y + uTranslateY) - 1.,
+		0.0f,
+		1.0f
+	);
 }

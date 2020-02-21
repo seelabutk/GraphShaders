@@ -9,11 +9,11 @@ xauth=
 entrypoint=
 ipc=
 net=
-user=
+user=1
 cwd=1
 interactive=1
 script=
-port=
+port=8874
 constraint=
 runtime=
 
