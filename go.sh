@@ -8,12 +8,12 @@ registry= #accona.eecs.utk.edu:5000
 xauth=
 entrypoint=
 ipc=
-net=
+net=host
 user=1
 cwd=1
 interactive=1
 script=
-port=8874
+port=
 constraint=
 runtime=
 
