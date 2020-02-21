@@ -24,7 +24,7 @@ struct render_ctx {
 
 int render_main(int argc, char **argv);
 
-int render_init(struct render_ctx *ctx, int argc, char **argv);
+int render_init(struct render_ctx *ctx);
 
 void render_focus_tile(struct render_ctx *ctx, int z, int x, int y);
 

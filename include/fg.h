@@ -42,7 +42,7 @@ void
 rescale(float x0, float x1, float y0, float y1, struct graph *graph);
 
 int
-load_arg(struct graph *graph, int argc, char **argv);
+load_arg(struct graph *graph);
 
 void
 partition(struct graph *graph, int n, void (*preinit)(rc_t), void (*init)(rc_t), void (*emit)(rc_t, edgenum_t), void (*fini)(rc_t));

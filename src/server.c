@@ -90,9 +90,8 @@ ANSWER(Tile) {
 	}
 
 	if (!render_ctx) {
-		char *argv[2] = { "foo", NULL };
 		render_ctx = malloc(sizeof(*render_ctx));
-		render_init(render_ctx, 1, argv);
+		render_init(render_ctx);
 	}
 
 	void *output;
@@ -181,28 +180,13 @@ initialize(void) {
 	error_response = MAB_create_response_from_file("static/error.html");
 }
 
-int opt_port;
-
 int
 main(int argc, char **argv) {
-	int i, fail;
+	int opt_port;
+	char *s;
 	struct MHD_Daemon *daemon;
 
-	fail = 0;
-	opt_port = 8874;
-	for (i=1; i<argc; ++i) {
-		if (strcmp(argv[i], "--port") == 0) {
-			opt_port = atoi(argv[++i]);
-		} else {
-			fprintf(stderr, "unknown argument '%s'\n", argv[i]);
-			fail = 1;
-		}
-	}
-	
-	if (fail) {
-		fprintf(stderr, "exiting due to bad arguments\n");
-		return 1;
-	}
+	opt_port = (s = getenv("FG_PORT")) ? atoi(s) : 8874;
 	
 	fprintf(stderr, "Listening on 0.0.0.0:%d\n", opt_port);
 	

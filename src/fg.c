@@ -188,18 +188,14 @@ partition(struct graph *graph, int n, void (*preinit)(rc_t), void (*init)(rc_t),
 
 
 int
-load_arg(struct graph *graph, int argc, char **argv) {
+load_arg(struct graph *graph) {
 	char nodespath[PATH_MAX];
 	char edgespath[PATH_MAX];
-	if (argc == 2) {
-		char *rootdir = argv[1];
+	char *s, *rootdir;
 
-		snprintf(nodespath, sizeof(nodespath), "%s/%s", rootdir, "nodes.csv");
-		snprintf(edgespath, sizeof(edgespath), "%s/%s", rootdir, "edges.csv");
-	} else {
-		strcpy(nodespath, "data/R/nodes.csv");
-		strcpy(edgespath, "data/R/edges.csv");
-	}
+	rootdir = (s = getenv("FG_GRAPH")) ? s : "data/les-miserables";
+	snprintf(nodespath, sizeof(nodespath), "%s/%s", rootdir, "nodes.csv");
+	snprintf(edgespath, sizeof(edgespath), "%s/%s", rootdir, "edges.csv");
 	
 	int rc = load(nodespath, edgespath, graph);
 	return rc;
@@ -233,7 +229,7 @@ fg_main(int argc, char **argv) {
 
 	struct graph graph;
 
-	int rc = load_arg(&graph, argc, argv);
+	int rc = load_arg(&graph);
 	assert(rc == 0);
 	printf("ncount: %zu\n", graph.ncount);
 	printf("ecount: %zu\n", graph.ecount);

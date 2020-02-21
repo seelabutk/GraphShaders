@@ -17,7 +17,7 @@ static const char *eglGetErrorString(EGLint);
 int render_main(int argc, char **argv) {
 	struct render_ctx ctx;
 
-	render_init(&ctx, argc, argv);
+	render_init(&ctx);
 	render_display(&ctx);
 
 	size_t size;
@@ -34,7 +34,7 @@ int render_main(int argc, char **argv) {
 	fclose(f);
 }
 
-int render_init(struct render_ctx *ctx, int argc, char **argv) {
+int render_init(struct render_ctx *ctx) {
 	static EGLint const configAttribs[] = {
 		EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
 		EGL_BLUE_SIZE, 8,
@@ -92,14 +92,12 @@ int render_init(struct render_ctx *ctx, int argc, char **argv) {
 	int *ZorderIndeces;
 	int Zsz;
 
-	if(argc == 1){
-		ZorderIndeces = NULL;
-		Zsz = 0;
-	}else{
-		ZorderIndeces = malloc((argc-1) * sizeof(*ZorderIndeces));
-		for(int i = 1; i < argc; ++i)	ZorderIndeces[i-1] = atoi(argv[i]);
-		Zsz = argc - 1;
-	}	
+	ZorderIndeces = NULL;
+	Zsz = 0;
+
+//		ZorderIndeces = malloc((argc-1) * sizeof(*ZorderIndeces));
+//		for(int i = 1; i < argc; ++i)	ZorderIndeces[i-1] = atoi(argv[i]);
+//		Zsz = argc - 1;
 	//todo: input checking	
 
 	if (!gladLoadGL()) {
@@ -109,7 +107,7 @@ int render_init(struct render_ctx *ctx, int argc, char **argv) {
 	printf("OpenGL %d.%d\n", GLVersion.major, GLVersion.minor);
 		
 	//load the graph into memory
-	int rc = load_arg(&ctx->g, 1, argv);
+	int rc = load_arg(&ctx->g);
 	if (rc != 0) {
 		printf("Could not load graph\n");
 		return 1;
