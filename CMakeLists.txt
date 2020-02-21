@@ -41,20 +41,9 @@ include_directories(${Fg_SOURCE_DIR}/include)
 include_directories(${ProjectMicrohttpd_INSTALL_DIR}/include)
 link_directories(${zorder_Libtap_INSTALL_DIR}/lib)
 link_directories(${ProjectMicrohttpd_INSTALL_DIR}/lib)
-link_directories(eglinfo /usr/lib/x86_64-linux-gnu)
-
-add_executable(main main.c src/fg.c)
-target_link_libraries(main zorder m)
 
 set(CMAKE_BUILD_TYPE Debug)
 
-add_executable(render src/main_render.c src/render.c src/fg.c src/glad.c)
-target_include_directories(render PUBLIC ./include)
-target_link_libraries(render zorder m dl GL GLU EGL) 
-
 add_executable(server src/server.c src/render.c src/fg.c src/glad.c)
 target_include_directories(server PUBLIC include)
-target_link_libraries(server zorder m dl GL GLU EGL z ${CMAKE_CURRENT_BINARY_DIR}/contrib/lib/libmicrohttpd.so)
-
-add_executable(eglinfo src/eglinfo.c)
-target_link_libraries(eglinfo PUBLIC dl GL GLU EGL) 
+target_link_libraries(server zorder m dl GL GLU EGL z microhttpd)

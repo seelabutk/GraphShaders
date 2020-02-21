@@ -14,26 +14,6 @@ static void initOpenGL(struct render_ctx *ctx);
 static void initGraph(struct render_ctx *ctx, int*, int);
 static const char *eglGetErrorString(EGLint);
 
-int render_main(int argc, char **argv) {
-	struct render_ctx ctx;
-
-	render_init(&ctx);
-	render_display(&ctx);
-
-	size_t size;
-	void *pixels;
-	size = 0;
-	pixels = NULL;
-	render_copy_to_buffer(&ctx, &size, &pixels);
-
-	FILE *f = fopen("temp.ppm", "wb");
-	fprintf(f, "P6\n");
-	fprintf(f, "256 256\n");
-	fprintf(f, "255\n");
-	fwrite(pixels, sizeof(uint8_t), size, f);
-	fclose(f);
-}
-
 int render_init(struct render_ctx *ctx) {
 	static EGLint const configAttribs[] = {
 		EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
