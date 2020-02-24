@@ -108,8 +108,8 @@ typedef enum
 #define ZORDER_TRACE_NONE 0 	/* use this for silent operation */
 #define ZORDER_TRACE_DEBUG 0x1
 
-#define ZORDER_TRACE ZORDER_TRACE_DEBUG
-/* #define ZORDER_TRACE ZORDER_TRACE_NONE */
+/* #define ZORDER_TRACE ZORDER_TRACE_DEBUG */
+#define ZORDER_TRACE ZORDER_TRACE_NONE
 
 
 typedef enum
