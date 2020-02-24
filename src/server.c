@@ -6,6 +6,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include <microhttpd.h>
 #include <zlib.h>
@@ -77,9 +79,12 @@ MAB_create_response_from_buffer_gzip(size_t size, void *data, enum MHD_ResponseM
 
 ANSWER(Index) {
 	struct MHD_Response *index_response;
+	int rc;
 
 	index_response = MAB_create_response_from_file("static/index.html");
-	return MHD_queue_response(conn, MHD_HTTP_OK, index_response);	
+	rc = MHD_queue_response(conn, MHD_HTTP_OK, index_response);
+	MHD_destroy_response(index_response);
+	return rc;
 }
 
 struct MHD_Response *error_response;
@@ -267,16 +272,23 @@ initialize(void) {
 int
 main(int argc, char **argv) {
 	int opt_port;
-	char *s;
+	char *s, *opt_bind;
 	struct MHD_Daemon *daemon;
+	struct sockaddr_in addr;
 
 	opt_port = (s = getenv("FG_PORT")) ? atoi(s) : 8874;
+	opt_bind = (s = getenv("FG_BIND")) ? s : "0.0.0.0";
 	
-	fprintf(stderr, "Listening on 0.0.0.0:%d\n", opt_port);
+	fprintf(stderr, "Listening on %s:%d\n", opt_bind, opt_port);
 	
 	initialize();
+
+	memset(&addr, sizeof(addr), 0);
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(opt_port);
+	inet_aton(opt_bind, &addr.sin_addr);
 	
-	daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, opt_port, NULL, NULL, &answer, NULL, MHD_OPTION_END);
+	daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, 0, NULL, NULL, &answer, NULL, MHD_OPTION_SOCK_ADDR, &addr, MHD_OPTION_END);
 	if (daemon == NULL) {
 		fprintf(stderr, "could not start daemon\n");
 		return 1;
