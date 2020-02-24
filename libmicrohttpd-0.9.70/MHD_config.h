@@ -128,7 +128,7 @@
 #define HAVE_INTTYPES_H 1
 
 /* Define to 1 if you have a functional curl library. */
-#define HAVE_LIBCURL 1
+/* #undef HAVE_LIBCURL */
 
 /* Define to 1 if you have suitable libmagic. */
 /* #undef HAVE_LIBMAGIC */
@@ -369,7 +369,7 @@
 /* #undef HAVE_WS2TCPIP_H */
 
 /* Define to 1 if you have the <zlib.h> header file. */
-#define HAVE_ZLIB_H 1
+/* #undef HAVE_ZLIB_H */
 
 /* Define to 1 if libmicrohttpd is compiled with HTTPS support. */
 /* #undef HTTPS_SUPPORT */
@@ -378,67 +378,67 @@
 #define INLINE_FUNC 1
 
 /* Defined if libcurl supports AsynchDNS */
-#define LIBCURL_FEATURE_ASYNCHDNS 1
+/* #undef LIBCURL_FEATURE_ASYNCHDNS */
 
 /* Defined if libcurl supports IDN */
-#define LIBCURL_FEATURE_IDN 1
+/* #undef LIBCURL_FEATURE_IDN */
 
 /* Defined if libcurl supports IPv6 */
-#define LIBCURL_FEATURE_IPV6 1
+/* #undef LIBCURL_FEATURE_IPV6 */
 
 /* Defined if libcurl supports KRB4 */
 /* #undef LIBCURL_FEATURE_KRB4 */
 
 /* Defined if libcurl supports libz */
-#define LIBCURL_FEATURE_LIBZ 1
+/* #undef LIBCURL_FEATURE_LIBZ */
 
 /* Defined if libcurl supports NTLM */
-#define LIBCURL_FEATURE_NTLM 1
+/* #undef LIBCURL_FEATURE_NTLM */
 
 /* Defined if libcurl supports SSL */
-#define LIBCURL_FEATURE_SSL 1
+/* #undef LIBCURL_FEATURE_SSL */
 
 /* Defined if libcurl supports SSPI */
 /* #undef LIBCURL_FEATURE_SSPI */
 
 /* Defined if libcurl supports DICT */
-#define LIBCURL_PROTOCOL_DICT 1
+/* #undef LIBCURL_PROTOCOL_DICT */
 
 /* Defined if libcurl supports FILE */
-#define LIBCURL_PROTOCOL_FILE 1
+/* #undef LIBCURL_PROTOCOL_FILE */
 
 /* Defined if libcurl supports FTP */
-#define LIBCURL_PROTOCOL_FTP 1
+/* #undef LIBCURL_PROTOCOL_FTP */
 
 /* Defined if libcurl supports FTPS */
-#define LIBCURL_PROTOCOL_FTPS 1
+/* #undef LIBCURL_PROTOCOL_FTPS */
 
 /* Defined if libcurl supports HTTP */
-#define LIBCURL_PROTOCOL_HTTP 1
+/* #undef LIBCURL_PROTOCOL_HTTP */
 
 /* Defined if libcurl supports HTTPS */
-#define LIBCURL_PROTOCOL_HTTPS 1
+/* #undef LIBCURL_PROTOCOL_HTTPS */
 
 /* Defined if libcurl supports IMAP */
-#define LIBCURL_PROTOCOL_IMAP 1
+/* #undef LIBCURL_PROTOCOL_IMAP */
 
 /* Defined if libcurl supports LDAP */
-#define LIBCURL_PROTOCOL_LDAP 1
+/* #undef LIBCURL_PROTOCOL_LDAP */
 
 /* Defined if libcurl supports POP3 */
-#define LIBCURL_PROTOCOL_POP3 1
+/* #undef LIBCURL_PROTOCOL_POP3 */
 
 /* Defined if libcurl supports RTSP */
-#define LIBCURL_PROTOCOL_RTSP 1
+/* #undef LIBCURL_PROTOCOL_RTSP */
 
 /* Defined if libcurl supports SMTP */
-#define LIBCURL_PROTOCOL_SMTP 1
+/* #undef LIBCURL_PROTOCOL_SMTP */
 
 /* Defined if libcurl supports TELNET */
-#define LIBCURL_PROTOCOL_TELNET 1
+/* #undef LIBCURL_PROTOCOL_TELNET */
 
 /* Defined if libcurl supports TFTP */
-#define LIBCURL_PROTOCOL_TFTP 1
+/* #undef LIBCURL_PROTOCOL_TFTP */
 
 /* This is a Linux kernel */
 #define LINUX 1
@@ -459,19 +459,19 @@
 /* #undef MHD_NO_THREAD_NAMES */
 
 /* tls plugins */
-#define MHD_PLUGIN_INSTALL_PREFIX "/home/thobson2/src/fg/libmicrohttpd-0.9.70/../contrib/lib/libmicrohttpd"
+#define MHD_PLUGIN_INSTALL_PREFIX "/var/home/thobson2/src/fg/libmicrohttpd-0.9.70/../contrib/lib/libmicrohttpd"
 
 /* gnuTLS lib version - used in conjunction with cURL */
-#define MHD_REQ_CURL_GNUTLS_VERSION "2.8.6"
+/* #undef MHD_REQ_CURL_GNUTLS_VERSION */
 
 /* NSS lib version - used in conjunction with cURL */
-#define MHD_REQ_CURL_NSS_VERSION "3.12.0"
+/* #undef MHD_REQ_CURL_NSS_VERSION */
 
 /* required cURL SSL version to run tests */
-#define MHD_REQ_CURL_OPENSSL_VERSION "0.9.8"
+/* #undef MHD_REQ_CURL_OPENSSL_VERSION */
 
 /* required cURL version to run tests */
-#define MHD_REQ_CURL_VERSION "7.16.4"
+/* #undef MHD_REQ_CURL_VERSION */
 
 /* Define if you have usable `getsockname' function. */
 #define MHD_USE_GETSOCKNAME 1

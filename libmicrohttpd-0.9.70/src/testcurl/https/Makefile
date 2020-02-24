@@ -577,21 +577,21 @@ am__relativize = \
     dir1=`echo "$$dir1" | sed -e "$$sed_rest"`; \
   done; \
   reldir="$$dir2"
-ACLOCAL = ${SHELL} /home/thobson2/src/fg/libmicrohttpd-0.9.70/build-aux/missing aclocal-1.16
+ACLOCAL = ${SHELL} /var/home/thobson2/src/fg/libmicrohttpd-0.9.70/build-aux/missing aclocal-1.16
 AMTAR = $${TAR-tar}
 AM_DEFAULT_VERBOSITY = 1
 AR = ar
 AS = as
-AUTOCONF = ${SHELL} /home/thobson2/src/fg/libmicrohttpd-0.9.70/build-aux/missing autoconf
-AUTOHEADER = ${SHELL} /home/thobson2/src/fg/libmicrohttpd-0.9.70/build-aux/missing autoheader
-AUTOMAKE = ${SHELL} /home/thobson2/src/fg/libmicrohttpd-0.9.70/build-aux/missing automake-1.16
+AUTOCONF = ${SHELL} /var/home/thobson2/src/fg/libmicrohttpd-0.9.70/build-aux/missing autoconf
+AUTOHEADER = ${SHELL} /var/home/thobson2/src/fg/libmicrohttpd-0.9.70/build-aux/missing autoheader
+AUTOMAKE = ${SHELL} /var/home/thobson2/src/fg/libmicrohttpd-0.9.70/build-aux/missing automake-1.16
 AWK = gawk
 CC = gcc
 CCDEPMODE = depmode=gcc3
 CFLAGS = -g -O2 -fno-strict-aliasing
 CPP = gcc -E
 CPPFLAGS = 
-CPU_COUNT = 32
+CPU_COUNT = 4
 CYGPATH_W = echo
 DEFS = -DHAVE_CONFIG_H
 DEPDIR = .deps
@@ -601,19 +601,19 @@ DUMPBIN =
 ECHO_C = 
 ECHO_N = -n
 ECHO_T = 
-EGREP = /bin/grep -E
+EGREP = /usr/bin/grep -E
 EMPTY_VAR = 
 EXEEXT = 
-FGREP = /bin/grep -F
+FGREP = /usr/bin/grep -F
 GETTEXT_MACRO_VERSION = 0.19
-GMSGFMT = /usr/bin/msgfmt
-GMSGFMT_015 = /usr/bin/msgfmt
+GMSGFMT = :
+GMSGFMT_015 = :
 GNULIB_TSEARCH = 0
 GNUTLS_CFLAGS = 
 GNUTLS_CPPFLAGS = 
 GNUTLS_LDFLAGS = 
 GNUTLS_LIBS = 
-GREP = /bin/grep
+GREP = /usr/bin/grep
 HAVE_CURL_BINARY = yes
 HAVE_MAKEINFO_BINARY = no
 HAVE_TSEARCH = 1
@@ -625,9 +625,9 @@ INSTALL_SCRIPT = ${INSTALL}
 INSTALL_STRIP_PROGRAM = $(install_sh) -c -s
 INTLLIBS = 
 INTL_MACOSX_LIBS = 
-LD = /usr/bin/ld -m elf_x86_64
+LD = /usr/bin/ld
 LDFLAGS = 
-LIBCURL = -L/usr/lib/x86_64-linux-gnu -lcurl
+LIBCURL = 
 LIBCURL_CPPFLAGS = 
 LIBGCRYPT_CFLAGS = 
 LIBGCRYPT_CONFIG = no
@@ -646,24 +646,24 @@ LTLIBICONV = -liconv
 LTLIBINTL = 
 LTLIBOBJS = 
 LT_SYS_LIBRARY_PATH = 
-MAKEINFO = ${SHELL} /home/thobson2/src/fg/libmicrohttpd-0.9.70/build-aux/missing makeinfo
+MAKEINFO = ${SHELL} /var/home/thobson2/src/fg/libmicrohttpd-0.9.70/build-aux/missing makeinfo
 MANIFEST_TOOL = :
 MHD_LIBDEPS =  
 MHD_LIBDEPS_PKGCFG =  
 MHD_LIB_CFLAGS =  -pthread
 MHD_LIB_CPPFLAGS = 
 MHD_LIB_LDFLAGS =  -export-dynamic -no-undefined
-MHD_PLUGIN_INSTALL_PREFIX = /home/thobson2/src/fg/libmicrohttpd-0.9.70/../contrib/lib/libmicrohttpd
+MHD_PLUGIN_INSTALL_PREFIX = /var/home/thobson2/src/fg/libmicrohttpd-0.9.70/../contrib/lib/libmicrohttpd
 MHD_REQ_PRIVATE = 
 MHD_TLS_LIBDEPS = 
 MHD_TLS_LIB_CFLAGS = 
 MHD_TLS_LIB_CPPFLAGS = 
 MHD_TLS_LIB_LDFLAGS = 
 MHD_W32_DLL_SUFF = 12
-MKDIR_P = /bin/mkdir -p
-MSGFMT = /usr/bin/msgfmt
-MSGFMT_015 = /usr/bin/msgfmt
-MSGMERGE = /usr/bin/msgmerge
+MKDIR_P = /usr/bin/mkdir -p
+MSGFMT = :
+MSGFMT_015 = :
+MSGMERGE = :
 MS_LIB_TOOL = 
 NM = /usr/bin/nm -B
 NMEDIT = 
@@ -692,21 +692,21 @@ PTHREAD_LIBS =
 RANLIB = ranlib
 RC = 
 REPLACE_TSEARCH = 0
-SED = /bin/sed
+SED = /usr/bin/sed
 SET_MAKE = 
-SHELL = /bin/bash
+SHELL = /bin/sh
 STRIP = strip
 USE_NLS = yes
 VERSION = 0.9.70
-XGETTEXT = /usr/bin/xgettext
-XGETTEXT_015 = /usr/bin/xgettext
+XGETTEXT = :
+XGETTEXT_015 = :
 XGETTEXT_EXTRA_OPTIONS = 
 _libcurl_config = 
-abs_builddir = /home/thobson2/src/fg/libmicrohttpd-0.9.70/src/testcurl/https
-abs_srcdir = /home/thobson2/src/fg/libmicrohttpd-0.9.70/src/testcurl/https
-abs_top_builddir = /home/thobson2/src/fg/libmicrohttpd-0.9.70
-abs_top_srcdir = /home/thobson2/src/fg/libmicrohttpd-0.9.70
-ac_configure_args =  '--prefix=/home/thobson2/src/fg/libmicrohttpd-0.9.70/../contrib/'
+abs_builddir = /var/home/thobson2/src/fg/libmicrohttpd-0.9.70/src/testcurl/https
+abs_srcdir = /var/home/thobson2/src/fg/libmicrohttpd-0.9.70/src/testcurl/https
+abs_top_builddir = /var/home/thobson2/src/fg/libmicrohttpd-0.9.70
+abs_top_srcdir = /var/home/thobson2/src/fg/libmicrohttpd-0.9.70
+ac_configure_args =  '--prefix=/var/home/thobson2/src/fg/libmicrohttpd-0.9.70/../contrib'
 ac_ct_AR = ar
 ac_ct_CC = gcc
 ac_ct_DUMPBIN = 
@@ -738,7 +738,7 @@ host_vendor = pc
 htmldir = ${docdir}
 includedir = ${prefix}/include
 infodir = ${datarootdir}/info
-install_sh = ${SHELL} /home/thobson2/src/fg/libmicrohttpd-0.9.70/build-aux/install-sh
+install_sh = ${SHELL} /var/home/thobson2/src/fg/libmicrohttpd-0.9.70/build-aux/install-sh
 libdir = ${exec_prefix}/lib
 libexecdir = ${exec_prefix}/libexec
 localedir = ${datarootdir}/locale
@@ -748,7 +748,7 @@ mandir = ${datarootdir}/man
 mkdir_p = $(MKDIR_P)
 oldincludedir = /usr/include
 pdfdir = ${docdir}
-prefix = /home/thobson2/src/fg/libmicrohttpd-0.9.70/../contrib
+prefix = /var/home/thobson2/src/fg/libmicrohttpd-0.9.70/../contrib
 program_transform_name = s,x,x,
 psdir = ${docdir}
 runstatedir = ${localstatedir}/run
@@ -804,7 +804,7 @@ test_https_time_out_SOURCES = \
 test_https_time_out_LDADD = \
   $(top_builddir)/src/testcurl/libcurl_version_check.a \
   $(top_builddir)/src/microhttpd/libmicrohttpd.la \
-  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  -L/usr/lib/x86_64-linux-gnu -lcurl
+  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  
 
 test_tls_options_SOURCES = \
   test_tls_options.c \
@@ -815,7 +815,7 @@ test_tls_options_SOURCES = \
 test_tls_options_LDADD = \
   $(top_builddir)/src/testcurl/libcurl_version_check.a \
   $(top_builddir)/src/microhttpd/libmicrohttpd.la \
-  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  -L/usr/lib/x86_64-linux-gnu -lcurl
+  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  
 
 test_https_get_parallel_SOURCES = \
   test_https_get_parallel.c \
@@ -832,7 +832,7 @@ test_https_get_parallel_CFLAGS = \
 test_https_get_parallel_LDADD = \
   $(top_builddir)/src/testcurl/libcurl_version_check.a \
   $(top_builddir)/src/microhttpd/libmicrohttpd.la \
-  $(PTHREAD_LIBS) $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  -L/usr/lib/x86_64-linux-gnu -lcurl
+  $(PTHREAD_LIBS) $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  
 
 test_empty_response_SOURCES = \
   test_empty_response.c \
@@ -843,7 +843,7 @@ test_empty_response_SOURCES = \
 test_empty_response_LDADD = \
   $(top_builddir)/src/testcurl/libcurl_version_check.a \
   $(top_builddir)/src/microhttpd/libmicrohttpd.la \
-  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  -L/usr/lib/x86_64-linux-gnu -lcurl
+  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  
 
 test_https_get_parallel_threads_SOURCES = \
   test_https_get_parallel_threads.c \
@@ -860,7 +860,7 @@ test_https_get_parallel_threads_CFLAGS = \
 test_https_get_parallel_threads_LDADD = \
   $(top_builddir)/src/testcurl/libcurl_version_check.a \
   $(top_builddir)/src/microhttpd/libmicrohttpd.la \
-  $(PTHREAD_LIBS) $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  -L/usr/lib/x86_64-linux-gnu -lcurl
+  $(PTHREAD_LIBS) $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  
 
 test_tls_authentication_SOURCES = \
   test_tls_authentication.c \
@@ -871,7 +871,7 @@ test_tls_authentication_SOURCES = \
 test_tls_authentication_LDADD = \
   $(top_builddir)/src/testcurl/libcurl_version_check.a \
   $(top_builddir)/src/microhttpd/libmicrohttpd.la \
-  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  -L/usr/lib/x86_64-linux-gnu -lcurl
+  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  
 
 test_https_session_info_SOURCES = \
   test_https_session_info.c \
@@ -882,7 +882,7 @@ test_https_session_info_SOURCES = \
 test_https_session_info_LDADD = \
   $(top_builddir)/src/testcurl/libcurl_version_check.a \
   $(top_builddir)/src/microhttpd/libmicrohttpd.la \
-  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  -L/usr/lib/x86_64-linux-gnu -lcurl
+  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  
 
 test_https_multi_daemon_SOURCES = \
   test_https_multi_daemon.c \
@@ -893,7 +893,7 @@ test_https_multi_daemon_SOURCES = \
 test_https_multi_daemon_LDADD = \
   $(top_builddir)/src/testcurl/libcurl_version_check.a \
   $(top_builddir)/src/microhttpd/libmicrohttpd.la \
-  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  -L/usr/lib/x86_64-linux-gnu -lcurl
+  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  
 
 test_https_get_SOURCES = \
   test_https_get.c \
@@ -904,7 +904,7 @@ test_https_get_SOURCES = \
 test_https_get_LDADD = \
   $(top_builddir)/src/testcurl/libcurl_version_check.a \
   $(top_builddir)/src/microhttpd/libmicrohttpd.la \
-  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  -L/usr/lib/x86_64-linux-gnu -lcurl
+  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  
 
 #test_https_sni_SOURCES = \
 #  test_https_sni.c \
@@ -919,7 +919,7 @@ test_https_get_LDADD = \
 #test_https_sni_LDADD = \
 #  $(top_builddir)/src/testcurl/libcurl_version_check.a \
 #  $(top_builddir)/src/microhttpd/libmicrohttpd.la \
-#  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  -L/usr/lib/x86_64-linux-gnu -lcurl
+#  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  
 
 test_https_get_select_SOURCES = \
   test_https_get_select.c \
@@ -930,7 +930,7 @@ test_https_get_select_SOURCES = \
 test_https_get_select_LDADD = \
   $(top_builddir)/src/testcurl/libcurl_version_check.a \
   $(top_builddir)/src/microhttpd/libmicrohttpd.la \
-  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  -L/usr/lib/x86_64-linux-gnu -lcurl
+  $(MHD_TLS_LIB_LDFLAGS) $(MHD_TLS_LIBDEPS)  
 
 all: all-recursive
 

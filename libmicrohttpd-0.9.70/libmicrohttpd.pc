@@ -1,4 +1,4 @@
-prefix=/home/thobson2/src/fg/libmicrohttpd-0.9.70/../contrib
+prefix=/var/home/thobson2/src/fg/libmicrohttpd-0.9.70/../contrib
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib
 includedir=${prefix}/include
