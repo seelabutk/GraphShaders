@@ -10,14 +10,11 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
-#include "shaders/graph.vert.h"
-#include "shaders/graph.frag.h"
-
-static void initOpenGL(struct render_ctx *ctx);
+static void initOpenGL(struct render_ctx *ctx, const char *VSS, const char *FSS);
 static void initGraph(struct render_ctx *ctx, int*, int);
 static const char *eglGetErrorString(EGLint);
 
-int render_init(struct render_ctx *ctx) {
+int render_preinit(void) {
 	static EGLint const configAttribs[] = {
 		EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
 		EGL_BLUE_SIZE, 8,
@@ -72,32 +69,18 @@ int render_init(struct render_ctx *ctx) {
 
 	// from now on use your OpenGL context
 
-	int *ZorderIndeces;
-	int Zsz;
-
-	ZorderIndeces = NULL;
-	Zsz = 0;
-
-//		ZorderIndeces = malloc((argc-1) * sizeof(*ZorderIndeces));
-//		for(int i = 1; i < argc; ++i)	ZorderIndeces[i-1] = atoi(argv[i]);
-//		Zsz = argc - 1;
-	//todo: input checking	
-
 	if (!gladLoadGL()) {
 		printf("gladLoadGL failed\n");
 		exit(1);
 	}
 	printf("OpenGL %d.%d\n", GLVersion.major, GLVersion.minor);
-		
-	//load the graph into memory
-	int rc = load_arg(&ctx->g);
-	if (rc != 0) {
-		printf("Could not load graph\n");
-		return 1;
-	}
-	
-	initOpenGL(ctx);
-	initGraph(ctx, ZorderIndeces, Zsz);
+}
+
+void
+render_init(struct render_ctx *ctx, struct graph *graph, int *ZorderIndeces, int sz, const char *VSS, const char *FSS) {
+	ctx->g = graph;
+	initOpenGL(ctx, VSS, FSS);
+	initGraph(ctx, ZorderIndeces, sz);
 }
 
 void render_focus_tile(struct render_ctx *ctx, int z, int x, int y) {
@@ -137,15 +120,9 @@ void render_copy_to_buffer(struct render_ctx *ctx, size_t *size, void **pixels) 
 	             *pixels);
 }
 
-static void initOpenGL(struct render_ctx *ctx) {
-	char *VSS;
-	char *FSS;
-	
+static void initOpenGL(struct render_ctx *ctx, const char *VSS, const char *FSS) {
 	int success;
 	char infoLog[512];
-	
-	VSS = src_shaders_graph_vert;
-	FSS = src_shaders_graph_frag;
 
 	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
 	glShaderSource(vertexShader, 1, (const char * const*)&VSS, NULL);
@@ -195,7 +172,7 @@ static void initOpenGL(struct render_ctx *ctx) {
 }
 
 static void initGraph(struct render_ctx *ctx, int *ZorderIndeces, int sz){
-	struct graph *const g = &ctx->g;	
+	struct graph *const g = ctx->g;	
 	float *positions = ctx->vertices;
 	int *edges = ctx->indeces;
 

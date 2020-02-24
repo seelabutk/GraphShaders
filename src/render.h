@@ -8,7 +8,7 @@
 #include "glad/glad.h"
 
 struct render_ctx {
-	struct graph g;
+	struct graph *g;
 
 	float *vertices;
 	unsigned int *indeces;
@@ -22,9 +22,11 @@ struct render_ctx {
 	GLint uScale;
 };
 
+int render_preinit(void);
+
 int render_main(int argc, char **argv);
 
-int render_init(struct render_ctx *ctx);
+void render_init(struct render_ctx *ctx, struct graph *graph, int *ZorderIndeces, int sz, const char *VSS, const char *FSS);
 
 void render_focus_tile(struct render_ctx *ctx, int z, int x, int y);
 

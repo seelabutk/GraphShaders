@@ -13,6 +13,10 @@
 
 #include "fg.h"
 #include "render.h"
+#include "base64.h"
+#include "shaders/default.frag.h"
+#include "shaders/default.vert.h"
+
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
@@ -71,8 +75,10 @@ MAB_create_response_from_buffer_gzip(size_t size, void *data, enum MHD_ResponseM
 
 #define ANSWER(name) int name(void *cls, struct MHD_Connection *conn, const char *url, const char *method, const char *version, const char *data, size_t *size, void **con_cls)
 
-struct MHD_Response *index_response;
 ANSWER(Index) {
+	struct MHD_Response *index_response;
+
+	index_response = MAB_create_response_from_file("static/index.html");
 	return MHD_queue_response(conn, MHD_HTTP_OK, index_response);	
 }
 
@@ -82,19 +88,96 @@ ANSWER(Error) {
 	return MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);	
 }
 
+static char *last_graph_name = NULL;
+static char *last_vert = NULL;
+static char *last_frag = NULL;
 static struct render_ctx *render_ctx = NULL;
 ANSWER(Tile) {
 	int x;
 	int y;
 	int z;
-	if (3 != sscanf(url, "/tile/%d/%d/%d", &z, &x, &y)) {
+	char *dataset, *options;
+	int rc;
+	if (5 != (rc = sscanf(url, "/tile/%m[^/,]%m[^/]/%d/%d/%d", &dataset, &options, &z, &x, &y))) {
+		fprintf(stderr, "rc: %d\n", rc);
 		return MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);	
 	}
 
-	if (!render_ctx) {
-		render_ctx = malloc(sizeof(*render_ctx));
-		render_init(render_ctx);
+	char *opt_vert = strdup(src_shaders_default_vert);
+	char *opt_frag = strdup(src_shaders_default_frag);
+
+	char *it = options + 1;
+	for (;;) {
+		char *key = it;
+
+		it = strchrnul(it, ',');
+		if (!*it) break;
+		*it++ = '\0';
+
+		char *value = it;
+		
+		it = strchrnul(it, ',');
+		int done = *it == '\0';
+		*it++ = '\0';
+
+		if (strncmp(value, "base64:", strlen("base64:")) == 0) {
+			char *data = value + strlen("base64:");
+			size_t len = strlen(data);
+
+			size_t outlen = len + 128;
+			char *out = malloc(outlen + 1);
+			if (base64decode(data, len, out, &outlen) != 0) {
+				fprintf(stderr, "ERROR: base64decode failed\n");
+				return MHD_NO;
+			}
+
+			out[outlen-1] = '\0';
+			value = out;
+		}
+
+		if (strcmp(key, "vert") == 0) {
+			opt_vert = value;
+		} else if (strcmp(key, "frag") == 0) {
+			opt_frag = value;
+		} else {
+			fprintf(stderr, "WARNING: unhandled option '%s' = '%s'\n", key, value);
+		}
+
+		if (done) break;
 	}
+
+	if (!render_ctx) {
+		fprintf(stderr, "First initialization of OpenGL\n");
+		render_preinit();
+		render_ctx = malloc(sizeof(*render_ctx));
+	}
+
+	if (last_graph_name == NULL || strcmp(last_graph_name, dataset) != 0 ||
+	    last_vert == NULL || strcmp(last_vert, opt_vert) != 0 ||
+	    last_frag == NULL || strcmp(last_frag, opt_frag) != 0) {
+		fprintf(stderr, "Loading dataset '%s'\n", dataset);
+		char nodespath[PATH_MAX], edgespath[PATH_MAX];
+		snprintf(nodespath, PATH_MAX, "data/%s/nodes.csv", dataset);
+		snprintf(edgespath, PATH_MAX, "data/%s/edges.csv", dataset);
+
+		struct graph *graph;
+		graph = malloc(sizeof(*graph));
+		load(nodespath, edgespath, graph);
+
+		render_init(render_ctx, graph, NULL, 0, opt_vert, opt_frag);
+
+		if (last_graph_name) free(last_graph_name);
+		last_graph_name = strdup(dataset);
+
+		if (last_vert) free(last_vert);
+		last_vert = strdup(opt_vert);
+
+		if (last_frag) free(last_frag);
+		last_frag = strdup(opt_frag);
+	}
+	free(opt_vert);
+	free(opt_frag);
+	free(dataset);
 
 	void *output;
 	size_t outputlen;
@@ -178,7 +261,6 @@ ANSWER(answer) {
 
 static void
 initialize(void) {
-	index_response = MAB_create_response_from_file("static/index.html");
 	error_response = MAB_create_response_from_file("static/error.html");
 }
 

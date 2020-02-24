@@ -1,5 +1,7 @@
 SHELL := bash
 
+CFLAGS += -D_GNU_SOURCE
+
 ifneq ($(shell pkg-config --exists --print-errors libmicrohttpd; echo $$?),0)
   $(error Missing Package: libmicrohttpd)
 endif
@@ -46,16 +48,22 @@ build/%: build/%.o | build
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 src/shaders/%.h: src/shaders/%
-	xxd -i $< > $@
+	f=$<; \
+	printf $$'static const char %s[] = {\n%s\n};' \
+		"$${f//[^[:alnum:]]/_}" \
+		"$$({ xxd -p $<; echo 00; } | xxd -p -r | xxd -i)" \
+		> $@
+
+build/base64.o:
 
 build/fg.o:
 
-build/render.o: src/shaders/graph.vert.h
-build/render.o: src/shaders/graph.frag.h
 build/render.o: src/fg.h
 
 build/server.o: CFLAGS += $(libmicrohttpd_CFLAGS)
 build/server.o: src/server.h
+build/server.o: src/shaders/default.vert.h
+build/server.o: src/shaders/default.frag.h
 
 build/glad.o: CFLAGS += $(dl_CFLAGS)
 build/glad.o: src/glad/glad.h
@@ -65,3 +73,4 @@ build/server: LDLIBS += $(libmicrohttpd_LDLIBS) $(zlib_LDLIBS) $(egl_LDLIBS) $(d
 build/server: build/fg.o
 build/server: build/render.o
 build/server: build/glad.o
+build/server: build/base64.o

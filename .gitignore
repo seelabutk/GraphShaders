@@ -3,3 +3,4 @@ rc_*
 temp_*
 /src/shaders/*.h
 /contrib
+*.swp
