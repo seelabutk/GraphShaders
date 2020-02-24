@@ -6,6 +6,10 @@
  * Revision 1.4  2015/03/12 15:57:38  wes
  * Wes edits per DC's comments
  *
+ * Revision 1.4  2020/02/24 13:00:00  thobson2
+ * Add support for 2D Z-Order curves and for disabling AORDER
+ * entirely.
+ *
  * Revision 1.3  2015/02/18 21:00:56  wes
  * Wes additions after LBNL Tech Transfer clearance to release
  *
@@ -93,12 +97,19 @@ typedef enum
 /* #define ZORDER_INDEXING_MACROS 0   */
 #define ZORDER_INDEXING_MACROS 1   
 
+#define ZORDER_ENABLE_NONE 0x0
+#define ZORDER_ENABLE_ZORDER 0x1
+#define ZORDER_ENABLE_AORDER 0x2
+
+/* #define ZORDER_ENABLE (ZORDER_ENABLE_ZORDER | ZORDER_ENABLE_AORDER) */
+#define ZORDER_ENABLE ZORDER_ENABLE_ZORDER
+
 /* various tracing options */
 #define ZORDER_TRACE_NONE 0 	/* use this for silent operation */
 #define ZORDER_TRACE_DEBUG 0x1
 
-/* #define ZORDER_TRACE ZORDER_TRACE_DEBUG */
-#define ZORDER_TRACE ZORDER_TRACE_NONE
+#define ZORDER_TRACE ZORDER_TRACE_DEBUG
+/* #define ZORDER_TRACE ZORDER_TRACE_NONE */
 
 
 typedef enum
@@ -186,7 +197,9 @@ extern "C" {
 
     
 #if ZORDER_INDEXING_MACROS
-#define zoGetIndexZOrder(zo, i, j, k) ((zo)->zKbits[(k)] | zo->zJbits[(j)] | (zo)->zIbits[(i)])
+#define zoGetIndexZOrder(zo, i, j, k) (((zo)->zo_kSize > 0 ? (zo)->zKbits[(k)] : 0) | \
+                                       ((zo)->zo_jSize > 0 ? (zo)->zJbits[(j)] : 0) | \
+                                       ((zo)->zo_iSize > 0 ? (zo)->zIbits[(i)] : 0))
 #define zoGetIndexArrayOrder(zo, i, j, k) ((i) + (zo)->jOffsets[(j)] + (zo)->kOffsets[(k)])
 #define zoGetIndex(zo, i, j, k) ((zo->layoutMethod == ZORDER_LAYOUT) ? (zoGetIndexZOrder(zo, i, j, k)) : (zoGetIndexArrayOrder(zo, i, j, k)))
 #else

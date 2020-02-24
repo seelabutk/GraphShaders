@@ -6,6 +6,10 @@
  * Revision 1.4  2015/03/12 15:57:35  wes
  * Wes edits per DC's comments
  *
+ * Revision 1.4  2020/02/24 13:00:00  thobson2
+ * Add support for 2D Z-Order curves and for disabling AORDER
+ * entirely.
+ *
  * Revision 1.3  2015/02/18 21:00:55  wes
  * Wes additions after LBNL Tech Transfer clearance to release
  *
@@ -212,8 +216,10 @@ zoInitZOrderIndexing(size_t iSize,
 		     ZOLayoutEnum layoutMethod)
 {
     ZOrderStruct *zo=NULL;
+#if (ZORDER_ENABLE & ZORDER_ENABLE_AORDER)
     size_t i;
     size_t t;
+#endif
     int n_iBits, n_jBits, n_kBits;
 
     if ((zo = (ZOrderStruct *)calloc(1, sizeof(ZOrderStruct))) == NULL)
@@ -228,6 +234,8 @@ zoInitZOrderIndexing(size_t iSize,
     zo->src_iSize = iSize;
     zo->src_jSize = jSize;
     zo->src_kSize = kSize;
+
+#if (ZORDER_ENABLE & ZORDER_ENABLE_AORDER)
 
     /* start with the offsets for the j-direction */
     if ((zo->jOffsets = (off_t *)malloc(sizeof(size_t)*jSize)) == NULL)
@@ -253,9 +261,11 @@ zoInitZOrderIndexing(size_t iSize,
     t=iSize*jSize;
     for (i=1;i<kSize;i++, t+=(iSize*jSize))
 	zo->kOffsets[i]=t;
+#endif /* (ZORDER_ENABLE & ZORDER_ENABLE_AORDER) */
 
     /* now, build the z-order indexing tables */
-    
+
+#if (ZORDER_ENABLE & ZORDER_ENABLE_ZORDER)
 #if POWER_OF_TWO 
     /* ok, so here's the real "issue" with z-order indexing: it
        basically requires that the input data be an even power of two
@@ -263,9 +273,9 @@ zoInitZOrderIndexing(size_t iSize,
        and consuming textures), what we do here is to figure out what
        the next biggest power of two size is for each of the input
        dimensions.  */
-    zo->zo_iSize = zoRoundUpPowerOfTwo(iSize);
-    zo->zo_jSize = zoRoundUpPowerOfTwo(jSize);
-    zo->zo_kSize = zoRoundUpPowerOfTwo(kSize);
+    zo->zo_iSize = iSize > 0 ? zoRoundUpPowerOfTwo(iSize) : 0;
+    zo->zo_jSize = jSize > 0 ? zoRoundUpPowerOfTwo(jSize) : 0;
+    zo->zo_kSize = kSize > 0 ? zoRoundUpPowerOfTwo(kSize) : 0;
 #else
     bad-code-path;
 #endif
@@ -276,9 +286,9 @@ zoInitZOrderIndexing(size_t iSize,
     
     /* next, build the zorder bit masks for each of i, j, k */
     /* malloc space for bitmasks. */
-    zo->zIbits = (off_t *)calloc(zo->zo_iSize, sizeof(off_t));
-    zo->zJbits = (off_t *)calloc(zo->zo_jSize, sizeof(off_t));
-    zo->zKbits = (off_t *)calloc(zo->zo_kSize, sizeof(off_t));
+    zo->zIbits = zo->zo_iSize > 0 ? (off_t *)calloc(zo->zo_iSize, sizeof(off_t)) : NULL;
+    zo->zJbits = zo->zo_jSize > 0 ? (off_t *)calloc(zo->zo_jSize, sizeof(off_t)) : NULL;
+    zo->zKbits = zo->zo_kSize > 0 ? (off_t *)calloc(zo->zo_kSize, sizeof(off_t)) : NULL;
 
     /*
      * note/limitation: the maximum size of the z-order index is
@@ -290,13 +300,18 @@ zoInitZOrderIndexing(size_t iSize,
      */
 
     /* compute the number bits we need to process */
-    n_iBits = zoNumBits(zo->zo_iSize);
-    n_jBits = zoNumBits(zo->zo_jSize);
-    n_kBits = zoNumBits(zo->zo_kSize);
+    n_iBits = zo->zo_iSize > 0 ? zoNumBits(zo->zo_iSize) : 0;
+    n_jBits = zo->zo_jSize > 0 ? zoNumBits(zo->zo_jSize) : 0;
+    n_kBits = zo->zo_kSize > 0 ? zoNumBits(zo->zo_kSize) : 0;
 
 #if (ZORDER_TRACE & ZORDER_TRACE_DEBUG)
     fprintf(stderr, "iBits, jBits, kBits = %d %d %d \n", n_iBits, n_jBits, n_kBits);
 #endif
+
+    int nDims = 0;
+    if (iSize > 0) nDims++;
+    if (jSize > 0) nDims++;
+    if (kSize > 0) nDims++;
 
     /* now, build the bitmasks */
     {
@@ -314,7 +329,7 @@ zoInitZOrderIndexing(size_t iSize,
 		if (s & 0x1)
 		    d |= mask;
 		s = s >> 1;
-		mask = mask << 3;
+		mask = mask << nDims;
 	    }
 	    zo->zKbits[i] = d;
 	}
@@ -330,7 +345,7 @@ zoInitZOrderIndexing(size_t iSize,
 		if (s & 0x1)
 		    d |= mask;
 		s = s >> 1;
-		mask = mask << 3;
+		mask = mask << nDims;
 	    }
 	    zo->zJbits[i] = d;
 	}
@@ -346,7 +361,7 @@ zoInitZOrderIndexing(size_t iSize,
 		if (s & 0x1)
 		    d |= mask;
 		s = s >> 1;
-		mask = mask << 3;
+		mask = mask << nDims;
 	    }
 	    zo->zIbits[i] = d;
 	}
@@ -355,7 +370,12 @@ zoInitZOrderIndexing(size_t iSize,
     /* what is the total memory footprint, in terms of number of
        elements, needed to hold the z-order layout for this iSize,
        jSize, kSize? */
-    zo->zo_totalSize = zoGetIndexZOrder(zo, zo->src_iSize-1, zo->src_jSize-1, zo->src_kSize-1)+1;
+    zo->zo_totalSize = 1 + zoGetIndexZOrder(zo,
+                                            nDims > 0 ? zo->src_iSize-1 : 0,
+                                            nDims > 1 ? zo->src_jSize-1 : 0, 
+                                            nDims > 2 ? zo->src_kSize-1 : 0);
+
+#endif /* (ZORDER_ENABLE & ZORDER_ENABLE_ZORDER) */
 
     {
 	/* 1/29/2015 todo: do some work to figure out which bit
@@ -516,9 +536,15 @@ zoGetIndexZOrder(const ZOrderStruct *zo,
 		 off_t k)
 {
     off_t rval=0;
+    int nDims = 0;
+    if (zo->zo_iSize > 0) nDims++;
+    if (zo->zo_jSize > 0) nDims++;
+    if (zo->zo_kSize > 0) nDims++;
 
     /* sanity checks first? */
-    rval = zo->zKbits[k] | zo->zJbits[j] | zo->zIbits[i];
+    rval = (nDims > 2 ? zo->zKbits[k] : 0) |
+           (nDims > 1 ? zo->zJbits[j] : 0) |
+           (nDims > 0 ? zo->zIbits[i] : 0);
     /*    rval = zo->zIbits[i] | zo->zJbits[j] | zo->zKbits[k]; */
 
 #if 0

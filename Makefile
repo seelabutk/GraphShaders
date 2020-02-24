@@ -1,6 +1,7 @@
 SHELL := bash
 
 CFLAGS += -D_GNU_SOURCE
+CFLAGS += -g
 
 ifneq ($(shell pkg-config --exists --print-errors libmicrohttpd; echo $$?),0)
   $(error Missing Package: libmicrohttpd)

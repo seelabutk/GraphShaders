@@ -176,6 +176,7 @@ ANSWER(Tile) {
 	int max_xy = (int)pow(2, z);
 	if (last_z != z) {
 		last_z_zo = zoInitZOrderIndexing(max_xy, max_xy, 0, ZORDER_LAYOUT);
+		last_z = z;
 	}
 
 	if (0 <= x && x < max_xy && 0 <= y && y < max_xy) {
