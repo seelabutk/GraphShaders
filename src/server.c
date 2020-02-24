@@ -12,6 +12,7 @@
 #include <microhttpd.h>
 #include <zlib.h>
 #include <pthread.h>
+#include <zorder.h>
 
 #include "fg.h"
 #include "render.h"
@@ -96,7 +97,11 @@ ANSWER(Error) {
 static char *last_graph_name = NULL;
 static char *last_vert = NULL;
 static char *last_frag = NULL;
+static int last_z = -1;
+static ZOrderStruct *last_z_zo = NULL;
+static int last_res = -1;
 static struct render_ctx *render_ctx = NULL;
+static ZOrderStruct *last_res_zo = NULL;
 ANSWER(Tile) {
 	int x;
 	int y;
@@ -108,8 +113,13 @@ ANSWER(Tile) {
 		return MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);	
 	}
 
+	char *s;
+
 	char *opt_vert = strdup(src_shaders_default_vert);
 	char *opt_frag = strdup(src_shaders_default_frag);
+	int opt_res = 1;
+	float opt_rc_start = (s = getenv("FG_RC_START")) ? atof(s) : 0.0;
+	float opt_rc_end = (s = getenv("FG_RC_END")) ? atof(s) : 1.0;
 
 	char *it = options + 1;
 	for (;;) {
@@ -144,6 +154,12 @@ ANSWER(Tile) {
 			opt_vert = value;
 		} else if (strcmp(key, "frag") == 0) {
 			opt_frag = value;
+		} else if (strcmp(key, "res") == 0) {
+			opt_res = atoi(value);
+		} else if (strcmp(key, "rc-start") == 0) {
+			opt_rc_start = atof(value);
+		} else if (strcmp(key, "rc-end") == 0) {
+			opt_rc_end = atof(value);
 		} else {
 			fprintf(stderr, "WARNING: unhandled option '%s' = '%s'\n", key, value);
 		}
@@ -157,9 +173,31 @@ ANSWER(Tile) {
 		render_ctx = malloc(sizeof(*render_ctx));
 	}
 
+	int max_xy = (int)pow(2, z);
+	if (last_z != z) {
+		last_z_zo = zoInitZOrderIndexing(max_xy, max_xy, 0, ZORDER_LAYOUT);
+	}
+
+	if (0 <= x && x < max_xy && 0 <= y && y < max_xy) {
+		float z_rc_index = (zoGetIndex(last_z_zo, x, y, 0)) / (float)last_z_zo->zo_totalSize;
+		if (!(opt_rc_start <= z_rc_index && z_rc_index <= opt_rc_end)) {
+			fprintf(stderr, "Redirecting! ! (%f <= %f <= %f)\n", opt_rc_start, z_rc_index, opt_rc_end);
+			static void *data = "Found";
+			size_t size = strlen(data);
+
+			struct MHD_Response *response;
+			response = MHD_create_response_from_buffer(size, data, MHD_RESPMEM_PERSISTENT);
+			MHD_add_response_header(response, "Location", url);
+			int rc = MHD_queue_response(conn, 302, response);
+			MHD_destroy_response(response);
+			return rc;
+		}
+	}
+
 	if (last_graph_name == NULL || strcmp(last_graph_name, dataset) != 0 ||
 	    last_vert == NULL || strcmp(last_vert, opt_vert) != 0 ||
-	    last_frag == NULL || strcmp(last_frag, opt_frag) != 0) {
+	    last_frag == NULL || strcmp(last_frag, opt_frag) != 0 ||
+	    last_res != opt_res) {
 		fprintf(stderr, "Loading dataset '%s'\n", dataset);
 		char nodespath[PATH_MAX], edgespath[PATH_MAX];
 		snprintf(nodespath, PATH_MAX, "data/%s/nodes.csv", dataset);
@@ -171,6 +209,8 @@ ANSWER(Tile) {
 
 		render_init(render_ctx, graph, NULL, 0, opt_vert, opt_frag);
 
+		zoInitZOrderIndexing(opt_res, opt_res, 0, ZORDER_LAYOUT);
+
 		if (last_graph_name) free(last_graph_name);
 		last_graph_name = strdup(dataset);
 
@@ -179,10 +219,14 @@ ANSWER(Tile) {
 
 		if (last_frag) free(last_frag);
 		last_frag = strdup(opt_frag);
+
+		last_res = opt_res;
 	}
 	free(opt_vert);
 	free(opt_frag);
 	free(dataset);
+
+	
 
 	void *output;
 	size_t outputlen;
@@ -232,6 +276,7 @@ ANSWER(Tile) {
 		MHD_add_response_header(response, "Access-Control-Allow-Origin", origin);
 	}
 	MHD_add_response_header(response, "Content-Type", "image/jpg");
+	MHD_add_response_header(response, "Connection", "close");
 	
 	ret = MHD_queue_response(conn, MHD_HTTP_OK, response);
 	MHD_destroy_response(response);
