@@ -1,14 +1,17 @@
-#include <render.h>
+#include "render.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <inttypes.h>
 
-#include <fg.h>
+#include "fg.h"
 #include <zorder.h> 
 
-#include <glad/glad.h>
+#include "glad/glad.h"
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+
+#include "shaders/graph.vert.h"
+#include "shaders/graph.frag.h"
 
 static void initOpenGL(struct render_ctx *ctx);
 static void initGraph(struct render_ctx *ctx, int*, int);
@@ -134,29 +137,6 @@ void render_copy_to_buffer(struct render_ctx *ctx, size_t *size, void **pixels) 
 	             *pixels);
 }
 
-static char* loadFileStr(const char *fileName){
-	FILE *f;
-	char *str;
-	unsigned length;
-	
-	f = fopen(fileName, "r");
-	if(!f){
-		printf("Error, cannot open file %s\n", fileName);
-		exit(1);
-	}		
-
-	fseek(f, 0, SEEK_END);
-	length = ftell(f) + 1;
-	fseek(f, 0, SEEK_SET);
-	str = malloc(length*sizeof(*str));
-	fread(str, sizeof(*str), length - 1, f);
-	
-	fclose(f);
-	
-	str[length-1] = '\0';
-	return str;
-}
-
 static void initOpenGL(struct render_ctx *ctx) {
 	char *VSS;
 	char *FSS;
@@ -164,8 +144,8 @@ static void initOpenGL(struct render_ctx *ctx) {
 	int success;
 	char infoLog[512];
 	
-	VSS = loadFileStr("shaders/graph.vert");
-	FSS = loadFileStr("shaders/graph.frag");
+	VSS = src_shaders_graph_vert;
+	FSS = src_shaders_graph_frag;
 
 	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
 	glShaderSource(vertexShader, 1, (const char * const*)&VSS, NULL);

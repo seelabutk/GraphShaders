@@ -42,7 +42,11 @@ RUN apt-get update && \
         zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN ln -sf /usr/lib/x86_64-linux-gnu/libEGL_nvidia.so.0 /usr/lib/x86_64-linux-gnu/libEGL_nvidia.so
+WORKDIR /opt/libmicrohttpd
+COPY libmicrohttpd-0.9.70 /opt/libmicrohttpd
+RUN ./configure && \
+    make && \
+    make install
 
 WORKDIR /app
 COPY . /app
