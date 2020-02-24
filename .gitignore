@@ -1,5 +1,5 @@
-build
+/build
 rc_*
 temp_*
-src/shaders/*.h
-contrib
+/src/shaders/*.h
+/contrib
