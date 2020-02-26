@@ -89,4 +89,4 @@ COPY src /app/src
 ENV PKG_CONFIG_PATH=/app/contrib/lib/pkgconfig
 RUN ls -lahR /app/ && make
 
-CMD ["/app/build/render"]
+CMD ["/app/build/server"]
