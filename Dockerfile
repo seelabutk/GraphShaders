@@ -58,6 +58,11 @@ RUN apt-get update && \
         libtool \
     && rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && \
+    apt-get install -y \
+        texinfo \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /opt/libmicrohttpd
 COPY libmicrohttpd-0.9.70 /opt/libmicrohttpd
 RUN autoreconf --install && \
