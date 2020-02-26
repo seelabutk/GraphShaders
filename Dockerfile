@@ -42,15 +42,46 @@ RUN apt-get update && \
         zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && \
+    apt-get install -y \
+        autotools-dev \
+        automake \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && \
+    apt-get install -y \
+        autopoint \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && \
+    apt-get install -y \
+        libtool \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /opt/libmicrohttpd
 COPY libmicrohttpd-0.9.70 /opt/libmicrohttpd
-RUN ./configure && \
+RUN autoreconf --install && \
+    ./configure --prefix=/app/contrib && \
     make && \
     make install
 
+WORKDIR /opt/zorder-lib
+COPY zorder-lib /opt/zorder-lib
+RUN make && \
+    make install PREFIX=/app/contrib
+
+RUN apt-get update && \
+    apt-get install -y \
+        pkg-config \
+	# vim's needed for xxd
+	vim \
+    && rm -rf /var/lib/apt/lists/*
+
+
 WORKDIR /app
-COPY . /app
-RUN cmake -S . -Bbuild && \
-    make -C build
+COPY Makefile /app
+COPY src /app/src
+ENV PKG_CONFIG_PATH=/app/contrib/lib/pkgconfig
+RUN ls -lahR /app/ && make
 
 CMD ["/app/build/render"]
