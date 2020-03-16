@@ -22,12 +22,14 @@ struct graph {
 	float *nx;
 	float *ny;
 	char **nid;
+	float *attr1;
 
 	size_t ecount;
 	size_t esize;
 	uint16_t *es;
 	uint16_t *et;
 };
+
 
 void
 emit(int r, int c);

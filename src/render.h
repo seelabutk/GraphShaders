@@ -16,7 +16,7 @@ struct render_ctx {
 	unsigned int numVertices;
 	unsigned int numIndeces;
 	
-	unsigned int shaderProgram, VBO, EBO, VAO;
+	unsigned int shaderProgram, VAO, VBO, EBO;
 	GLint uTranslateX;
 	GLint uTranslateY;
 	GLint uScale;

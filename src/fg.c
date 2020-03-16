@@ -62,6 +62,7 @@ load(char *node_filename, char *edge_filename, struct graph *graph) {
 	graph->nx = malloc(graph->nsize * sizeof(*graph->nx));
 	graph->ny = malloc(graph->nsize * sizeof(*graph->ny));
 	graph->nid = malloc(graph->nsize * sizeof(*graph->nid));
+	graph->attr1 = malloc(graph->nsize * sizeof(*graph->attr1));
 	graph->ecount = 0;
 	graph->esize = 16;
 	graph->es = malloc(graph->esize * sizeof(*graph->es));
@@ -75,24 +76,33 @@ load(char *node_filename, char *edge_filename, struct graph *graph) {
 	size = 0;
 	while ((nread = getline(&line, &size, f)) > 0) {
 		if (n++ == 0) {
-			if (strcmp(line, "x,y,id\n") == 0) order = ORDER_X_Y_ID;
+			if (strcmp(line, "x,y,name,date,nmaintainers,cve\n") == 0) order = ORDER_X_Y_ID;
 			else {
 				fprintf(stderr, "Unknown header line: \"%s\"\n", line);
 			}
 		} else if (order == ORDER_X_Y_ID) {
-			graph->nid[graph->ncount] = malloc(32);
-			sscanf(line, "%f,%f,%31s", 
-			       graph->nx + graph->ncount,
-			       graph->ny + graph->ncount,
-			       graph->nid[graph->ncount]);
+			//graph->nid[graph->ncount] = malloc(32);
+			//x, y, name, date, maintainers, cve
+			int attr1;
+			sscanf(line, "%f,%f,%*[^,],%*d,%d,%*d", 
+				graph->nx + graph->ncount,
+				graph->ny + graph->ncount,
+				//graph->nid[graph->ncount],
+				&attr1
+			);
+			graph->attr1[graph->ncount] = (float)attr1;
+			
 			if (++graph->ncount == graph->nsize) {
 				graph->nsize *= 2;
-				graph->nx = realloc(graph->nx, graph->nsize * sizeof(*graph->nx));
-				graph->ny = realloc(graph->ny, graph->nsize * sizeof(*graph->ny));
-				graph->nid = realloc(graph->nid, graph->nsize * sizeof(*graph->nid));
+				graph->nx =    realloc(graph->nx,    graph->nsize * sizeof(*graph->nx   ));
+				graph->ny =    realloc(graph->ny,    graph->nsize * sizeof(*graph->ny   ));
+				graph->nid =   realloc(graph->nid,   graph->nsize * sizeof(*graph->nid  ));
+				graph->attr1 = realloc(graph->attr1, graph->nsize * sizeof(*graph->attr1));
 			}
 		}
 	}
+	fflush(stdout);
+
 	free(line);
 	
 	fclose(f);
@@ -105,7 +115,7 @@ load(char *node_filename, char *edge_filename, struct graph *graph) {
 	size = 0;
 	while ((nread = getline(&line, &size, f)) > 0) {
 		if (n++ == 0) {
-			if (strcmp(line, "source,target\n") == 0) order = ORDER_SOURCE_TARGET;
+			if (strcmp(line, "src,dst\n") == 0) order = ORDER_SOURCE_TARGET;
 			else {
 				fprintf(stderr, "Unknown header line: \"%s\"\n", line);
 			}

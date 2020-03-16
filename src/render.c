@@ -169,12 +169,17 @@ static void initOpenGL(struct render_ctx *ctx, const char *VSS, const char *FSS)
 	
 	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 static void initGraph(struct render_ctx *ctx, int *ZorderIndeces, int sz){
 	struct graph *const g = ctx->g;	
 	float *positions = ctx->vertices;
 	int *edges = ctx->indeces;
+	
+	const int numAttrs = 3;
 
 	ctx->numIndeces = 0;
 	ctx->numVertices = 0;
@@ -184,7 +189,7 @@ static void initGraph(struct render_ctx *ctx, int *ZorderIndeces, int sz){
 		rescale(0.0, 0.0, 1.0, 1.0, g);
 		
 		//2 floats per position
-		positions = malloc(g->ncount*2 * sizeof(*positions));
+		positions = malloc(g->ncount*numAttrs * sizeof(*positions));
 		//2 positions per edge
 		edges = malloc(g->ecount*2 * sizeof(*edges));
 		
@@ -196,49 +201,18 @@ static void initGraph(struct render_ctx *ctx, int *ZorderIndeces, int sz){
 		}	
 		//interleave positions into contiguous buffer in-order
 		for(int i = 0; i < g->ncount; ++i){
-			positions[i*2 + 0] = g->nx[i];
-			positions[i*2 + 1] = g->ny[i];
+			positions[i*numAttrs + 0] = g->nx[i];
+			positions[i*numAttrs + 1] = g->ny[i];
+			positions[i*numAttrs + 2] = g->attr1[i];
 		}
 
 		ctx->numIndeces = g->ecount*2;
 		ctx->numVertices = g->ncount*2;
-
-	}else{	//render only the RC specified
-		
-		for(int z = 0; z < sz; ++z){
-			const int sz = 10;
-			int curr = 0;
-	
-			void preinit(rc_t maxrc){ edges = malloc(maxrc * sizeof(*edges)); }
-			void init(rc_t t){}
-			void finish(rc_t t){}	
-			void emit(rc_t rc, edgenum_t edge){
-				if(rc == ZorderIndeces[z]){
-					edges[curr] = edge;
-					++curr;
-				}
-				
-				printf("%d\n", rc);
-			}
-			partition(g, sz, preinit, init, emit, finish);
-			rescale(-1.0, -1.0, 1.0, 1.0, g);
-			positions = malloc(2*curr*sizeof(*edges));
-	
-			for(int i = 0; i < curr; ++i){
-				positions[i*2 + 0] = g->nx[edges[i]];
-				positions[i*2 + 1] = g->ny[edges[i]];
-			}
-			
-			for(int i = 0; i < curr; ++i)	edges[i] = i;
-			
-			ctx->numIndeces += curr;
-			ctx->numVertices += curr;
-		}
-		
-		if(sz == 1){	
-		//todo: change viewport to zoom into correct portion of graph if sz == 1
-		}
-	}	
+	}else if(sz != 1){	
+		//render only the RCs specified
+	}else{
+		//render only the one RC but with viewport moved over it
+	}
 
 	//now openGL stuff
 	//gen VBO, VAO, EBO
@@ -249,17 +223,17 @@ static void initGraph(struct render_ctx *ctx, int *ZorderIndeces, int sz){
 	glBindVertexArray(ctx->VAO);
 	
 	glBindBuffer(GL_ARRAY_BUFFER, ctx->VBO);
-	glBufferData(GL_ARRAY_BUFFER, ctx->numVertices*2*sizeof(*positions), positions, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, ctx->numVertices*numAttrs*sizeof(*positions), positions, GL_STATIC_DRAW);
 	
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx->EBO);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, ctx->numIndeces*sizeof(*edges), edges, GL_STATIC_DRAW);
 
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2*sizeof(*positions), (void*)0);
-	
-	//not needed with layout location extension enabled in shader, but put it here anyway jic
-	glBindAttribLocation(ctx->shaderProgram, 0, "aPos");
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, numAttrs*sizeof(*positions), (void*)0);
+	glVertexAttribPointer(1, 1, GL_FLOAT, GL_TRUE, numAttrs*sizeof(*positions), (void*)(2*sizeof(float)));
 	
 	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+
 
 }
 
