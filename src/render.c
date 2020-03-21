@@ -176,46 +176,38 @@ static void initOpenGL(struct render_ctx *ctx, const char *VSS, const char *FSS)
 
 static void initGraph(struct render_ctx *ctx, int *ZorderIndeces, int sz){
 	struct graph *const g = ctx->g;	
-	float *positions = ctx->vertices;
-	int *edges = ctx->indeces;
-	
-	const int numAttrs = 3;
 
-	ctx->numIndeces = 0;
-	ctx->numVertices = 0;
+	ctx->numIndeces = g->ecount*2;
+	ctx->numVertices = g->ncount*2;
 	
 	if(sz == 0){	//render whole graph normally on 1 RC
-		//fills gContext->positions and gContext->edges with correct data
+
 		rescale(0.0, 0.0, 1.0, 1.0, g);
 		
-		//2 floats per position
-		positions = malloc(g->ncount*numAttrs * sizeof(*positions));
-		//2 positions per edge
-		edges = malloc(g->ecount*2 * sizeof(*edges));
+		ctx->vertices = malloc(g->ncount*g->numAttribs*sizeof(*ctx->vertices));
+		ctx->indeces = malloc(g->ecount*2*sizeof(*ctx->indeces));
 		
-		//interleave edges into contiguous buffer in-order
+		//interleave ctx->indeces into contiguous buffer in-order
 		for(int i = 0; i < g->ecount; ++i){
-			//g->es[i]*2 because interleaved array of positions will be doubly offset
-			edges[i*2 + 0] = g->es[i];
-			edges[i*2 + 1] = g->et[i];
+			ctx->indeces[i*2 + 0] = g->es[i];
+			ctx->indeces[i*2 + 1] = g->et[i];
 		}	
-		//interleave positions into contiguous buffer in-order
+
+		//interleave ctx->vertices into contiguous buffer in-order
 		for(int i = 0; i < g->ncount; ++i){
-			positions[i*numAttrs + 0] = g->nx[i];
-			positions[i*numAttrs + 1] = g->ny[i];
-			positions[i*numAttrs + 2] = g->attr1[i];
+			for(int j = 0; j < g->numAttribs; ++j){
+				ctx->vertices[i*g->numAttribs + j] = g->attribs[j][i];
+			}
 		}
 
-		ctx->numIndeces = g->ecount*2;
-		ctx->numVertices = g->ncount*2;
-	}else if(sz != 1){	
-		//render only the RCs specified
-	}else{
-		//render only the one RC but with viewport moved over it
-	}
+	}else if(sz != 1){	//render only the RCs specified	
 
-	//now openGL stuff
-	//gen VBO, VAO, EBO
+	}else{ //render only the one RC but with viewport moved over it
+	
+	}
+		
+
+
 	glGenVertexArrays(1, &ctx->VAO);
 	glGenBuffers(1, &ctx->VBO);
 	glGenBuffers(1, &ctx->EBO);
@@ -223,17 +215,15 @@ static void initGraph(struct render_ctx *ctx, int *ZorderIndeces, int sz){
 	glBindVertexArray(ctx->VAO);
 	
 	glBindBuffer(GL_ARRAY_BUFFER, ctx->VBO);
-	glBufferData(GL_ARRAY_BUFFER, ctx->numVertices*numAttrs*sizeof(*positions), positions, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, ctx->numVertices*g->numAttribs*sizeof(*ctx->vertices), ctx->vertices, GL_STATIC_DRAW);
 	
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx->EBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, ctx->numIndeces*sizeof(*edges), edges, GL_STATIC_DRAW);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, ctx->numIndeces*sizeof(*ctx->indeces), ctx->indeces, GL_STATIC_DRAW);
 
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, numAttrs*sizeof(*positions), (void*)0);
-	glVertexAttribPointer(1, 1, GL_FLOAT, GL_TRUE, numAttrs*sizeof(*positions), (void*)(2*sizeof(float)));
-	
-	glEnableVertexAttribArray(0);
-	glEnableVertexAttribArray(1);
-
+	for(int i = 0; i < g->numAttribs; ++i){
+		glVertexAttribPointer(i, 1, GL_FLOAT, GL_TRUE/*GL_FALSE?*/, g->numAttribs*sizeof(*ctx->vertices), (void*)(i*sizeof(*ctx->vertices)));
+		glEnableVertexAttribArray(i);
+	}
 
 }
 

@@ -37,14 +37,16 @@ let tiles = L.tileLayer('tile/{dataset},vert,base64:{vert},frag,base64:{frag}/{z
         tileSize: 256,
 	dataset: window.location.hash.substring(1) || 'knit-graph',
 	vert: btoa(`
-//#version 330 core
 #version 130
-#extension GL_ARB_explicit_attrib_location : require
 
 precision mediump float;
 
-layout(location = 0) in vec2 aPos;
-layout(location = 1) in float attr1;
+in float x;
+in float y;
+in float date;
+in float nmaintainers;
+in float cve;
+
 uniform float uTranslateX;
 uniform float uTranslateY;
 uniform float uScale;
@@ -52,23 +54,21 @@ out float attrib;
 
 void main(){
 	
-	attrib=attr1;
+	attrib=nmaintainers;
 
 	gl_Position = vec4(
-		2. * (uScale * aPos.x + uTranslateX) - 1.,
-		2. * (uScale * aPos.y + uTranslateY) - 1.,
+		2. * (uScale * x + uTranslateX) - 1.,
+		2. * (uScale * y + uTranslateY) - 1.,
 		0.0f,
 		1.0f
 	);
 }
 `),
 	frag: btoa(`
-//#version 330 core
 #version 130
 	
 precision mediump float;
 
-//out vec4 FragColor;
 in float attrib;
 
 void main(){

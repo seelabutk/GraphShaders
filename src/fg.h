@@ -22,9 +22,8 @@ struct graph {
 	float *nx;
 	float *ny;
 
-	float *attr1;
-
 	char **attribNames;
+	int numAttribs;
 	float **attribs;
 
 	size_t ecount;

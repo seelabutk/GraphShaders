@@ -53,9 +53,8 @@ load(char *node_filename, char *edge_filename, struct graph *graph) {
 	size_t size = 0;
 	ssize_t nread;
 	int numattrs = 0;
-	int numUsableAttr = 0;
 	char *skips;
-	int i;
+	int i,j;
 	enum { ORDER_UNKNOWN = 0, ORDER_X_Y_ID, ORDER_SOURCE_TARGET } order = ORDER_UNKNOWN;
 	
 	graph->node_filename = node_filename;
@@ -66,9 +65,13 @@ load(char *node_filename, char *edge_filename, struct graph *graph) {
 	graph->esize = 16;
 	graph->es = malloc(graph->esize * sizeof(*graph->es));
 	graph->et = malloc(graph->esize * sizeof(*graph->et));
+	graph->numAttribs = 0;
+	graph->nx = NULL;
+	graph->ny = NULL;
 	
 	f = fopen(node_filename, "r");
 	assert(f);
+	
 
 	//get number of attributes
 	nread = getline(&line, &size, f);
@@ -80,19 +83,10 @@ load(char *node_filename, char *edge_filename, struct graph *graph) {
 		}else if(*c == ',')	++numattrs;
 	}
 	++numattrs;
-	graph->attribNames = (char**)malloc(sizeof(*graph->attribNames)*numattrs);
-	skips = (char*)malloc(sizeof(*skips)*numattrs);
-	
-
-	//store attribute names
-	i = 0;
-	for(char *tok = strtok(line,","); i < numattrs; tok = strtok(NULL, ","), ++i){
-		graph->attribNames[i] = strdup(tok);
-	}
 
 
 	//check if all datatypes are floats before entering loop
-	int fpos = ftell(f);
+	skips = (char*)malloc(sizeof(*skips)*numattrs);
 	nread = getline(&line, &size, f);
 	i = 0;
 	for(char *tok = strtok(line,","); i < numattrs ; tok = strtok(NULL, ","), ++i){
@@ -102,58 +96,70 @@ load(char *node_filename, char *edge_filename, struct graph *graph) {
 			skips[i] = 1;
 		}else{
 			skips[i] = 0;
-			++numUsableAttr;
+			++graph->numAttribs;
 		}
 	}
-	fseek(f, fpos, SEEK_SET);
 
+
+	//store attribute names
+	rewind(f);
+	nread = getline(&line, &size, f);
+	graph->attribNames = (char**)malloc(sizeof(*graph->attribNames)*numattrs);
+	i = j = 0;
+	for(char *tok = strtok(line,","); i < numattrs; tok = strtok(NULL, ","), ++i){
+		if(skips[i] == 1)	continue;
+		graph->attribNames[j] = strdup(tok);
+		++j;
+	}
 
 	//allocate attributes - will not contained unused attributes that have no float conversion
-	graph->attribs = (float**)malloc(sizeof(*graph->attribs)*numUsableAttr);
-	for(i = 0; i < numUsableAttr; ++i){
+	graph->attribs = (float**)malloc(sizeof(*graph->attribs)*graph->numAttribs);
+	for(i = 0; i < graph->numAttribs; ++i){
 		graph->attribs[i] = (float*)malloc(sizeof(**graph->attribs)*graph->nsize);
 	}
+
 
 	//read the data in
 	while ((nread = getline(&line, &size, f)) > 0) {
 		
 		//storing
-		i = 0;
-		int j = 0;
+		i = j = 0;
 		char *end, *tok;
 		end = line;
 
 		//need to use strsep instead of strtok b/c some nodes don't have values, leading to multiple delimeters in a row, which strtok can not compute
 		for(tok = strsep(&end,","); i < numattrs; tok = strsep(&end,","), ++i){
 			if(skips[i] == 1)	continue;
-			graph->attribs[j][graph->ncount] = atof(tok);		
+			graph->attribs[j][graph->ncount] = atof(tok);	
 			++j;
 		}
 
 		//resizing
 		if (++graph->ncount == graph->nsize) {
 			graph->nsize *= 2;
-			for(i = 0; i < numUsableAttr; ++i){
+			for(i = 0; i < graph->numAttribs; ++i){
 				graph->attribs[i] = realloc(graph->attribs[i], graph->nsize*sizeof(*graph->attribs[i]));
 			}	
 		} 
+
 	}
 	free(line);
 	fclose(f);
 
-	//set graph->nx and graph->ny to the correct attribute array locations
-	for(i = 0; i < numUsableAttr; ++i){
+	//set graph->nx and graph->ny to the correct attribute array locations - this is kinda hard-coded
+	for(i = 0; i < graph->numAttribs; ++i){
 		if(strcmp(graph->attribNames[i], "x") == 0){
 			graph->nx = graph->attribs[i];
 		}else if(strcmp(graph->attribNames[i], "y") == 0){
 			graph->ny = graph->attribs[i];
 		}
-
-		//TODO: just to make it compileable - remove
-		else if(strcmp(graph->attribNames[i], "nmaintainers") == 0){
-			graph->attr1 = graph->attribs[i];
-		}
 	}
+
+	//backup, for if no x and y is explicitely specified, assume first 2 attributes in file are x and y
+	if(graph->nx == NULL)
+		graph->nx = graph->attribs[0];
+	if(graph->ny == NULL)
+		graph->ny = graph->attribs[1];
 	
 
 	f = fopen(edge_filename, "r");
