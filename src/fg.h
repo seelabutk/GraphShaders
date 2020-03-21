@@ -21,8 +21,11 @@ struct graph {
 	size_t nsize;
 	float *nx;
 	float *ny;
-	char **nid;
+
 	float *attr1;
+
+	char **attribNames;
+	float **attribs;
 
 	size_t ecount;
 	size_t esize;
