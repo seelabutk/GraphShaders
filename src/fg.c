@@ -76,12 +76,12 @@ load(char *node_filename, char *edge_filename, struct graph *graph) {
 	size = 0;
 	while ((nread = getline(&line, &size, f)) > 0) {
 		if (n++ == 0) {
-			if (strcmp(line, "x,y,name,date,nmaintainers,cve\n") == 0) order = ORDER_X_Y_ID;
+			if (strcmp(line, "x,y,id\n") == 0) order = ORDER_X_Y_ID;
 			else {
 				fprintf(stderr, "Unknown header line: \"%s\"\n", line);
 			}
 		} else if (order == ORDER_X_Y_ID) {
-			//graph->nid[graph->ncount] = malloc(32);
+			graph->nid[graph->ncount] = malloc(32);
 			//x, y, name, date, maintainers, cve
 			int attr1;
 			sscanf(line, "%f,%f,%*[^,],%*d,%d,%*d", 
@@ -115,7 +115,7 @@ load(char *node_filename, char *edge_filename, struct graph *graph) {
 	size = 0;
 	while ((nread = getline(&line, &size, f)) > 0) {
 		if (n++ == 0) {
-			if (strcmp(line, "src,dst\n") == 0) order = ORDER_SOURCE_TARGET;
+			if (strcmp(line, "source,target\n") == 0) order = ORDER_SOURCE_TARGET;
 			else {
 				fprintf(stderr, "Unknown header line: \"%s\"\n", line);
 			}
