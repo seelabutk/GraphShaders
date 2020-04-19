@@ -94,10 +94,53 @@ void render_focus_tile(struct render_ctx *ctx, int z, int x, int y) {
 	glUniform1f(ctx->uScale, rz);
 }
 
+void render_first_pass(struct render_ctx *ctx) {
+
+}
+
 void render_display(struct render_ctx *ctx) {
-	glClear(GL_COLOR_BUFFER_BIT);	//remember GL_DEPTH_BUFFER_BIT too
+    unsigned int framebuffer; 
+    glGenFramebuffers(1, &framebuffer); 
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer); 
+
+    unsigned int texture;
+    glGenTextures(1, &texture); 
+    glBindTexture(GL_TEXTURE_2D, texture); 
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 256, 256, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL); 
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);  
+
+    unsigned int rbo;
+    glGenRenderbuffers(1, &rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo); 
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, 256, 256);  
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        printf("ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
+
+    // first pass
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);  
+
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	//remember GL_DEPTH_BUFFER_BIT too
 	
+    ctx->uPass = glGetUniformLocation(ctx->shaderProgram, "pass");
+	glUniform1i(ctx->uPass, 1);
 	glBindVertexArray(ctx->VAO);
+	glDrawElements(GL_LINES, ctx->numIndeces, GL_UNSIGNED_INT, 0);
+	//glBindVertexArray(0);
+
+    // second pass
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);  
+
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	//remember GL_DEPTH_BUFFER_BIT too
+
+	glUniform1i(ctx->uPass, 2);
+	glBindVertexArray(ctx->VAO);
+    glBindTexture(GL_TEXTURE_2D, texture);
 	glDrawElements(GL_LINES, ctx->numIndeces, GL_UNSIGNED_INT, 0);
 	glBindVertexArray(0);
 }

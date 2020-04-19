@@ -72,7 +72,6 @@ load(char *node_filename, char *edge_filename, struct graph *graph) {
 	f = fopen(node_filename, "r");
 	assert(f);
 	
-
 	//get number of attributes
 	nread = getline(&line, &size, f);
 	i = 0;
@@ -172,13 +171,20 @@ load(char *node_filename, char *edge_filename, struct graph *graph) {
 	else	fprintf(stderr, "Unknown header line: \"%s\"\n", line);
 
 	while ((nread = getline(&line, &size, f)) > 0) {
-		sscanf(line, "%"SCNu16",%"SCNu16,
-				graph->es + graph->ecount,
-				graph->et + graph->ecount);
-		if (++graph->ecount == graph->esize) {
-			graph->esize *= 2;
-			graph->es = realloc(graph->es, graph->esize * sizeof(*graph->es));
-			graph->et = realloc(graph->et, graph->esize * sizeof(*graph->et));
+		if (n++ == 0) {
+			if (strcmp(line, "source,target\n") == 0) order = ORDER_SOURCE_TARGET;
+			else {
+				fprintf(stderr, "Unknown header line: \"%s\"\n", line);
+			}
+		} else if (order == ORDER_SOURCE_TARGET) {
+			sscanf(line, "%"SCNu16",%"SCNu16,
+			       graph->es + graph->ecount,
+			       graph->et + graph->ecount);
+			if (++graph->ecount == graph->esize) {
+				graph->esize *= 2;
+				graph->es = realloc(graph->es, graph->esize * sizeof(*graph->es));
+				graph->et = realloc(graph->et, graph->esize * sizeof(*graph->et));
+			}
 		}
 	}
 

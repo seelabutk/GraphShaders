@@ -20,6 +20,7 @@ struct render_ctx {
 	GLint uTranslateX;
 	GLint uTranslateY;
 	GLint uScale;
+    GLint uPass;
 };
 
 int render_preinit(void);

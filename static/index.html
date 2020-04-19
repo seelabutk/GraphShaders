@@ -51,17 +51,24 @@ uniform float uTranslateX;
 uniform float uTranslateY;
 uniform float uScale;
 out float attrib;
+out vec2 pos;
+
+float rand(vec2 co){
+        return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
 
 void main(){
 	
-	attrib=nmaintainers;
+	attrib=rand(aPos) * 0.5;
 
-	gl_Position = vec4(
-		2. * (uScale * x + uTranslateX) - 1.,
-		2. * (uScale * y + uTranslateY) - 1.,
-		0.0f,
+	vec4 temp = vec4(
+		2. * (uScale * aPos.x + uTranslateX) - 1.,
+		2. * (uScale * aPos.y + uTranslateY) - 1.,
+        -1.0,
 		1.0f
 	);
+    pos = aPos;
+    gl_Position = temp;
 }
 `),
 	frag: btoa(`
@@ -70,9 +77,71 @@ void main(){
 precision mediump float;
 
 in float attrib;
+in vec2 pos;
 
+uniform float uTranslateX;
+uniform float uTranslateY;
+uniform float uScale;
+uniform int pass;
+uniform sampler2D screenTexture;
+
+vec4 blur13(sampler2D image, vec2 uv, vec2 resolution, vec2 direction) {
+  vec4 color = vec4(0.0);
+  vec2 off1 = vec2(1.411764705882353) * direction;
+  vec2 off2 = vec2(3.2941176470588234) * direction;
+  vec2 off3 = vec2(5.176470588235294) * direction;
+  color += texture2D(image, uv) * 0.1964825501511404;
+  color += texture2D(image, uv + (off1 / resolution)) * 0.2969069646728344;
+  color += texture2D(image, uv - (off1 / resolution)) * 0.2969069646728344;
+  color += texture2D(image, uv + (off2 / resolution)) * 0.09447039785044732;
+  color += texture2D(image, uv - (off2 / resolution)) * 0.09447039785044732;
+  color += texture2D(image, uv + (off3 / resolution)) * 0.010381362401148057;
+  color += texture2D(image, uv - (off3 / resolution)) * 0.010381362401148057;
+  return color;
+}
+
+const float offset = 1.0 / 128.0;
 void main(){
-	gl_FragColor = vec4(1.0f, 0.0f, 0.0f, attrib/10.0);
+    if (pass == 1) {
+        gl_FragColor = vec4(1.0, 1.0f, 1.0f, 0.8);
+    } else  {
+
+	
+		vec2 offsets[9] = vec2[](
+			vec2(-offset,  offset), // top-left
+			vec2( 0.0f,    offset), // top-center
+			vec2( offset,  offset), // top-right
+			vec2(-offset,  0.0f),   // center-left
+			vec2( 0.0f,    0.0f),   // center-center
+			vec2( offset,  0.0f),   // center-right
+			vec2(-offset, -offset), // bottom-left
+			vec2( 0.0f,   -offset), // bottom-center
+			vec2( offset, -offset)  // bottom-right    
+		);
+
+        float kernel[9] = float[](
+            1.0 / 16, 2.0 / 16, 1.0 / 16,
+            2.0 / 16, 4.0 / 16, 2.0 / 16,
+            1.0 / 16, 2.0 / 16, 1.0 / 16  
+        );
+
+		vec2 texCoords = pos * uScale;
+        float radius = 1.0;
+
+        vec3 sampleTex[9];
+        for(int i = 0; i < 9; i++)
+        {
+            //sampleTex[i] = vec3(texture(screenTexture, texCoords.st + offsets[i]));
+            sampleTex[i] = blur13(screenTexture, texCoords, vec2(256, 256), vec2(radius, 0)).xyz;
+        }
+        vec3 col = vec3(0.0);
+        for(int i = 0; i < 9; i++)
+            col += sampleTex[i] * kernel[i];
+        
+        vec3 mix = attrib * vec3(1.0, 0.0, 0.0) + (1.0 - attrib) * col;
+        gl_FragColor = vec4(mix, attrib * 2.0);
+
+    }
 }
 `),
 }).addTo(map);
