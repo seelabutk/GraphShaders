@@ -136,7 +136,7 @@ void render_display(struct render_ctx *ctx) {
     // second pass
     glBindFramebuffer(GL_FRAMEBUFFER, 0);  
 
-	glClear(GL_COLOR_BUFFER_BIT);	//remember GL_DEPTH_BUFFER_BIT too
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	//remember GL_DEPTH_BUFFER_BIT too
 
 	glUniform1i(ctx->uPass, 2);
 	glBindVertexArray(ctx->VAO);
