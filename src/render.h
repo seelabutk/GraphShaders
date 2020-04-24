@@ -6,6 +6,7 @@
 
 #include "fg.h"
 #include "glad/glad.h"
+#include "GL/osmesa.h"
 
 struct render_ctx {
 	struct graph *g;
@@ -16,13 +17,18 @@ struct render_ctx {
 	unsigned int numVertices;
 	unsigned int numIndeces;
 	
+	int pbufferWidth;
+	int pbufferHeight;
+	char *imageBuffer;
 	unsigned int shaderProgram, VAO, VBO, EBO;
-	GLint uTranslateX;
-	GLint uTranslateY;
-	GLint uScale;
+	OSMesaContext context;	
+	
+	int uTranslateX;
+	int uTranslateY;
+	int uScale;
 };
 
-int render_preinit(void);
+int render_preinit(struct render_ctx *ctx);
 
 int render_main(int argc, char **argv);
 

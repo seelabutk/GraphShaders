@@ -24,6 +24,8 @@
    integrity="sha512-/Nsx9X4HebavoBvEBuyp3I7od5tA0UzAxs+j83KgC8PU0kgB4XiK4Lfe4y4cgBtaRJQEIFCW+oC506aPT2L1zw=="
    crossorigin=""></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet-easybutton@2/src/easy-button.js"></script>
+
+<script src="static/shaders.js"></script>
 <script>
 const map = L.map('map', {
         crs: L.CRS.Simple,
@@ -33,47 +35,10 @@ const map = L.map('map', {
         fadeAnimation: false
 });
 
-let tiles = L.tileLayer('tile/{dataset},vert,base64:{vert},frag,base64:{frag}/{z}/{x}/{y}', {
+let tiles = L.tileLayer('tile/{dataset},vert,base64:{vert},frag,base64:{frag}-{z}-{x}-{y}', {
         tileSize: 256,
-	dataset: window.location.hash.substring(1) || 'knit-graph',
-	vert: btoa(`
-#version 130
-
-precision mediump float;
-
-in float x;
-in float y;
-in float date;
-in float nmaintainers;
-in float cve;
-
-uniform float uTranslateX;
-uniform float uTranslateY;
-uniform float uScale;
-out float attrib;
-
-void main(){
-	
-	attrib=nmaintainers;
-
-	gl_Position = vec4(
-		2. * (uScale * x + uTranslateX) - 1.,
-		2. * (uScale * y + uTranslateY) - 1.,
-		0.0f,
-		1.0f
-	);
-}
-`),
-	frag: btoa(`
-#version 130
-	
-precision mediump float;
-
-in float attrib;
-
-void main(){
-	gl_FragColor = vec4(1.0f, 0.0f, 0.0f, attrib/10.0);
-}
-`),
+	dataset: window.location.hash.substring(1) || 'as-Skitter',
+	vert: btoa(vertexShader),
+	frag: btoa(fragmentShader),
 }).addTo(map);
 </script>

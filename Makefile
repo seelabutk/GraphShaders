@@ -21,17 +21,14 @@ endif
 zorder_CFLAGS := $(shell pkg-config --cflags zorder)
 zorder_LDLIBS := $(shell pkg-config --libs zorder)
 
-ifneq ($(shell pkg-config --exists --print-errors egl; echo $$?),0)
-  $(error Missing Package: egl)
-endif
-egl_CFLAGS := $(shell pkg-config --cflags egl)
-egl_LDLIBS := $(shell pkg-config --libs egl)
-
 m_CFLAGS :=
 m_LDLIBS := -lm
 
 dl_CFLAGS :=
-dl_LDLIBS := -ldl
+dl_LDLIBS := -ldl -lOSMesa
+
+INC:=-I/opt/mesa/include
+LIB:=-L/opt/mesa/lib/x86_64-linux-gnu
 
 .PHONY: all
 all: build/server
@@ -43,10 +40,10 @@ build:
 	mkdir -p build
 
 build/%.o: src/%.c | build
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) $(LIB) $(INC) -c -o $@ $<
 
 build/%: build/%.o | build
-	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
+	$(CC) $(CFLAGS) $(LIB) $(INC) -o $@ $^ $(LDLIBS) -Wl,-rpath=/opt/mesa/lib/x86_64-linux-gnu
 
 src/shaders/%.h: src/shaders/%
 	f=$<; \
@@ -68,6 +65,7 @@ build/server.o: src/shaders/default.frag.h
 
 build/glad.o: CFLAGS += $(dl_CFLAGS)
 build/glad.o: src/glad/glad.h
+build/glad_egl.o: src/glad/glad_egl.h
 
 build/server: CFLAGS += $(libmicrohttpd_CFLAGS) $(zlib_CFLAGS)
 build/server: LDLIBS += $(libmicrohttpd_LDLIBS) $(zlib_LDLIBS) $(egl_LDLIBS) $(dl_LDLIBS) $(m_LDLIBS) $(zorder_LDLIBS)

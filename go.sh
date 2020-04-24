@@ -3,13 +3,13 @@
 tag=fg_$USER:latest
 name=fg_$USER
 target=
-data=
+data='/mnt/seenas2/data/snap'
 registry= #accona.eecs.utk.edu:5000
 xauth=
 entrypoint=
 ipc=
 net=host
-user=1
+user=
 cwd=1
 interactive=1
 script=
@@ -25,7 +25,7 @@ build() {
 		-t $tag .
 }
 
-run() {
+run() {	
 	if [ -n "$xauth" ]; then
 		rm -f $xauth
 		xauth nlist $DISPLAY | sed -e 's/^..../ffff/' | xauth -f $xauth nmerge -

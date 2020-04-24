@@ -4,7 +4,8 @@
 
 precision mediump float;
 
-layout(location = 0) in vec2 aPos;
+layout(location = 0) in float aPos;
+
 uniform float uTranslateX;
 uniform float uTranslateY;
 uniform float uScale;

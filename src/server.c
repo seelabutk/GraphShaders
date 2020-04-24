@@ -25,15 +25,16 @@
 
 
 struct MHD_Response *
-MAB_create_response_from_file(char *filename) {
+MAB_create_response_from_file(const char *filename) {
 	FILE *f;
 	size_t size, actual;
 	char *data;
-	
+
 	f = fopen(filename, "rb");
 	if (f == NULL) {
 		fprintf(stderr, "could not open %s\n", filename);
-		exit(1);
+		//exit(1);
+		return NULL;
 	}
 	fseek(f, 0, SEEK_END);
 	size = ftell(f);
@@ -43,7 +44,10 @@ MAB_create_response_from_file(char *filename) {
 	actual = fread(data, 1, size, f);
 	if (actual != size) {
 		fprintf(stderr, "didn't read all of %s\n", filename);
-		exit(1);
+		//exit(1);
+		free(data);
+		fclose(f);
+		return NULL;
 	}
 	fclose(f);
 	
@@ -83,6 +87,10 @@ ANSWER(Index) {
 	int rc;
 
 	index_response = MAB_create_response_from_file("static/index.html");
+	if(index_response == NULL){
+		printf("Could not read file static/index.html\n");
+		exit(1);
+	}
 	rc = MHD_queue_response(conn, MHD_HTTP_OK, index_response);
 	MHD_destroy_response(index_response);
 	return rc;
@@ -94,6 +102,22 @@ ANSWER(Error) {
 	return MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);	
 }
 
+ANSWER(Static) {
+	struct MHD_Response *response;
+	int rc;
+
+	const char *URL = url+1;
+
+	response = MAB_create_response_from_file(URL);
+	if(response == NULL){
+		rc = Error(cls, conn, url, method, version, data, size, con_cls);
+	}else{
+		rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
+		MHD_destroy_response(response);
+	}
+	return rc;
+}
+
 static char *last_graph_name = NULL;
 static char *last_vert = NULL;
 static char *last_frag = NULL;
@@ -102,15 +126,19 @@ static ZOrderStruct *last_z_zo = NULL;
 static int last_res = -1;
 static struct render_ctx *render_ctx = NULL;
 static ZOrderStruct *last_res_zo = NULL;
+static int pbufferWidth = 256;
+static int pbufferHeight = 256;
 ANSWER(Tile) {
 	int x;
 	int y;
 	int z;
 	char *dataset, *options;
 	int rc;
-	if (5 != (rc = sscanf(url, "/tile/%m[^/,]%m[^/]/%d/%d/%d", &dataset, &options, &z, &x, &y))) {
+	if (5 != (rc = sscanf(url, "/tile/%m[^/,]%m[^-]-%d-%d-%d", &dataset, &options, &z, &x, &y))) {
 		fprintf(stderr, "rc: %d\n", rc);
+		fprintf(stderr, "options: %s\n", options);
 		return MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);	
+		exit(1);
 	}
 
 	char *s;
@@ -169,8 +197,11 @@ ANSWER(Tile) {
 
 	if (!render_ctx) {
 		fprintf(stderr, "First initialization of OpenGL\n");
-		render_preinit();
 		render_ctx = malloc(sizeof(*render_ctx));
+		render_ctx->pbufferWidth = pbufferWidth;
+		render_ctx->pbufferHeight = pbufferHeight;
+		
+		render_preinit(render_ctx);
 	}
 
 	int max_xy = (int)pow(2, z);
@@ -293,6 +324,7 @@ struct {
 } routes[] = {
 	{ NULL, NULL, 0, Error },
 	{ "GET", "/", 1, Index },
+	{ "GET", "/static/", 0, Static },
 	{ "GET", "/tile/", 0, Tile },
 };
 
@@ -313,6 +345,10 @@ ANSWER(answer) {
 static void
 initialize(void) {
 	error_response = MAB_create_response_from_file("static/error.html");
+	if(error_response == NULL){
+		printf("Could not read file static/error.html");
+		exit(1);
+	}
 }
 
 int

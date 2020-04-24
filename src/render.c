@@ -6,71 +6,36 @@
 #include "fg.h"
 #include <zorder.h> 
 
+#include "GL/osmesa.h"
 #include "glad/glad.h"
-#include <EGL/egl.h>
-#include <EGL/eglext.h>
 
 static void initOpenGL(struct render_ctx *ctx, const char *VSS, const char *FSS);
 static void initGraph(struct render_ctx *ctx, int*, int);
-static const char *eglGetErrorString(EGLint);
 
-int render_preinit(void) {
-	static EGLint const configAttribs[] = {
-		EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-		EGL_BLUE_SIZE, 8,
-		EGL_GREEN_SIZE, 8,
-		EGL_RED_SIZE, 8,
-		EGL_DEPTH_SIZE, 8,
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
-		EGL_NONE
-	};
+int render_preinit(struct render_ctx *ctx) {
 
-	int pbufferWidth = 256;
-	int pbufferHeight = 256;
+    	ctx->context = OSMesaCreateContextExt(OSMESA_RGBA, 16, 0, 0, NULL);
+    	if(!ctx->context){
+       		fprintf(stderr, "could not init OSMesa context\n");
+   		exit(1);
+    	}
 
-	EGLint pbufferAttribs[] = {
-		EGL_WIDTH, pbufferWidth,
-		EGL_HEIGHT, pbufferHeight,
-		EGL_NONE,
-	};
+    	unsigned int imageBytes = ctx->pbufferWidth*ctx->pbufferHeight*4*sizeof(GLubyte);
+    	ctx->imageBuffer = (GLubyte *)malloc(imageBytes);
+    	if(!ctx->imageBuffer){
+        	fprintf(stderr, "could not allocate image buffer\n");
+    		exit(1);
+    	}
 
-	const char *extString = (const char *)eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
+    	int ret = OSMesaMakeCurrent(ctx->context, ctx->imageBuffer, GL_UNSIGNED_BYTE, ctx->pbufferWidth, ctx->pbufferHeight);
+    	if(!ret){
+        	fprintf(stderr, "could not bind to image buffer\n");
+        	exit(1);
+    	}
 
-	// 1. Initialize EGL
-	EGLDisplay eglDpy = eglGetPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
-	if (eglDpy == EGL_NO_DISPLAY) {
-		printf("eglGetDisplay no display\n");
-		return 1;
-	}
 
-	EGLint major, minor;
-	if (eglInitialize(eglDpy, &major, &minor) == EGL_FALSE) {
-		printf("eglInitialize failed: %s\n", eglGetErrorString(eglGetError()));
-		return 1;
-	}
-	printf("got egl version %d %d\n", major, minor);
-
-	// 2. Select an appropriate configuration
-	EGLint numConfigs;
-	EGLConfig eglCfg;
-
-	eglChooseConfig(eglDpy, configAttribs, &eglCfg, 1, &numConfigs);
-
-	// 3. Create a surface
-	EGLSurface eglSurf = eglCreatePbufferSurface(eglDpy, eglCfg, pbufferAttribs);
-
-	// 4. Bind the API
-	eglBindAPI(EGL_OPENGL_API);
-
-	// 5. Create a context and make it current
-	EGLContext eglCtx = eglCreateContext(eglDpy, eglCfg, EGL_NO_CONTEXT, NULL);
-
-	eglMakeCurrent(eglDpy, eglSurf, eglSurf, eglCtx);
-
-	// from now on use your OpenGL context
-
-	if (!gladLoadGL()) {
-		printf("gladLoadGL failed\n");
+	if (!gladLoadGL()){
+		printf("gladLoadEGL failed\n");
 		exit(1);
 	}
 	printf("OpenGL %d.%d\n", GLVersion.major, GLVersion.minor);
@@ -103,7 +68,7 @@ void render_display(struct render_ctx *ctx) {
 }
 
 void render_copy_to_buffer(struct render_ctx *ctx, size_t *size, void **pixels) {
-	size_t expsize = 256 * 256 * 3 * sizeof(uint8_t);
+	size_t expsize = ctx->pbufferWidth * ctx->pbufferHeight * 3 * sizeof(uint8_t);
 
 	if (*pixels == NULL) {
 		*size = expsize;
@@ -114,7 +79,7 @@ void render_copy_to_buffer(struct render_ctx *ctx, size_t *size, void **pixels) 
 	}
 
 	glReadPixels(0, 0,
-	             256, 256,
+	             ctx->pbufferWidth, ctx->pbufferHeight,
 	             GL_RGB,
 	             GL_UNSIGNED_BYTE,
 	             *pixels);
@@ -226,28 +191,3 @@ static void initGraph(struct render_ctx *ctx, int *ZorderIndeces, int sz){
 	}
 
 }
-
-#define CASE_STR( value ) case value: return #value; 
-static const char* eglGetErrorString( EGLint error )
-{
-    switch( error )
-    {
-    CASE_STR( EGL_SUCCESS             )
-    CASE_STR( EGL_NOT_INITIALIZED     )
-    CASE_STR( EGL_BAD_ACCESS          )
-    CASE_STR( EGL_BAD_ALLOC           )
-    CASE_STR( EGL_BAD_ATTRIBUTE       )
-    CASE_STR( EGL_BAD_CONTEXT         )
-    CASE_STR( EGL_BAD_CONFIG          )
-    CASE_STR( EGL_BAD_CURRENT_SURFACE )
-    CASE_STR( EGL_BAD_DISPLAY         )
-    CASE_STR( EGL_BAD_SURFACE         )
-    CASE_STR( EGL_BAD_MATCH           )
-    CASE_STR( EGL_BAD_PARAMETER       )
-    CASE_STR( EGL_BAD_NATIVE_PIXMAP   )
-    CASE_STR( EGL_BAD_NATIVE_WINDOW   )
-    CASE_STR( EGL_CONTEXT_LOST        )
-    default: return "Unknown";
-    }
-}
-#undef CASE_STR
