@@ -26,6 +26,8 @@ struct render_ctx {
 	int uTranslateX;
 	int uTranslateY;
 	int uScale;
+
+	int uPass;
 };
 
 int render_preinit(struct render_ctx *ctx);

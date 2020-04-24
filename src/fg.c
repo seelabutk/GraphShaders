@@ -54,7 +54,7 @@ load(char *node_filename, char *edge_filename, struct graph *graph) {
 	ssize_t nread;
 	int numattrs = 0;
 	char *skips;
-	int i,j;
+	int i,j,n;
 	enum { ORDER_UNKNOWN = 0, ORDER_X_Y_ID, ORDER_SOURCE_TARGET } order = ORDER_UNKNOWN;
 	
 	graph->node_filename = node_filename;
