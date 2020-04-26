@@ -54,7 +54,7 @@ load(char *node_filename, char *edge_filename, struct graph *graph) {
 	ssize_t nread;
 	int numattrs = 0;
 	char *skips;
-	int i,j,n;
+	int i,j;
 	enum { ORDER_UNKNOWN = 0, ORDER_X_Y_ID, ORDER_SOURCE_TARGET } order = ORDER_UNKNOWN;
 	
 	graph->node_filename = node_filename;
@@ -165,26 +165,23 @@ load(char *node_filename, char *edge_filename, struct graph *graph) {
 	assert(f);
 	line = NULL;
 	size = 0;
-
+	
 	nread = getline(&line, &size, f);
 	if (strcmp(line, "src,dst\n") == 0) order = ORDER_SOURCE_TARGET;
-	else	fprintf(stderr, "Unknown header line: \"%s\"\n", line);
+	else {
+		fprintf(stderr, "Unknown header line: \"%s\"\n", line);
+		exit(1);
+	}
 
-	while ((nread = getline(&line, &size, f)) > 0) {
-		if (n++ == 0) {
-			if (strcmp(line, "source,target\n") == 0) order = ORDER_SOURCE_TARGET;
-			else {
-				fprintf(stderr, "Unknown header line: \"%s\"\n", line);
-			}
-		} else if (order == ORDER_SOURCE_TARGET) {
-			sscanf(line, "%"SCNu16",%"SCNu16,
-			       graph->es + graph->ecount,
-			       graph->et + graph->ecount);
-			if (++graph->ecount == graph->esize) {
-				graph->esize *= 2;
-				graph->es = realloc(graph->es, graph->esize * sizeof(*graph->es));
-				graph->et = realloc(graph->et, graph->esize * sizeof(*graph->et));
-			}
+	while((nread = getline(&line, &size, f)) > 0) {
+		sscanf(line, "%"SCNu16",%"SCNu16,
+		       graph->es + graph->ecount,
+		       graph->et + graph->ecount);
+		
+		if(++graph->ecount == graph->esize){
+			graph->esize *= 2;
+			graph->es = realloc(graph->es, graph->esize * sizeof(*graph->es));
+			graph->et = realloc(graph->et, graph->esize * sizeof(*graph->et));
 		}
 	}
 

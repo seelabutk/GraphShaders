@@ -30,7 +30,8 @@ run() {
 		rm -f $xauth
 		xauth nlist $DISPLAY | sed -e 's/^..../ffff/' | xauth -f $xauth nmerge -
 	fi
-	docker run --rm \
+	docker run --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
+		--rm \
 		${interactive:+-it} \
 		${script:+-a stdin -a stdout -a stderr --sig-proxy=true} \
 		${ipc:+--ipc=$ipc} \
