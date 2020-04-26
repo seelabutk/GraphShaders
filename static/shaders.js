@@ -1,6 +1,6 @@
 
 let vertexShader = `
-#version 130
+#version 330
 
 precision mediump float;
 
@@ -31,7 +31,7 @@ void main(){
 
 
 let fragmentShader = `
-#version 130
+#version 330
 	
 precision mediump float;
 

@@ -230,7 +230,7 @@ ANSWER(Tile) {
 	    last_vert == NULL || strcmp(last_vert, opt_vert) != 0 ||
 	    last_frag == NULL || strcmp(last_frag, opt_frag) != 0 ||
 	    last_res != opt_res) {
-		fprintf(stderr, "Loading dat dataset '%s'\n", dataset);
+		fprintf(stderr, "Loading dataset '%s'\n", dataset);
 		char nodespath[PATH_MAX], edgespath[PATH_MAX];
 		snprintf(nodespath, PATH_MAX, "data/%s/nodes.csv", dataset);
 		snprintf(edgespath, PATH_MAX, "data/%s/edges.csv", dataset);
@@ -269,7 +269,7 @@ ANSWER(Tile) {
 
 	buffer = NULL;
 	bufferlen = 0;
-
+	
 	render_focus_tile(render_ctx, z, x, y);
 	render_display(render_ctx);
 	render_copy_to_buffer(render_ctx, &bufferlen, &buffer);

@@ -6,39 +6,42 @@
 #include "fg.h"
 #include <zorder.h> 
 
-#include "GL/osmesa.h"
-#include "glad/glad.h"
+//#include "GL/osmesa.h"
+//#include "glad/glad.h"
+
+#include <glad/glad.h>
+#define GLAPIENTRY APIENTRY
+#include <GL/osmesa.h>
 
 static void initOpenGL(struct render_ctx *ctx, const char *VSS, const char *FSS);
 static void initGraph(struct render_ctx *ctx, int*, int);
 
 int render_preinit(struct render_ctx *ctx) {
-
+	
     	ctx->context = OSMesaCreateContextExt(OSMESA_RGBA, 16, 0, 0, NULL);
     	if(!ctx->context){
        		fprintf(stderr, "could not init OSMesa context\n");
    		exit(1);
     	}
-
+	
     	unsigned int imageBytes = ctx->pbufferWidth*ctx->pbufferHeight*4*sizeof(GLubyte);
     	ctx->imageBuffer = (GLubyte *)malloc(imageBytes);
     	if(!ctx->imageBuffer){
         	fprintf(stderr, "could not allocate image buffer\n");
     		exit(1);
     	}
-
-    	int ret = OSMesaMakeCurrent(ctx->context, ctx->imageBuffer, GL_UNSIGNED_BYTE, ctx->pbufferWidth, ctx->pbufferHeight);
-    	if(!ret){
+	
+	int ret = OSMesaMakeCurrent(ctx->context, ctx->imageBuffer, GL_UNSIGNED_BYTE, ctx->pbufferWidth, ctx->pbufferHeight);
+	if(!ret){
         	fprintf(stderr, "could not bind to image buffer\n");
         	exit(1);
     	}
 
-
-	if (!gladLoadGL()){
-		printf("gladLoadEGL failed\n");
+	if (!gladLoadGLLoader((GLADloadproc)OSMesaGetProcAddress)){
+		printf("gladLoadGL failed\n");
 		exit(1);
 	}
-	printf("OpenGL %d.%d\n", GLVersion.major, GLVersion.minor);
+	printf("OpenGL %s\n", glGetString(GL_VERSION));
 }
 
 void
@@ -64,11 +67,14 @@ void render_first_pass(struct render_ctx *ctx) {
 }
 
 void render_display(struct render_ctx *ctx) {
-    unsigned int framebuffer; 
+    /*unsigned int framebuffer; 
     glGenFramebuffers(1, &framebuffer); 
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer); 
-
-    unsigned int texture;
+   
+    fprintf(stderr, "generated framebuffer\n");	
+    */
+	
+    /*unsigned int texture;
     glGenTextures(1, &texture); 
     glBindTexture(GL_TEXTURE_2D, texture); 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 256, 256, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL); 
@@ -77,37 +83,43 @@ void render_display(struct render_ctx *ctx) {
     glBindTexture(GL_TEXTURE_2D, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);  
 
-    unsigned int rbo;
+    fprintf(stderr, "created texture\n");
+    */
+
+    /*unsigned int rbo;
     glGenRenderbuffers(1, &rbo);
     glBindRenderbuffer(GL_RENDERBUFFER, rbo); 
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, 256, 256);  
     glBindRenderbuffer(GL_RENDERBUFFER, 0);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
 
-    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    fprintf(stderr, "created renderbuffer\n");
+    */
+
+
+    /*if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         printf("ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
+    */
 
     // first pass
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);  
-
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	//remember GL_DEPTH_BUFFER_BIT too
-	
-    ctx->uPass = glGetUniformLocation(ctx->shaderProgram, "pass");
-	glUniform1i(ctx->uPass, 1);
-	glBindVertexArray(ctx->VAO);
-	glDrawElements(GL_LINES, ctx->numIndeces, GL_UNSIGNED_INT, 0);
-	//glBindVertexArray(0);
+    //glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);  
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	
+    //ctx->uPass = glGetUniformLocation(ctx->shaderProgram, "pass");
+    //glUniform1i(ctx->uPass, 1);
+    glBindVertexArray(ctx->VAO);
+    glDrawElements(GL_LINES, ctx->numIndeces, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
 
     // second pass
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);  
-
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	//remember GL_DEPTH_BUFFER_BIT too
-
-	glUniform1i(ctx->uPass, 2);
-	glBindVertexArray(ctx->VAO);
+    /*glBindFramebuffer(GL_FRAMEBUFFER, 0);  
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glUniform1i(ctx->uPass, 2);
+    //glBindVertexArray(ctx->VAO);
     glBindTexture(GL_TEXTURE_2D, texture);
-	glDrawElements(GL_LINES, ctx->numIndeces, GL_UNSIGNED_INT, 0);
-	glBindVertexArray(0);
+    glDrawElements(GL_LINES, ctx->numIndeces, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+
+    fprintf(stderr, "second pass\n");*/
 }
 
 void render_copy_to_buffer(struct render_ctx *ctx, size_t *size, void **pixels) {
@@ -120,12 +132,12 @@ void render_copy_to_buffer(struct render_ctx *ctx, size_t *size, void **pixels) 
 		*size = expsize;
 		*pixels = realloc(*pixels, *size);
 	}
-
 	glReadPixels(0, 0,
 	             ctx->pbufferWidth, ctx->pbufferHeight,
 	             GL_RGB,
 	             GL_UNSIGNED_BYTE,
 	             *pixels);
+
 }
 
 static void initOpenGL(struct render_ctx *ctx, const char *VSS, const char *FSS) {

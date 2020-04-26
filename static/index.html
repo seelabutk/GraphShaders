@@ -37,10 +37,9 @@ const map = L.map('map', {
 
 let tiles = L.tileLayer('tile/{dataset},vert,base64:{vert},frag,base64:{frag}-{z}-{x}-{y}', {
         tileSize: 256,
-	dataset: window.location.hash.substring(1) || 'as-Skitter',
-	vert: btoa(vertexShader),
-	frag: btoa(fragmentShader)
-	/*dataset: window.location.hash.substring(1) || 'knit-graph',
+	//vert: btoa(vertexShader),
+	//frag: btoa(fragmentShader)
+	dataset: window.location.hash.substring(1) || 'knit-graph',
 	vert: btoa(`
 #version 130
 
@@ -51,6 +50,8 @@ in float y;
 in float date;
 in float nmaintainers;
 in float cve;
+
+uniform int pass;//?
 
 uniform float uTranslateX;
 uniform float uTranslateY;
@@ -63,7 +64,7 @@ float rand(vec2 co){
 }
 
 void main(){
-	
+	vec2 aPos = vec2(x,y);	
 	attrib=rand(aPos) * 0.5;
 
 	vec4 temp = vec4(
@@ -149,6 +150,6 @@ void main(){
     }
 }
 `),
-*/
+
 }).addTo(map);
 </script>
