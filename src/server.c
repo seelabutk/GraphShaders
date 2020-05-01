@@ -23,6 +23,12 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+double get_time(){
+	struct timeval t;
+	struct timezone tzp;
+	gettimeofday(&t, &tzp);
+	return t.tv_sec + t.tv_usec*1e-6;
+}
 
 struct MHD_Response *
 MAB_create_response_from_file(const char *filename) {
@@ -270,10 +276,17 @@ ANSWER(Tile) {
 	buffer = NULL;
 	bufferlen = 0;
 	
+	double start = get_time();
 	render_focus_tile(render_ctx, z, x, y);
 	render_display(render_ctx);
 	render_copy_to_buffer(render_ctx, &bufferlen, &buffer);
+	double end = get_time();
+	double time = end - start;	
 
+	FILE *fptr = fopen("log.txt", "a");
+	fprintf(fptr, "%d,%d,%d,%f\n", z, x, y, time);	
+	fclose(fptr);	
+	
 	void *jpg;
 	size_t jpglen;
 	size_t jpgsize;
