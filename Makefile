@@ -37,9 +37,15 @@ all: build/server
 clean:
 
 build:
-	mkdir -p build
+	mkdir -p $@
+
+build/MAB: | build
+	mkdir -p $@
 
 build/%.o: src/%.c | build
+	$(CC) $(CFLAGS) $(LIB) $(INC) -c -o $@ $<
+
+build/MAB/%.o: src/MAB/%.c | build/MAB
 	$(CC) $(CFLAGS) $(LIB) $(INC) -c -o $@ $<
 
 build/%: build/%.o | build
@@ -66,9 +72,15 @@ build/server.o: src/shaders/default.frag.h
 build/glad.o: CFLAGS += $(dl_CFLAGS)
 build/glad.o: src/glad/glad.h
 
+build/MAB/log.o: src/MAB/log.h
+
 build/server: CFLAGS += $(libmicrohttpd_CFLAGS) $(zlib_CFLAGS)
 build/server: LDLIBS += $(libmicrohttpd_LDLIBS) $(zlib_LDLIBS) $(egl_LDLIBS) $(dl_LDLIBS) $(m_LDLIBS) $(zorder_LDLIBS)
 build/server: build/fg.o
 build/server: build/render.o
 build/server: build/glad.o
 build/server: build/base64.o
+
+build/server: LDLIBS += -luuid
+build/server: LDFLAGS += -pthread
+build/server: build/MAB/log.o

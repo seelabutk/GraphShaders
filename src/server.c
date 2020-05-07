@@ -17,6 +17,7 @@
 #include "fg.h"
 #include "render.h"
 #include "base64.h"
+#include "MAB/log.h"
 #include "shaders/default.frag.h"
 #include "shaders/default.vert.h"
 
@@ -134,18 +135,32 @@ static struct render_ctx *render_ctx = NULL;
 static ZOrderStruct *last_res_zo = NULL;
 static int pbufferWidth = 256;
 static int pbufferHeight = 256;
-ANSWER(Tile) {
+ANSWER(Tile) { 
+	int rc;
+
+	const char *info = MHD_lookup_connection_value(conn, MHD_HEADER_KIND, "X-MAB-Log-Info");
+	if (info != NULL) {
+		fprintf(stderr, "info = '%s'\n", info);
+		mabLogContinue(info);
+	}
+
+	MAB_WRAP("answer tile request") {
 	int x;
 	int y;
 	int z;
 	char *dataset, *options;
-	int rc;
 	if (5 != (rc = sscanf(url, "/tile/%m[^/,]%m[^-]-%d-%d-%d", &dataset, &options, &z, &x, &y))) {
 		fprintf(stderr, "rc: %d\n", rc);
 		fprintf(stderr, "options: %s\n", options);
-		return MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);	
-		exit(1);
+		rc = MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);	
+		goto end;
 	}
+
+	mabLogMessage("x", "%d", x);
+	mabLogMessage("y", "%d", y);
+	mabLogMessage("z", "%d", z);
+	mabLogMessage("dataset", "%s", dataset);
+	mabLogMessage("options", "%s", options);
 
 	char *s;
 
@@ -201,24 +216,37 @@ ANSWER(Tile) {
 		if (done) break;
 	}
 
-	if (!render_ctx) {
+	mabLogMessage("opt_res", "%d", opt_res);
+	mabLogMessage("opt_rc_start", "%f", opt_rc_start);
+	mabLogMessage("opt_rc_end", "%f", opt_rc_end);
+
+	mabLogMessage("opt_vert length", "%d", strlen(opt_vert));
+	mabLogMessage("opt_frag length", "%d", strlen(opt_frag));
+
+	if (!render_ctx) MAB_WRAP("first initialization of OpenGL") {
 		fprintf(stderr, "First initialization of OpenGL\n");
 		render_ctx = malloc(sizeof(*render_ctx));
 		render_ctx->pbufferWidth = pbufferWidth;
 		render_ctx->pbufferHeight = pbufferHeight;
 		
 		render_preinit(render_ctx);
-	}
+	} else mabLogMessage("opengl already initialized");
 
 	int max_xy = (int)pow(2, z);
-	if (last_z != z) {
+	if (last_z != z) MAB_WRAP("recreate z-order indexing") {
+		mabLogMessage("max_xy", "%d", max_xy);
+		mabLogMessage("z", "%d", z);
+		mabLogMessage("last_z", "%d", last_z);
 		last_z_zo = zoInitZOrderIndexing(max_xy, max_xy, 0, ZORDER_LAYOUT);
 		last_z = z;
-	}
+	} else mabLogMessage("z-order indexing still valid");
 
 	if (0 <= x && x < max_xy && 0 <= y && y < max_xy) {
 		float z_rc_index = (zoGetIndex(last_z_zo, x, y, 0)) / (float)last_z_zo->zo_totalSize;
 		if (!(opt_rc_start <= z_rc_index && z_rc_index <= opt_rc_end)) {
+			mabLogAction("rc not in rr");
+			mabLogMessage("z_rc_index", "%f", z_rc_index);
+
 			fprintf(stderr, "Redirecting! ! (%f <= %f <= %f)\n", opt_rc_start, z_rc_index, opt_rc_end);
 			static void *data = "Found";
 			size_t size = strlen(data);
@@ -228,26 +256,36 @@ ANSWER(Tile) {
 			MHD_add_response_header(response, "Location", url);
 			int rc = MHD_queue_response(conn, 302, response);
 			MHD_destroy_response(response);
-			return rc;
-		}
-	}
+
+			mabLogEnd(NULL);
+			goto end;
+		} else mabLogMessage("rc is in rr", "rc=%f", z_rc_index);
+	} else mabLogMessage("tile is not in viewport");
 
 	if (last_graph_name == NULL || strcmp(last_graph_name, dataset) != 0 ||
 	    last_vert == NULL || strcmp(last_vert, opt_vert) != 0 ||
 	    last_frag == NULL || strcmp(last_frag, opt_frag) != 0 ||
-	    last_res != opt_res) {
+	    last_res != opt_res)
+	MAB_WRAP("loading new dataset") {
+		mabLogMessage("dataset", "%s", dataset);
 		fprintf(stderr, "Loading dataset '%s'\n", dataset);
 		char nodespath[PATH_MAX], edgespath[PATH_MAX];
 		snprintf(nodespath, PATH_MAX, "data/%s/nodes.csv", dataset);
 		snprintf(edgespath, PATH_MAX, "data/%s/edges.csv", dataset);
 
 		struct graph *graph;
-		graph = malloc(sizeof(*graph));
-		load(nodespath, edgespath, graph);
+		MAB_WRAP("loading data") {
+			graph = malloc(sizeof(*graph));
+			load(nodespath, edgespath, graph);
+		}
 
-		render_init(render_ctx, graph, NULL, 0, opt_vert, opt_frag);
+		MAB_WRAP("moving data to opengl") {
+			render_init(render_ctx, graph, NULL, 0, opt_vert, opt_frag);
+		}
 
-		zoInitZOrderIndexing(opt_res, opt_res, 0, ZORDER_LAYOUT);
+		MAB_WRAP("initializing z-order index") {
+			zoInitZOrderIndexing(opt_res, opt_res, 0, ZORDER_LAYOUT);
+		}
 
 		if (last_graph_name) free(last_graph_name);
 		last_graph_name = strdup(dataset);
@@ -269,23 +307,18 @@ ANSWER(Tile) {
 	void *output;
 	size_t outputlen;
 
-	{
+	MAB_WRAP("render") {
 	void *buffer;
 	size_t bufferlen;
 
 	buffer = NULL;
 	bufferlen = 0;
 	
-	double start = get_time();
-	render_focus_tile(render_ctx, z, x, y);
-	render_display(render_ctx);
-	render_copy_to_buffer(render_ctx, &bufferlen, &buffer);
-	double end = get_time();
-	double time = end - start;	
-
-	FILE *fptr = fopen("log.txt", "a");
-	fprintf(fptr, "%d,%d,%d,%f\n", z, x, y, time);	
-	fclose(fptr);	
+	MAB_WRAP("actual render") {
+		render_focus_tile(render_ctx, z, x, y);
+		render_display(render_ctx);
+		render_copy_to_buffer(render_ctx, &bufferlen, &buffer);
+	}
 	
 	void *jpg;
 	size_t jpglen;
@@ -304,14 +337,15 @@ ANSWER(Tile) {
 		jpglen += size;
 	}
 
-	(void)stbi_write_jpg_to_func(mywriter, NULL, 256, 256, 3, buffer, 95);
+	MAB_WRAP("encode as jpeg") {
+		(void)stbi_write_jpg_to_func(mywriter, NULL, 256, 256, 3, buffer, 95);
+	}
 
 	output = jpg;
 	outputlen = jpglen;
 	}
 	
 	struct MHD_Response *response;
-	int ret;
 	
 	//response = MAB_create_response_from_buffer_gzip(outputlen, output, MHD_RESPMEM_MUST_FREE, 6);
 	response = MHD_create_response_from_buffer(outputlen, output, MHD_RESPMEM_MUST_FREE);
@@ -323,10 +357,27 @@ ANSWER(Tile) {
 	MHD_add_response_header(response, "Content-Type", "image/jpg");
 	MHD_add_response_header(response, "Connection", "close");
 	
-	ret = MHD_queue_response(conn, MHD_HTTP_OK, response);
+	rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
 	MHD_destroy_response(response);
 	
-	return ret;
+end: ;
+	}
+	return rc;
+}
+
+ANSWER(Log) {
+	struct MHD_Response *response;
+	int rc;
+
+	char *message = strdup(url + strlen("/log/"));
+	size_t len = MHD_http_unescape(message);
+
+	mabLogDirectly(message);
+
+	response = MHD_create_response_from_buffer(len, message, MHD_RESPMEM_MUST_COPY);
+	rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
+	MHD_destroy_response(response);
+	return rc;
 }
 
 struct {
@@ -339,11 +390,12 @@ struct {
 	{ "GET", "/", 1, Index },
 	{ "GET", "/static/", 0, Static },
 	{ "GET", "/tile/", 0, Tile },
+	{ "POST", "/log/", 0, Log },
 };
 
 ANSWER(answer) {
 	size_t i;
-	
+
 	for (i=1; i<sizeof(routes)/sizeof(*routes); ++i) {
 		if (strcmp(method, routes[i].method) != 0) continue;
 		if (routes[i].exact && strcmp(url, routes[i].url) != 0) continue;
@@ -371,12 +423,20 @@ main(int argc, char **argv) {
 	struct MHD_Daemon *daemon;
 	struct sockaddr_in addr;
 
+	mabLogToFile("log.txt", "w");
+	MAB_WRAP("server main loop") {
+
 	opt_port = (s = getenv("FG_PORT")) ? atoi(s) : 8889;
 	opt_bind = (s = getenv("FG_BIND")) ? s : "0.0.0.0";
+
+	mabLogMessage("port", "%d", opt_port);
+	mabLogMessage("bind", "%s", opt_bind);
 	
 	fprintf(stderr, "Listening on %s:%d\n", opt_bind, opt_port);
 	
+	mabLogAction("initialize");
 	initialize();
+	mabLogEnd(NULL);
 
 	memset(&addr, sizeof(addr), 0);
 	addr.sin_family = AF_INET;
@@ -394,5 +454,6 @@ main(int argc, char **argv) {
 	fprintf(stderr, "stopping...\n");
 	
 	MHD_stop_daemon(daemon);
+	}
 	return 0;
 }

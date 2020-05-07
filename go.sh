@@ -8,14 +8,16 @@ registry= #accona.eecs.utk.edu:5000
 xauth=
 entrypoint=
 ipc=
-net=host
-user=
+net=
+user=1
 cwd=1
 interactive=1
 script=
-port=
+port=8889
 constraint=
 runtime=
+network=fg_$USER
+cap_add=SYS_PTRACE
 
 [ -f env.sh ] && . env.sh
 
@@ -41,6 +43,7 @@ run() {
 		${port:+-p $port:$port} \
 		${data:+-v $data:$data} \
 		${runtime:+--runtime $runtime} \
+		${cap_add:+--cap-add=$cap_add} \
 		${xauth:+-e DISPLAY -v /etc/group:/etc/group:ro -v /etc/passwd:/etc/passwd:ro -v /etc/shadow:/etc/shadow:ro -v /etc/sudoers.d:/etc/sudoers.d:ro -v $xauth:$xauth -e XAUTHORITY=$xauth} \
 		${entrypoint:+--entrypoint $entrypoint} \
 		$tag \
@@ -58,7 +61,7 @@ script() {
 network() {
 	docker network create \
 		--driver overlay \
-		${net:?}
+		${network:?}
 }
 
 push() {
@@ -70,11 +73,11 @@ create() {
 	docker service create \
 		${name:+--name $name} \
 		${net:+--network=$net} \
-		${cwd:+--mount type=bind,src=$PWD,dst=$PWD} \
+		${cwd:+--mount type=bind,src=$PWD,dst=$PWD -w $PWD} \
 		${data:+--mount type=bind,src=$data,dst=$data} \
 		${port:+-p $port:$port} \
 		${constraint:+--constraint $constraint} \
-		${registry:?}/$tag \
+		${registry:+$registry/}$tag \
 		"$@"
 }
 
@@ -86,21 +89,18 @@ logs() {
 	docker service logs $name "$@"
 }
 
-python() { python3 "$@"; }
-python3() { python3.7 "$@"; }
-python3.7() { run python3.7 -u "$@"; }
-
-server() {
-	python server.py \
-		${port:+--port=$port} \
-		--exe /opt/app/server \
+fg() {
+	run env \
+		FG_PORT=$port \
+		gdb -ex=r --args \
+		/app/build/server \
 		"$@"
 }
 
-create-server() {
-	run() { create "$@"; }
-	server \
-		${name:+--service-name=$name} \
+create-fg() {
+	create env \
+		FG_PORT=$port \
+		/app/build/server \
 		"$@"
 }
 

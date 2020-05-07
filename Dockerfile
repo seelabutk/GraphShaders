@@ -87,6 +87,15 @@ RUN apt-get update && \
 	vim \
     && rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && \
+    apt-get install -y \
+        uuid-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && \
+    apt-get install -y \
+        gdb \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY Makefile /app

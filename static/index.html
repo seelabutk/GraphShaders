@@ -6,6 +6,7 @@
    integrity="sha512-Rksm5RenBEKSKFjgI3a41vrjkw4EVPlJ3+OiI65vTjIdo9brlAacEuKOiQ5OFh7cOI1bkDwLqdLw3Zg0cRJAAQ=="
    crossorigin="">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-easybutton@2/src/easy-button.css">
+<link rel="stylesheet" href="https://unpkg.com/dat.gui@0.7.7/build/dat.gui.css">
 <style>
 * {
 	margin: auto;
@@ -17,6 +18,10 @@
 	width: 100vw; 
 	height: 100vh;
 }
+
+.dg.ac {
+	z-index: 9999999 !important;
+}
 </style>
 <body>
 <div id="map"></div>
@@ -24,21 +29,134 @@
    integrity="sha512-/Nsx9X4HebavoBvEBuyp3I7od5tA0UzAxs+j83KgC8PU0kgB4XiK4Lfe4y4cgBtaRJQEIFCW+oC506aPT2L1zw=="
    crossorigin=""></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet-easybutton@2/src/easy-button.js"></script>
+<script src="https://unpkg.com/dat.gui@0.7.7/build/dat.gui.min.js"></script>
 
 <script src="static/shaders.js"></script>
 <script>
+const gui = new dat.GUI();
+const params = {
+	selector: 0.5,
+};
+gui.add(params, 'selector', 0.0, 1.0).onChange(update);
+
+
+function uuidv4() {
+	return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+		(c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+	);
+}
+
+let _mabLogHost;
+function mabContext(task, levels, continued) {
+	this.task = task;
+	this.levels = levels;
+	this.continued = continued;
+}
+Object.assign(mabContext.prototype, {
+	action: mabLogAction,
+	message: mabLogMessage,
+	forward: mabLogForward,
+	end: mabLogEnd,
+	write: mabWrite,
+});
+
+
+function mabWrite(task, levels, now, name, value) {
+	const log = encodeURI(`${task}/${levels.join('/')}\t${now}\t${name}\t${value}`);
+	console.log({ log });
+	return fetch(`//${_mabLogHost}/log/${log}`, {
+		method: 'POST',
+	}).then((r) => r.text());
+}
+
+
+function mabLogToServer(host) {
+	_mabLogHost = host;
+	return new mabContext(null, [], false);
+}
+
+function mabLogAction(message) {
+	const now = Date.now() / 1000.0;
+	if (this.levels.length === 0) {
+		this.task = uuidv4();
+		this.levels = [1];
+	} else {
+		if (!this.continued) {
+			this.levels = [...this.levels];
+			this.levels[this.levels.length-1]++;
+		} else this.continued = false;
+		this.levels = [...this.levels, 1];
+	}
+
+	return this.write(this.task, this.levels, now, "@started", message);
+}
+
+function mabLogMessage(name, message) {
+	const now = Date.now() / 1000.0;
+	if (this.continued) console.error('after continuing, start an action, not a log message');
+	this.levels = [...this.levels];
+	this.levels[this.levels.length-1]++;
+
+	return this.write(this.task, this.levels, now, name, message);
+}
+
+function mabLogForward() {
+	this.levels = [...this.levels];
+	this.levels[this.levels.length-1]++;
+	return `${this.task}/${this.levels.join('/')}`;
+}
+
+function mabLogContinue(info) {
+	const task = info.substring(0, 36);
+	const levels = info.substring(37);
+	return new mabContext(task, levels.split('/').map((d) => +d), true);
+}
+
+function mabLogEnd(message='') {
+	const ret = this.message('@finished', message);
+	this.levels = [...this.levels];
+	this.levels.pop();
+	return ret;
+}
+
+
+const log = mabLogToServer(window.location.host);
+log.action('my action');
+log.message('my log', 'value');
+log.action('subaction');
+log.message('sub', 'new value');
+const info = log.forward();
+log.end('final value');
+log.end();
+
+const newlog = mabLogContinue(info);
+newlog.action('continued action');
+newlog.message('continued message', 'value');
+newlog.end();
+
+
+if (false) {
+
 const map = L.map('map', {
         crs: L.CRS.Simple,
         center: [0, 0],
-        zoom: 0,
+        zoom: 4,
         tms: true,
         fadeAnimation: false
 });
 
-let tiles = L.tileLayer('tile/{dataset},vert,base64:{vert},frag,base64:{frag}-{z}-{x}-{y}', {
+let tiles = L.tileLayer(makeUrlTemplate(), {
         tileSize: 256,
 	//vert: btoa(vertexShader),
 	//frag: btoa(fragmentShader)
+}).addTo(map);
+
+function update() {
+	tiles.setUrl(makeUrlTemplate());
+}
+
+function makeUrlTemplate() {
+	const parts = {
 	dataset: window.location.hash.substring(1) || 'knit-graph',
 	vert: btoa(`
 #version 130
@@ -63,9 +181,12 @@ float rand(vec2 co){
         return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
 }
 
+float mapDate0to1(float date) { return (date - 1289345768. ) / (1458604773. - 1289345768.); }
+
 void main(){
 	vec2 aPos = vec2(x,y);	
-	attrib=rand(aPos) * 0.5;
+	//attrib=rand(aPos) * 0.5;
+	attrib = 1.0 - abs(mapDate0to1(date) - ${params.selector});
 
 	vec4 temp = vec4(
 		2. * (uScale * aPos.x + uTranslateX) - 1.,
@@ -151,5 +272,9 @@ void main(){
 }
 `),
 
-}).addTo(map);
+	};
+
+	return `tile/${parts.dataset},vert,base64:${parts.vert},frag,base64:${parts.frag}-{z}-{x}-{y}`;
+}
+}
 </script>
