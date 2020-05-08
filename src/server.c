@@ -8,6 +8,7 @@
 #include <time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 
 #include <microhttpd.h>
 #include <zlib.h>
@@ -135,6 +136,7 @@ static struct render_ctx *render_ctx = NULL;
 static ZOrderStruct *last_res_zo = NULL;
 static int pbufferWidth = 256;
 static int pbufferHeight = 256;
+static struct graph *graph;
 ANSWER(Tile) { 
 	int rc;
 
@@ -262,10 +264,7 @@ ANSWER(Tile) {
 		} else mabLogMessage("rc is in rr", "rc=%f", z_rc_index);
 	} else mabLogMessage("tile is not in viewport");
 
-	if (last_graph_name == NULL || strcmp(last_graph_name, dataset) != 0 ||
-	    last_vert == NULL || strcmp(last_vert, opt_vert) != 0 ||
-	    last_frag == NULL || strcmp(last_frag, opt_frag) != 0 ||
-	    last_res != opt_res)
+	if (last_graph_name == NULL || strcmp(last_graph_name, dataset) != 0)
 	MAB_WRAP("loading new dataset") {
 		mabLogMessage("dataset", "%s", dataset);
 		fprintf(stderr, "Loading dataset '%s'\n", dataset);
@@ -273,12 +272,23 @@ ANSWER(Tile) {
 		snprintf(nodespath, PATH_MAX, "data/%s/nodes.csv", dataset);
 		snprintf(edgespath, PATH_MAX, "data/%s/edges.csv", dataset);
 
-		struct graph *graph;
 		MAB_WRAP("loading data") {
 			graph = malloc(sizeof(*graph));
 			load(nodespath, edgespath, graph);
 		}
 
+		if (last_graph_name) free(last_graph_name);
+		last_graph_name = strdup(dataset);
+
+		if (last_vert) { free(last_vert); last_vert = NULL; }
+		if (last_frag) { free(last_frag); last_frag = NULL; }
+	}
+
+
+	if (last_vert == NULL || strcmp(last_vert, opt_vert) != 0 ||
+	    last_frag == NULL || strcmp(last_frag, opt_frag) != 0 ||
+	    last_res != opt_res)
+	MAB_WRAP("recompiling shader") {
 		MAB_WRAP("moving data to opengl") {
 			render_init(render_ctx, graph, NULL, 0, opt_vert, opt_frag);
 		}
@@ -286,9 +296,6 @@ ANSWER(Tile) {
 		MAB_WRAP("initializing z-order index") {
 			zoInitZOrderIndexing(opt_res, opt_res, 0, ZORDER_LAYOUT);
 		}
-
-		if (last_graph_name) free(last_graph_name);
-		last_graph_name = strdup(dataset);
 
 		if (last_vert) free(last_vert);
 		last_vert = strdup(opt_vert);
@@ -418,7 +425,7 @@ initialize(void) {
 
 int
 main(int argc, char **argv) {
-	int opt_port;
+	int opt_port, opt_service;
 	char *s, *opt_bind;
 	struct MHD_Daemon *daemon;
 	struct sockaddr_in addr;
@@ -428,6 +435,7 @@ main(int argc, char **argv) {
 
 	opt_port = (s = getenv("FG_PORT")) ? atoi(s) : 8889;
 	opt_bind = (s = getenv("FG_BIND")) ? s : "0.0.0.0";
+	opt_service = (s = getenv("FG_SERVICE")) ? atoi(s) : 0;
 
 	mabLogMessage("port", "%d", opt_port);
 	mabLogMessage("bind", "%s", opt_bind);
@@ -449,8 +457,12 @@ main(int argc, char **argv) {
 		return 1;
 	}
 	
-	fprintf(stderr, "press enter to stop\n");
-	getchar();
+	if (opt_service) {
+		sleep(60 * 60); // lmao
+	} else {
+		fprintf(stderr, "press enter to stop\n");
+		getchar();
+	}
 	fprintf(stderr, "stopping...\n");
 	
 	MHD_stop_daemon(daemon);

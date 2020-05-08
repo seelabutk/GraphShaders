@@ -61,6 +61,7 @@ script() {
 network() {
 	docker network create \
 		--driver overlay \
+		-p $port:$port \
 		${network:?}
 }
 
@@ -92,6 +93,7 @@ logs() {
 fg() {
 	run env \
 		FG_PORT=$port \
+		FG_SERVICE=0 \
 		gdb -ex=r --args \
 		/app/build/server \
 		"$@"
@@ -99,6 +101,7 @@ fg() {
 
 create-fg() {
 	create env \
+		FG_SERVICE=1 \
 		FG_PORT=$port \
 		/app/build/server \
 		"$@"

@@ -152,7 +152,7 @@ static void initOpenGL(struct render_ctx *ctx, const char *VSS, const char *FSS)
 	if(!success){
 		glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
 		printf("ERROR: Vertex Shader Compilation Failed\n%s\n", infoLog);
-		exit(1);
+		return;
 	}
 	
 	unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -163,9 +163,10 @@ static void initOpenGL(struct render_ctx *ctx, const char *VSS, const char *FSS)
 	if(!success){
 		glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
 		printf("ERROR: Fragment Shader Compilation Failed\n%s\n", infoLog);
-		exit(1);	
+		return;
 	}
 	
+	if (ctx->shaderProgram) glDeleteProgram(ctx->shaderProgram);
 	ctx->shaderProgram = glCreateProgram();
 	glAttachShader(ctx->shaderProgram, vertexShader);
 	glAttachShader(ctx->shaderProgram, fragmentShader);
@@ -175,7 +176,7 @@ static void initOpenGL(struct render_ctx *ctx, const char *VSS, const char *FSS)
 	if(!success){
 		glGetProgramInfoLog(ctx->shaderProgram, 512, NULL, infoLog);
 		printf("ERROR: Shader Program Linking Failed\n%s\n", infoLog);
-		exit(1);
+		return;
 	}
 	
 	glUseProgram(ctx->shaderProgram);
