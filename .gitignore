@@ -4,3 +4,8 @@ temp_*
 /src/shaders/*.h
 /contrib
 *.swp
+
+layout-tools/layouts
+.vscode
+./layout-tools/processed
+./layout-tools/processed/*
