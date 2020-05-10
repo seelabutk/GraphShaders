@@ -1,5 +1,2 @@
 src/server.c
-src/fg.c
-src/render.c
-src/render.h
 static/index.html
