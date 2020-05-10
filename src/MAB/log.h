@@ -3,7 +3,7 @@
 
 #include "mp.h"
 
-void mabLogToFile(char *filename, char *mode);
+int mabLogToFile(char *filename, char *mode);
 
 void mabLogAction(char *message, ...);
 
@@ -11,7 +11,7 @@ void mabLogMessage(char *name, char *message, ...);
 
 void mabLogForward(char **info);
 
-void mabLogContinue(char *info);
+void mabLogContinue(const char *const info);
 
 void mabLogEnd(char *message, ...);
 

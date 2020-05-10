@@ -80,6 +80,13 @@ static void writeLog(uuid_t task, int *levels, int nlevels, struct timeval *tv, 
 	fprintf(_file, "%s%s\t%ld.%06ld\t%s\t%s\n", task_str, level_str, tv->tv_sec, tv->tv_usec, key, value);
 }
 
+static void flushLogs(void) {
+	if (!_initialized) return;
+	if (!_t_initialized) return;
+
+	fflush(_file);
+}
+
 static void threadInitialize(void) {
 	if (_t_initialized) return;
 	_t_levels = malloc(256 * sizeof(*_t_levels));
@@ -88,9 +95,16 @@ static void threadInitialize(void) {
 	_t_continued = 0;
 }
 
-void mabLogToFile(char *filename, char *mode) {
+int mabLogToFile(char *filename, char *mode) {
+	FILE *file;
+
 	if (_initialized) {
 		die("logger already initialized");
+	}
+
+	file = fopen(filename, mode);
+	if (!file) {
+		return 1;
 	}
 
 	_lock = malloc(sizeof(*_lock));
@@ -99,9 +113,11 @@ void mabLogToFile(char *filename, char *mode) {
 	_cond = malloc(sizeof(*_cond));
 	pthread_cond_init(_cond, NULL);
 
-	_file = fopen(filename, mode);
+	_file = file;
 
 	_initialized = 1;
+
+	return 0;
 }
 
 void mabLogAction(char *message, ...) {
@@ -178,7 +194,7 @@ void mabLogForward(char **info) {
 	snprintf(*info, size+1, "%s%s", task_str, level_str);
 }
 
-void mabLogContinue(char *info) {
+void mabLogContinue(const char *const info) {
 	static __thread char temp[37];
 	int offset;
 	char *found;
@@ -222,6 +238,9 @@ void mabLogEnd(char *message, ...) {
 	
 	pthread_mutex_lock(_lock);
 	writeLog(_t_task, _t_levels, _t_nlevels, &tv, "@finished", value);
+	if (_t_nlevels == 1) {
+		flushLogs();
+	}
 	pthread_mutex_unlock(_lock);
 
 	_t_nlevels--;

@@ -18,6 +18,7 @@ constraint=
 runtime=
 network=fg_$USER
 cap_add=SYS_PTRACE
+replicas=8
 
 [ -f env.sh ] && . env.sh
 
@@ -61,7 +62,7 @@ script() {
 network() {
 	docker network create \
 		--driver overlay \
-		-p $port:$port \
+		${port:+-p $port:$port} \
 		${network:?}
 }
 
@@ -77,7 +78,8 @@ create() {
 		${cwd:+--mount type=bind,src=$PWD,dst=$PWD -w $PWD} \
 		${data:+--mount type=bind,src=$data,dst=$data} \
 		${port:+-p $port:$port} \
-		${constraint:+--constraint $constraint} \
+		${constraint:+--constraint=$constraint} \
+		${replicas:+--replicas=$replicas} \
 		${registry:+$registry/}$tag \
 		"$@"
 }

@@ -66,129 +66,91 @@ code[class*="language-"] {
 <script src="static/shaders.js"></script>
 <script src="https://unpkg.com/prismjs@1.20.0/prism.js"></script>
 <script src="https://unpkg.com/prismjs@1.20.0/plugins/autoloader/prism-autoloader.min.js"></script>
-<script type="x-shader/x-vertex" id="default-vert">#version 130
-
+<script type="x-shader/x-vertex" id="vert-header">#version 300 es
 precision mediump float;
 
-in float x;
-in float y;
-in float date;
-in float nmaintainers;
-in float cve;
+in float aNode1, aNode2, aNode3, aNode4, aNode5, aNode6, aNode7, aNode8;
+uniform float uNodeMin1, uNodeMin2, uNodeMin3, uNodeMin4, uNodeMin5, uNodeMin6, uNodeMin7, uNodeMin8;
+uniform float uNodeMax1, uNodeMax2, uNodeMax3, uNodeMax4, uNodeMax5, uNodeMax6, uNodeMax7, uNodeMax8;
 
-uniform int pass;//?
+uniform float uTranslateX, uTranslateY, uScale;
 
-uniform float uTranslateX;
-uniform float uTranslateY;
-uniform float uScale;
-out float attrib;
-out vec2 pos;
+out vec4 fg_FragCoord;
+out float fg_Attribute;
 
-float rand(vec2 co){
-        return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
-}
+#define main() TheUserMain(out vec4 fg_Position, out float fg_Attribute)
+</script><!-- vert-header -->
+<script type="x-shader/x-vertex" id="default-vert">
+		void main() {
+			float x = (aNode1 - uNodeMin1) / (uNodeMax1 - uNodeMin1);
+			float y = (aNode2 - uNodeMin2) / (uNodeMax2 - uNodeMin2);
+			float z = -0.5;
+			float date = (aNode3 - uNodeMin3) / (uNodeMax3 - uNodeMin3);
 
-float mapDate0to1(float date) { return (date - 1289345768. ) / (1458604773. - 1289345768.); }
+			float attrib = 1.0 - abs(date - ${config.selector});
+
+			fg_Position = vec4(x, y, z, 1.0);
+			fg_Attribute = attrib;
+		}
+</script><!-- #default-vert -->
+<script type="x-shader/x-vertex" id="vert-footer">
+#undef main
 
 void main() {
-	vec2 aPos = vec2(x,y);	
-	//attrib=rand(aPos) * 0.5;
-	attrib = 1.0 - abs(mapDate0to1(date) - ${config.selector});
+	vec4 pos;
+	float attrib;
 
-	vec4 temp = vec4(
-		2. * (uScale * aPos.x + uTranslateX) - 1.,
-		2. * (uScale * aPos.y + uTranslateY) - 1.,
-        -1.0,
-		1.0f
-	);
-    pos = aPos;
-    gl_Position = temp;
+	TheUserMain(pos, attrib);
+	vec2 scaled = uScale * pos.xy + vec2(uTranslateX, uTranslateY);
+
+	fg_FragCoord = pos;
+	fg_Attribute = attrib;
+	gl_Position = vec4(2.0 * scaled - 1.0, pos.zw);
 }
-</script><!-- #default-vert -->
-<script type="x-shader/x-fragment" id="default-frag">#version 130
-	
+</script><!-- vert-footer -->
+<script type="x-shader/x-fragment" id="frag-header">#version 300 es
 precision mediump float;
 
-in float attrib;
-in vec2 pos;
+in vec4 fg_FragCoord;
+in float fg_Attribute;
 
-uniform float uTranslateX;
-uniform float uTranslateY;
-uniform float uScale;
-uniform int pass;
-uniform sampler2D screenTexture;
+out vec4 fg_FragColor;
 
-vec4 blur13(sampler2D image, vec2 uv, vec2 resolution, vec2 direction) {
-  vec4 color = vec4(0.0);
-  vec2 off1 = vec2(1.411764705882353) * direction;
-  vec2 off2 = vec2(3.2941176470588234) * direction;
-  vec2 off3 = vec2(5.176470588235294) * direction;
-  color += texture2D(image, uv) * 0.1964825501511404;
-  color += texture2D(image, uv + (off1 / resolution)) * 0.2969069646728344;
-  color += texture2D(image, uv - (off1 / resolution)) * 0.2969069646728344;
-  color += texture2D(image, uv + (off2 / resolution)) * 0.09447039785044732;
-  color += texture2D(image, uv - (off2 / resolution)) * 0.09447039785044732;
-  color += texture2D(image, uv + (off3 / resolution)) * 0.010381362401148057;
-  color += texture2D(image, uv - (off3 / resolution)) * 0.010381362401148057;
-  return color;
+#define main() TheUserMain(out vec4 fg_FragColor)
+</script><!-- frag-header -->
+<script type="x-shader/x-fragment" id="default-frag">
+		void main() {
+			fg_FragColor = mix(vec4(1.0, 0.0, 0.0, 1.0), vec4(0.0), fg_Attribute);
+		}
+</script><!-- default-frag -->
+<script type="x-shader/x-fragment" id="frag-footer">
+#undef main
+
+void main() {
+	vec4 color;
+
+	TheUserMain(color);
+
+	fg_FragColor = color;
 }
-
-const float offset = 1.0 / 128.0;
-void main(){
-    if (pass == 1) {
-        gl_FragColor = vec4(1.0, 1.0f, 1.0f, 0.8);
-    } else  {
-
-	
-		vec2 offsets[9] = vec2[](
-			vec2(-offset,  offset), // top-left
-			vec2( 0.0f,    offset), // top-center
-			vec2( offset,  offset), // top-right
-			vec2(-offset,  0.0f),   // center-left
-			vec2( 0.0f,    0.0f),   // center-center
-			vec2( offset,  0.0f),   // center-right
-			vec2(-offset, -offset), // bottom-left
-			vec2( 0.0f,   -offset), // bottom-center
-			vec2( offset, -offset)  // bottom-right    
-		);
-
-        float kernel[9] = float[](
-            1.0 / 16, 2.0 / 16, 1.0 / 16,
-            2.0 / 16, 4.0 / 16, 2.0 / 16,
-            1.0 / 16, 2.0 / 16, 1.0 / 16  
-        );
-
-		vec2 texCoords = pos * uScale;
-        float radius = 1.0;
-
-        vec3 sampleTex[9];
-        for(int i = 0; i < 9; i++)
-        {
-            //sampleTex[i] = vec3(texture(screenTexture, texCoords.st + offsets[i]));
-            sampleTex[i] = blur13(screenTexture, texCoords, vec2(256, 256), vec2(radius, 0)).xyz;
-        }
-        vec3 col = vec3(0.0);
-        for(int i = 0; i < 9; i++)
-            col += sampleTex[i] * kernel[i];
-        
-        vec3 mix = attrib * vec3(1.0, 0.0, 0.0) + (1.0 - attrib) * col;
-        gl_FragColor = vec4(mix, attrib * 2.0);
-
-    }
-}
-</script><!-- #default-frag -->
+</script><!-- #frag-footer-->
 <script type="module">
 import {CodeJar} from 'https://unpkg.com/codejar@2.0.0/codejar.js';
 
 const jar = new CodeJar(document.querySelector('#editor'), Prism.highlightElement);
-jar.updateCode(`
-fg({
+jar.updateCode(
+`fg({
 	params: [
 		{ name: 'selector', initial: 0.5, min: 0.0, max: 1.0 },
 	],
-	vert: () => \`${document.querySelector('#default-vert').textContent}\`,
-	frag: () => \`${document.querySelector('#default-frag').textContent}\`,
-});`);
+	vert: (config) => \`
+		${document.querySelector('#default-vert').textContent.trim()}
+	\`,
+	frag: (config) => \`
+		${document.querySelector('#default-frag').textContent.trim()}
+	\`,
+});
+`);
 
 let gui = null, config = null, thevert = null, thefrag = null;
 let debounce = null;
@@ -366,11 +328,12 @@ L.TileLayer.LoggingTileLayer = L.TileLayer.extend({
 
 const map = L.map('map', {
         crs: L.CRS.Simple,
-        center: [0, 0],
+        center: [-50, 100],
         zoom: 4,
         tms: true,
         fadeAnimation: false
 });
+window.map = map;
 map.zoomControl.setPosition('bottomright');
 
 let tiles = null;
@@ -380,7 +343,7 @@ function update() {
 	console.log('update');
 	if (newTiles) { newTilesNextCB = update; return; }
 	newTiles = new L.TileLayer.LoggingTileLayer(makeUrlTemplate(), {
-		tileSize: 512,
+		tileSize: 256,
 	}).addTo(map).bringToFront();
 	if (!tiles) return tiles = newTiles, newTiles = null, newTilesNextCB = null;
 
@@ -398,8 +361,8 @@ function removeOldLayer() {
 }
 
 function makeUrlTemplate() {
-	const vert = thevert();
-	const frag = thefrag();
+	const vert = document.querySelector('#vert-header').textContent + thevert(config) + document.querySelector('#vert-footer').textContent;
+	const frag = document.querySelector('#frag-header').textContent + thefrag(config) + document.querySelector('#frag-footer').textContent;
 	const parts = {
 		dataset: window.location.hash.substring(1) || 'knit-graph',
 		vert: btoa(vert),

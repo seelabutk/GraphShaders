@@ -17,19 +17,11 @@ struct graph {
 	char *node_filename;
 	char *edge_filename;
 
-	size_t ncount;
-	size_t nsize;
-	float *nx;
-	float *ny;
+	uint32_t ncount;
+	struct attrib *nattribs;
 
-	char **attribNames;
-	int numAttribs;
-	float **attribs;
-
-	size_t ecount;
-	size_t esize;
-	uint16_t *es;
-	uint16_t *et;
+	uint32_t ecount;
+	struct attrib *eattribs;
 };
 
 
@@ -42,14 +34,18 @@ raytrace(float x0, float y0, float x1, float y1, float d, emitter emit);
 int
 load(char *node_filename, char *edge_filename, struct graph *graph);
 
+/*
 void
 rescale(float x0, float x1, float y0, float y1, struct graph *graph);
+*/
 
 int
 load_arg(struct graph *graph);
 
+/*
 void
 partition(struct graph *graph, int n, void (*preinit)(rc_t), void (*init)(rc_t), void (*emit)(rc_t, edgenum_t), void (*fini)(rc_t));
+*/
 
 int
 fg_main(int argc, char **argv);

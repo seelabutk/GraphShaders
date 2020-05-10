@@ -66,8 +66,6 @@ build/render.o: src/fg.h
 
 build/server.o: CFLAGS += $(libmicrohttpd_CFLAGS)
 build/server.o: src/server.h
-build/server.o: src/shaders/default.vert.h
-build/server.o: src/shaders/default.frag.h
 
 build/glad.o: CFLAGS += $(dl_CFLAGS)
 build/glad.o: src/glad/glad.h
@@ -75,9 +73,7 @@ build/glad.o: src/glad/glad.h
 build/MAB/log.o: src/MAB/log.h
 
 build/server: CFLAGS += $(libmicrohttpd_CFLAGS) $(zlib_CFLAGS)
-build/server: LDLIBS += $(libmicrohttpd_LDLIBS) $(zlib_LDLIBS) $(egl_LDLIBS) $(dl_LDLIBS) $(m_LDLIBS) $(zorder_LDLIBS)
-build/server: build/fg.o
-build/server: build/render.o
+build/server: LDLIBS += $(libmicrohttpd_LDLIBS) $(zlib_LDLIBS) $(egl_LDLIBS) $(dl_LDLIBS) $(m_LDLIBS) $(zorder_LDLIBS) -pthread
 build/server: build/glad.o
 build/server: build/base64.o
 

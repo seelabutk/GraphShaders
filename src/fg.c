@@ -48,150 +48,47 @@ raytrace(float x0, float y0, float x1, float y1, float d, emitter emit) {
 
 int
 load(char *node_filename, char *edge_filename, struct graph *graph) {
+#define READ(x) fread(&(x), sizeof(x), 1, f)
 	FILE *f;
-	char *line = NULL;
-	size_t size = 0;
-	ssize_t nread;
-	int numattrs = 0;
-	char *skips;
-	int i,j;
-	enum { ORDER_UNKNOWN = 0, ORDER_X_Y_ID, ORDER_SOURCE_TARGET } order = ORDER_UNKNOWN;
-	
+	uint32_t i;
+
 	graph->node_filename = node_filename;
 	graph->edge_filename = edge_filename;
-	graph->ncount = 0;
-	graph->nsize = 16;
-	graph->ecount = 0;
-	graph->esize = 16;
-	graph->es = malloc(graph->esize * sizeof(*graph->es));
-	graph->et = malloc(graph->esize * sizeof(*graph->et));
-	graph->numAttribs = 0;
-	graph->nx = NULL;
-	graph->ny = NULL;
-	
+
 	f = fopen(node_filename, "r");
-	assert(f);
-	
-	//get number of attributes
-	nread = getline(&line, &size, f);
-	i = 0;
-	for(char *c = line; 1; ++c, ++i){
-		if(*c == '\n'){	//fix last attribute having a newline after it
-			line[i] = '\0';
-			break;
-		}else if(*c == ',')	++numattrs;
-	}
-	++numattrs;
+	if (!f) return 1;
 
-
-	//check if all datatypes are floats before entering loop
-	skips = (char*)malloc(sizeof(*skips)*numattrs);
-	nread = getline(&line, &size, f);
-	i = 0;
-	for(char *tok = strtok(line,","); i < numattrs ; tok = strtok(NULL, ","), ++i){
-		char *e;
-		strtod(tok, &e);	//can't use atof cuz can't tell the difference between fail and reading 0.0
-		if((*e != '\0') && (*e != '\n')){
-			skips[i] = 1;
-		}else{
-			skips[i] = 0;
-			++graph->numAttribs;
-		}
+	READ(graph->ncount);
+	graph->nattribs = malloc(graph->ncount * sizeof(*graph->nattribs));
+	for (i=0; i<graph->ncount; ++i) {
+		READ(graph->nattribs[i].type);
+		READ(graph->nattribs[i].count);
+		READ(graph->nattribs[i].range);
+		graph->nattribs[i].data = malloc(4 * (size_t)graph->nattribs[i].count);
+		fread(graph->nattribs[i].data, 4, graph->nattribs[i].count, f);
 	}
 
-
-	//store attribute names
-	rewind(f);
-	nread = getline(&line, &size, f);
-	graph->attribNames = (char**)malloc(sizeof(*graph->attribNames)*numattrs);
-	i = j = 0;
-	for(char *tok = strtok(line,","); i < numattrs; tok = strtok(NULL, ","), ++i){
-		if(skips[i] == 1)	continue;
-		graph->attribNames[j] = strdup(tok);
-		++j;
-	}
-
-	//allocate attributes - will not contained unused attributes that have no float conversion
-	graph->attribs = (float**)malloc(sizeof(*graph->attribs)*graph->numAttribs);
-	for(i = 0; i < graph->numAttribs; ++i){
-		graph->attribs[i] = (float*)malloc(sizeof(**graph->attribs)*graph->nsize);
-	}
-
-
-	//read the data in
-	while ((nread = getline(&line, &size, f)) > 0) {
-		
-		//storing
-		i = j = 0;
-		char *end, *tok;
-		end = line;
-
-		//need to use strsep instead of strtok b/c some nodes don't have values, leading to multiple delimeters in a row, which strtok can not compute
-		for(tok = strsep(&end,","); i < numattrs; tok = strsep(&end,","), ++i){
-			if(skips[i] == 1)	continue;
-			graph->attribs[j][graph->ncount] = atof(tok);	
-			++j;
-		}
-
-		//resizing
-		if (++graph->ncount == graph->nsize) {
-			graph->nsize *= 2;
-			for(i = 0; i < graph->numAttribs; ++i){
-				graph->attribs[i] = realloc(graph->attribs[i], graph->nsize*sizeof(*graph->attribs[i]));
-			}	
-		} 
-
-	}
-	free(line);
 	fclose(f);
-
-	//set graph->nx and graph->ny to the correct attribute array locations - this is kinda hard-coded
-	for(i = 0; i < graph->numAttribs; ++i){
-		if(strcmp(graph->attribNames[i], "x") == 0){
-			graph->nx = graph->attribs[i];
-		}else if(strcmp(graph->attribNames[i], "y") == 0){
-			graph->ny = graph->attribs[i];
-		}
-	}
-
-	//backup, for if no x and y is explicitely specified, assume first 2 attributes in file are x and y
-	if(graph->nx == NULL)
-		graph->nx = graph->attribs[0];
-	if(graph->ny == NULL)
-		graph->ny = graph->attribs[1];
-	
 
 	f = fopen(edge_filename, "r");
-	assert(f);
-	line = NULL;
-	size = 0;
-	
-	nread = getline(&line, &size, f);
-	if (strcmp(line, "src,dst\n") == 0) order = ORDER_SOURCE_TARGET;
-	else {
-		fprintf(stderr, "Unknown header line: \"%s\"\n", line);
-		exit(1);
+	if (!f) return 1;
+
+	READ(graph->ecount);
+	graph->eattribs = malloc(graph->ecount * sizeof(*graph->eattribs));
+	for (i=0; i<graph->ecount; ++i) {
+		READ(graph->eattribs[i].type);
+		READ(graph->eattribs[i].count);
+		READ(graph->eattribs[i].range);
+		graph->eattribs[i].data = malloc(4 * (size_t)graph->eattribs[i].count);
+		fread(graph->eattribs[i].data, 4, graph->eattribs[i].count, f);
 	}
 
-	while((nread = getline(&line, &size, f)) > 0) {
-		sscanf(line, "%"SCNu16",%"SCNu16,
-		       graph->es + graph->ecount,
-		       graph->et + graph->ecount);
-		
-		if(++graph->ecount == graph->esize){
-			graph->esize *= 2;
-			graph->es = realloc(graph->es, graph->esize * sizeof(*graph->es));
-			graph->et = realloc(graph->et, graph->esize * sizeof(*graph->et));
-		}
-	}
-
-	free(line);
 	fclose(f);
-	
-	return 0;
+#undef READ
 }
 
 
+/*
 void
 rescale(float x0, float y0, float x1, float y1, struct graph *graph) {
 	float xmin, xmax = xmin = graph->nx[0];
@@ -208,7 +105,9 @@ rescale(float x0, float y0, float x1, float y1, struct graph *graph) {
 		graph->ny[i] = (graph->ny[i] - ymin) / (ymax - ymin) * (y1 - y0) + y0;
 	}
 }
+*/
 
+/*
 void
 partition(struct graph *graph, int n, void (*preinit)(rc_t), void (*init)(rc_t), void (*emit)(rc_t, edgenum_t), void (*fini)(rc_t)) {
 	edgenum_t edge;
@@ -250,6 +149,7 @@ partition(struct graph *graph, int n, void (*preinit)(rc_t), void (*init)(rc_t),
 		fini(rc);
 	}
 }
+*/
 
 
 int
