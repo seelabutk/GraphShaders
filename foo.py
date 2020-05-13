@@ -4,7 +4,7 @@ from pathlib import Path
 import struct
 import csv
 
-root = Path('data/knit-graph')
+root = Path('data.bak/knit-graph')
 nodesf = root / 'nodes.csv'
 edgesf = root / 'edges.csv'
 
@@ -31,6 +31,7 @@ with open(nodesf, 'r') as f:
 		except ValueError:
 			row[4] = '0'
 		float(row[5])
+		#float(row[6])
 		nodes.append(row)
 		lastthird = row[3]
 

@@ -47,15 +47,37 @@ struct attrib {
 	};
 };
 
+enum {
+	ERROR_NONE = 0,
+	ERROR_COMPILE_VERTEX_SHADER,
+	ERROR_COMPILE_FRAGMENT_SHADER,
+	ERROR_LINK_PROGRAM,
+	NUM_ERRORS,
+};
+
+char *errorMessages[NUM_ERRORS] = {
+	[ERROR_NONE] = "Render Successful",
+	[ERROR_COMPILE_VERTEX_SHADER] = "Could not compile vertex shader",
+	[ERROR_COMPILE_FRAGMENT_SHADER] = "Could not compile fragment shader",
+	[ERROR_LINK_PROGRAM] = "Could not link program",
+};
+
 static volatile GLsizei _resolution;
 static volatile GLfloat _x;
 static volatile GLfloat _y;
 static volatile GLfloat _z;
 static GLchar *volatile _dataset;
+static volatile GLuint _dcIdent;
+static GLuint *volatile _dcIndex;
+static GLfloat *volatile _dcMult;
+static GLfloat *volatile _dcOffset;
+static volatile GLfloat _dcMinMult;
+static volatile GLfloat _dcMaxMult;
 static GLchar *volatile _info;
 static GLchar *volatile _vertexShaderSource;
 static GLchar *volatile _fragmentShaderSource;
 static GLubyte *volatile _image;
+static volatile GLubyte volatile _error;
 static pthread_mutex_t *_lock;
 static pthread_barrier_t *_barrier;
 
@@ -67,19 +89,26 @@ void *render(void *v) {
 	GLchar log[512];
 	struct attrib nattribs[16], eattribs[16], *edges;
 	FILE *f;
-	enum { INIT_OSMESA, INIT_GRAPH, INIT_BUFFERS, INIT_PROGRAM, INIT_UNIFORMS, INIT_ATTRIBUTES, INIT_INDEX, RENDER, WAIT } where;
+	enum { INIT_OSMESA, INIT_GRAPH, INIT_BUFFERS, INIT_PROGRAM, INIT_UNIFORMS, INIT_ATTRIBUTES, INIT_DC, INIT_INDEX_BUFFER, RENDER, WAIT } where;
 
 	GLfloat x, y, z;
 	GLchar *dataset, *vertexShaderSource, *fragmentShaderSource;
 	GLboolean first;
+	GLuint dcIdent, *dcIndex;
+	GLfloat *dcMult, *dcOffset, dcMinMult, dcMaxMult;
 
 	_resolution = 256;
 	context = NULL;
 	vertexShader = fragmentShader = program = 0;
 	nattribs[0] = (struct attrib){ 0 };
 	eattribs[0] = (struct attrib){ 0 };
+	edges = malloc(sizeof(*edges));
+	*edges = (struct attrib){ 0 };
 	aNodeBuffers[0] = 0;
 	indexBuffer = 0;
+	dcIdent = 0;
+	dcIndex = NULL;
+	dcMult = dcOffset = NULL;
 
 	x = y = z = INFINITY;
 	dataset = vertexShaderSource = fragmentShaderSource = NULL;
@@ -190,8 +219,56 @@ void *render(void *v) {
 
 			fclose(f);
 		}
+	}
+	__attribute__((fallthrough));
+	
+	case INIT_DC:
+	MAB_WRAP("init index data") {
+		GLfloat *dcDepth;
+		dcDepth = malloc(eattribs[0].count / 2 * sizeof(*dcDepth));
+		for (i=0; i<eattribs[0].count/2; ++i) {
+			dcDepth[i] = 0.0;
+			for (int j=0; j<16; ++j) {
+				if (!dcIndex[j]) break;
+				float sourceDepth, targetDepth;
 
-		edges = &eattribs[0];
+				sourceDepth = dcMult[j] * nattribs[dcIndex[j]-1].floats[eattribs[0].uints[2*i+0]] + dcOffset[j];
+				targetDepth = dcMult[j] * nattribs[dcIndex[j]-1].floats[eattribs[0].uints[2*i+1]] + dcOffset[j];
+
+				dcDepth[i] += sourceDepth < targetDepth
+					? dcMinMult * sourceDepth + dcMaxMult * targetDepth
+					: dcMinMult * targetDepth + dcMaxMult * sourceDepth;
+			}
+		}
+
+		GLuint64 *dcReorder;
+		dcReorder = malloc(eattribs[0].count / 2 * sizeof(*dcReorder));
+		for (i=0; i<eattribs[0].count/2; ++i) {
+			dcReorder[i] = i;
+		}
+
+		int compare(const void *av, const void *bv) {
+			const GLuint64 *a = av;
+			const GLuint64 *b = bv;
+
+			if (dcDepth[*a] < dcDepth[*b]) return -1;
+			if (dcDepth[*a] > dcDepth[*b]) return 1;
+			return 0;
+		}
+
+		qsort(dcReorder, eattribs[0].count/2, sizeof(*dcReorder), compare);
+
+		if (edges->data) free(edges->data);
+
+		*edges = eattribs[0];
+		edges->data = malloc(edges->size);
+		for (i=0; i<eattribs[0].count/2; ++i) {
+			edges->uints[2*i+0] = eattribs[0].uints[2*dcReorder[i]+0];
+			edges->uints[2*i+1] = eattribs[0].uints[2*dcReorder[i]+1];
+		}
+
+		free(dcReorder);
+		free(dcDepth);
 	}
 	__attribute__((fallthrough));
 
@@ -224,6 +301,7 @@ void *render(void *v) {
 				printf("ERROR: Vertex Shader Compilation Failed\n%s\n", log);
 				mabLogEnd("ERROR: Vertex Shader Compilation Failed");
 				mabLogEnd("ERROR: Vertex Shader Compilation Failed");
+				_error = ERROR_COMPILE_VERTEX_SHADER;
 				goto done_with_request;
 			}
 		}
@@ -240,6 +318,7 @@ void *render(void *v) {
 				printf("ERROR: Fragment Shader Compilation Failed\n%s\n", log);
 				mabLogEnd("ERROR: Fragment Shader Compilation Failed");
 				mabLogEnd("ERROR: Fragment Shader Compilation Failed");
+				_error = ERROR_COMPILE_FRAGMENT_SHADER;
 				goto done_with_request;
 			}
 		}
@@ -257,6 +336,7 @@ void *render(void *v) {
 				printf("ERROR: Shader Program Linking Failed\n%s\n", log);
 				mabLogEnd("ERROR: Shader Program Linking Failed");
 				mabLogEnd("ERROR: Shader Program Linking Failed");
+				_error = ERROR_LINK_PROGRAM;
 				goto done_with_request;
 			}
 			
@@ -302,11 +382,12 @@ void *render(void *v) {
 		}
 	}
 	__attribute__((fallthrough));
-	
-	case INIT_INDEX:
+
+	case INIT_INDEX_BUFFER:
 	MAB_WRAP("init index buffer") {
 		if (indexBuffer)
 		glDeleteBuffers(1, &indexBuffer);
+
 
 		glGenBuffers(1, &indexBuffer);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
@@ -363,11 +444,6 @@ wait_for_request:
 	if (fabsf(x - _x) > 0.1) { x = _x; where = RENDER; }
 	if (fabsf(y - _y) > 0.1) { y = _y; where = RENDER; }
 	if (fabsf(z - _z) > 0.1) { z = _z; where = RENDER; }
-	if (dataset == NULL || strcmp(dataset, _dataset) != 0) {
-		if (dataset) free(dataset);
-		dataset = strdup(_dataset);
-		where = INIT_GRAPH;
-	}
 	if (vertexShaderSource == NULL || strcmp(vertexShaderSource, _vertexShaderSource) != 0) {
 		if (vertexShaderSource) free(vertexShaderSource);
 		vertexShaderSource = strdup(_vertexShaderSource);
@@ -377,6 +453,23 @@ wait_for_request:
 		if (fragmentShaderSource) free(fragmentShaderSource);
 		fragmentShaderSource = strdup(_fragmentShaderSource);
 		where = INIT_PROGRAM;
+	}
+	if (dcIdent != _dcIdent) {
+		dcIdent = _dcIdent;
+		if (dcIndex) free(dcIndex);
+		dcIndex = _dcIndex;
+		if (dcMult) free(dcMult);
+		dcMult = _dcMult;
+		if (dcOffset) free(dcOffset);
+		dcOffset = _dcOffset;
+		dcMinMult = _dcMinMult;
+		dcMaxMult = _dcMaxMult;
+		where = INIT_DC;
+	}
+	if (dataset == NULL || strcmp(dataset, _dataset) != 0) {
+		if (dataset) free(dataset);
+		dataset = strdup(_dataset);
+		where = INIT_GRAPH;
 	}
 	if (first) {
 		first = GL_FALSE;
@@ -497,20 +590,18 @@ ANSWER(Tile) {
 	}
 
 	MAB_WRAP("answer tile request") {
-	int x;
-	int y;
-	int z;
+	float x, y, z;
 	char *dataset, *options;
-	if (5 != (rc = sscanf(url, "/tile/%m[^/,]%m[^-]-%d-%d-%d", &dataset, &options, &z, &x, &y))) {
+	if (5 != (rc = sscanf(url, "/tile/%m[^/]/%f/%f/%f/%ms", &dataset, &z, &x, &y, &options))) {
 		fprintf(stderr, "rc: %d\n", rc);
 		fprintf(stderr, "options: %s\n", options);
 		rc = MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);	
 		goto end;
 	}
 
-	mabLogMessage("x", "%d", x);
-	mabLogMessage("y", "%d", y);
-	mabLogMessage("z", "%d", z);
+	mabLogMessage("x", "%f", x);
+	mabLogMessage("y", "%f", y);
+	mabLogMessage("z", "%f", z);
 	mabLogMessage("dataset", "%s", dataset);
 	mabLogMessage("options", "%s", options);
 
@@ -518,6 +609,14 @@ ANSWER(Tile) {
 
 	char *opt_vert = NULL;
 	char *opt_frag = NULL;
+	GLuint opt_dcIdent = 0;
+	GLuint *opt_dcIndex = NULL;
+	GLfloat *opt_dcMult = NULL;
+	GLfloat *opt_dcOffset = NULL;
+	GLfloat opt_dcMinMult = 0.0;
+	GLfloat opt_dcMaxMult = 0.0;
+
+	//fprintf(stderr, "options: '''\n%s\n'''\n", options);
 
 	char *it = options + 1;
 	for (;;) {
@@ -527,7 +626,7 @@ ANSWER(Tile) {
 		if (!*it) break;
 		*it++ = '\0';
 
-		char *value = it;
+		void *value = it;
 		
 		it = strchrnul(it, ',');
 		int done = *it == '\0';
@@ -544,7 +643,7 @@ ANSWER(Tile) {
 				return MHD_NO;
 			}
 
-			out[outlen-1] = '\0';
+			out[outlen] = '\0';
 			value = out;
 		}
 
@@ -552,8 +651,20 @@ ANSWER(Tile) {
 			opt_vert = value;
 		} else if (strcmp(key, "frag") == 0) {
 			opt_frag = value;
+		} else if (strcmp(key, "dcIdent") == 0) {
+			opt_dcIdent = atoi(value);
+		} else if (strcmp(key, "dcIndex") == 0) {
+			opt_dcIndex = value;
+		} else if (strcmp(key, "dcMult") == 0) {
+			opt_dcMult = value;
+		} else if (strcmp(key, "dcOffset") == 0) {
+			opt_dcOffset = value;
+		} else if (strcmp(key, "dcMinMult") == 0) {
+			opt_dcMinMult = atof(value);
+		} else if (strcmp(key, "dcMaxMult") == 0) {
+			opt_dcMaxMult = atof(value);
 		} else {
-			fprintf(stderr, "WARNING: unhandled option '%s' = '%s'\n", key, value);
+			fprintf(stderr, "WARNING: unhandled option '%s' = '%s'\n", key, (char *)value);
 		}
 
 		if (done) break;
@@ -561,6 +672,7 @@ ANSWER(Tile) {
 
 	mabLogMessage("opt_vert length", "%d", strlen(opt_vert));
 	mabLogMessage("opt_frag length", "%d", strlen(opt_frag));
+	mabLogMessage("opt_dcIdent", "%u", opt_dcIdent);
 
 	MAB_WRAP("render") {
 		MAB_WRAP("lock")
@@ -572,6 +684,13 @@ ANSWER(Tile) {
 		_dataset = dataset;
 		_vertexShaderSource = opt_vert;
 		_fragmentShaderSource = opt_frag;
+		_dcIdent = opt_dcIdent;
+		_dcIndex = opt_dcIndex;
+		_dcMult = opt_dcMult;
+		_dcOffset = opt_dcOffset;
+		_dcMinMult = opt_dcMinMult;
+		_dcMaxMult = opt_dcMaxMult;
+		_error = ERROR_NONE;
 
 		mabLogForward(&renderInfo);
 		_info = renderInfo;
@@ -582,17 +701,34 @@ ANSWER(Tile) {
 		// wait for render to be finished
 		pthread_barrier_wait(_barrier);
 
-		MAB_WRAP("jpeg") {
-			output = NULL;
-			outputlen = 0;
-			tojpeg(_image, _resolution, &output, &outputlen);
+		if (_error != ERROR_NONE) {
+			char *message;
+			message = errorMessages[_error];
+			response = MHD_create_response_from_buffer(strlen(message), message, MHD_RESPMEM_PERSISTENT);
+			rc = MHD_queue_response(conn, MHD_HTTP_NOT_ACCEPTABLE, response);
+			MHD_destroy_response(response);
+			
+			// tell render thread we're done
+			pthread_barrier_wait(_barrier);
+
+			MAB_WRAP("unlock")
+			pthread_mutex_unlock(_lock);
+
+			goto end;
+
+		} else {
+			MAB_WRAP("jpeg") {
+				output = NULL;
+				outputlen = 0;
+				tojpeg(_image, _resolution, &output, &outputlen);
+			}
+
+			// tell render thread we're done
+			pthread_barrier_wait(_barrier);
+
+			MAB_WRAP("unlock")
+			pthread_mutex_unlock(_lock);
 		}
-
-		// tell render thread we're done
-		pthread_barrier_wait(_barrier);
-
-		MAB_WRAP("unlock")
-		pthread_mutex_unlock(_lock);
 	}
 	
 	response = MHD_create_response_from_buffer(outputlen, output, MHD_RESPMEM_MUST_FREE);
@@ -715,14 +851,15 @@ got_log:
 	addr.sin_port = htons(opt_port);
 	inet_aton(opt_bind, &addr.sin_addr);
 	
-	daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, 0, NULL, NULL, &answer, NULL, MHD_OPTION_SOCK_ADDR, &addr, MHD_OPTION_END);
+	daemon = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION, 0, NULL, NULL, &answer, NULL, MHD_OPTION_SOCK_ADDR, &addr, MHD_OPTION_END);
 	if (daemon == NULL) {
 		fprintf(stderr, "could not start daemon\n");
 		return 1;
 	}
 	
 	if (opt_service) {
-		sleep(60 * 60); // lmao
+		while (sleep(60 * 60) == 0)
+			;
 	} else {
 		fprintf(stderr, "press enter to stop\n");
 		getchar();

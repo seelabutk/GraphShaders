@@ -66,6 +66,7 @@ code[class*="language-"] {
 <script src="static/shaders.js"></script>
 <script src="https://unpkg.com/prismjs@1.20.0/prism.js"></script>
 <script src="https://unpkg.com/prismjs@1.20.0/plugins/autoloader/prism-autoloader.min.js"></script>
+<script src="https://unpkg.com/mathjs@7.0.0/dist/math.min.js"></script>
 <script type="x-shader/x-vertex" id="vert-header">#version 300 es
 precision mediump float;
 
@@ -82,14 +83,17 @@ out float fg_Attribute;
 </script><!-- vert-header -->
 <script type="x-shader/x-vertex" id="default-vert">
 		void main() {
-			float x = (aNode1 - uNodeMin1) / (uNodeMax1 - uNodeMin1);
-			float y = (aNode2 - uNodeMin2) / (uNodeMax2 - uNodeMin2);
-			float z = -0.5;
-			float date = (aNode3 - uNodeMin3) / (uNodeMax3 - uNodeMin3);
+			float x = (aX - uXMin) / (uXMax - uXMin);
+			float y = (aY - uYMin) / (uYMax - uYMin);
+			float date = (aDate - uDateMin) / (uDateMax - uDateMin);
+			float numMaint = (aNumMaint - uNumMaintMin) / (uNumMaintMax - uNumMaintMin);
+			float cve = (aCVE - uCVEMin) / (uCVEMax - uCVEMin);
 
 			float attrib = 1.0 - abs(date - ${config.selector});
+			//float attrib = aNumMaint - 5;
+			//float attrib = 1.0 - (0.2 + 0.6 * cve);
 
-			fg_Position = vec4(x, y, z, 1.0);
+			fg_Position = vec4(x, y, attrib, 1.0);
 			fg_Attribute = attrib;
 		}
 </script><!-- #default-vert -->
@@ -137,24 +141,34 @@ void main() {
 <script type="module">
 import {CodeJar} from 'https://unpkg.com/codejar@2.0.0/codejar.js';
 
+const oldbtoa = btoa;
+window.btoa = function(x) {
+	if (x instanceof Float32Array || x instanceof Uint32Array) {
+		return oldbtoa(String.fromCharCode.apply(null, new Uint8Array(x.buffer)));
+	}
+	return oldbtoa(x);
+};
+
 const jar = new CodeJar(document.querySelector('#editor'), Prism.highlightElement);
 jar.updateCode(
 `fg({
 	params: [
 		{ name: 'selector', initial: 0.5, min: 0.0, max: 1.0 },
 	],
-	vert: (config) => \`
+	variables: 'X Y Date NumMaint CVE IsSource',
+	depth: 'mean(1.23 * (Date - 4.56) / 7.89)',
+	node: (config) => \`
 		${document.querySelector('#default-vert').textContent.trim()}
 	\`,
-	frag: (config) => \`
+	edge: (config) => \`
 		${document.querySelector('#default-frag').textContent.trim()}
 	\`,
 });
 `);
 
-let gui = null, config = null, thevert = null, thefrag = null;
+let gui = null, config = null, dcIdent = 1000*Math.random()|0, lastdc = null, thevariables, thedc = null, thedepth = null, thevert = null, thefrag = null;
 let debounce = null;
-function fg({ params, vert, frag }) {
+function fg({ params, variables, depth, node, edge }) {
 	if (gui === null) {
 		gui = new dat.GUI();
 		config = {};
@@ -165,8 +179,17 @@ function fg({ params, vert, frag }) {
 		}
 	}
 
-	thevert = vert;
-	thefrag = frag;
+	if (JSON.stringify(dc) !== lastdc) {
+		dcIdent++;
+		lastdc = JSON.stringify(dc);
+	}
+
+	thedepth = depth;
+	thevert = node;
+	thefrag = edge;
+	thevariables = variables;
+	thedc = makeDC();
+	if (thedc === null) return;
 	if (debounce == null)
 	debounce = setTimeout(() => {
 		debounce = null;
@@ -316,20 +339,36 @@ L.TileLayer.LoggingTileLayer = L.TileLayer.extend({
 			headers: {
 				'X-MAB-Log-Info': ctx.forward(),
 			},
-		}).then((r) => r.blob()).then((blob) => {
+		}).then((r) => {
+			return r.blob();
+		}).then((blob) => {
 			ctx.end('' + blob.size);
 			tile.src = URL.createObjectURL(blob);
 		});
 
 		return tile;
+
+		Object.defineProperty(tile, 'parentNode', {
+			get() { console.log('get'); return tile.parentNode; },
+		});
+		return tile;
+
+		//return tile;
+		return new Proxy(tile, {
+			get(...args) {
+				console.log('get', args);
+				return args[0][args[1]];
+				return Reflect.get(...args);
+			},
+		});
 	},
 });
 
 
 const map = L.map('map', {
         crs: L.CRS.Simple,
-        center: [-50, 100],
-        zoom: 4,
+        center: [-128, 128],
+        zoom: 6,
         tms: true,
         fadeAnimation: false
 });
@@ -360,16 +399,93 @@ function removeOldLayer() {
 	if (newTilesNextCB) { const cb = newTilesNextCB; newTilesNextCB = null; cb(); }
 }
 
-function makeUrlTemplate() {
-	const vert = document.querySelector('#vert-header').textContent + thevert(config) + document.querySelector('#vert-footer').textContent;
-	const frag = document.querySelector('#frag-header').textContent + thefrag(config) + document.querySelector('#frag-footer').textContent;
-	const parts = {
-		dataset: window.location.hash.substring(1) || 'knit-graph',
-		vert: btoa(vert),
-		frag: btoa(frag),
+window.makeDC = makeDC;
+function makeDC() {
+	const dc = {
+		index: [],
+		mult: [],
+		offset: [],
+		combine: 0.5,
 	};
-	console.log({ parts, vert, frag});
+	const code = math.compile(thedepth);
+	const variables = thevariables.split(' ');
 
-	return `tile/${parts.dataset},vert,base64:${parts.vert},frag,base64:${parts.frag}-{z}-{x}-{y}`;
+	const scope = {
+		min: (v) => v,
+		max: (v) => v,
+		mean: (v) => v,
+	};
+	variables.forEach((v) => { scope[v] = 0.0; });
+
+	try {
+		const combine = code.evaluate({ ...scope,
+			min: () => 'min',
+			max: () => 'max',
+			mean: () => 'mean',
+		});
+		if (combine === 'min') dc.combine = 0.0;
+		else if (combine === 'max') dc.combine = 1.0;
+		else if (combine === 'mean') dc.combine = 0.5;
+		else {
+			console.error('depth expression needs min, max, or mean');
+			return null;
+		}
+	} catch (e) {
+		console.error('syntax error in depth expression', e);
+		return null;
+	}
+
+	variables.forEach((variable, i) => {
+		try {
+			const at0 = code.evaluate({ ...scope, [variable]: 0.0 });
+			const at1 = code.evaluate({ ...scope, [variable]: 1.0 });
+			const at2 = code.evaluate({ ...scope, [variable]: 2.0 });
+			const mult01 = at1 - at0;
+			const mult02 = (at2 - at0) / 2.0;
+			console.log({ variable, at0, at1, at2, mult01, mult02 });
+			if (Math.abs(at0 - at1) < 0.01) {
+				console.log('variable not used' + variable);
+				return;
+			}
+			if (Math.abs(mult01 - mult02) > 0.01) {
+				console.error('nonlinear function involving ' + variable);
+				return;
+			}
+
+			const offset = dc.offset.length === 0 ? at0 : 0.0;
+			const mult = mult01;
+
+			dc.index.push(i + 1);
+			dc.mult.push(mult);
+			dc.offset.push(offset);
+		} catch (e) {
+			//console.warn({ variable, e });
+		}
+	});
+
+	dc.index.push(0);
+
+	return dc;
+}
+
+function makeUrlTemplate() {
+	const dataset = window.location.hash.substring(1) || 'knit-graph';
+	const defines = thevariables.split(' ').map((d, i) => {
+		return `
+			#define a${d} aNode${i+1}
+			#define u${d}Min uNodeMin${i+1}
+			#define u${d}Max uNodeMax${i+1}
+		`;
+	}).join('\n');
+	const vert = btoa(document.querySelector('#vert-header').textContent + defines + thevert(config) + document.querySelector('#vert-footer').textContent);
+	const frag = btoa(document.querySelector('#frag-header').textContent + thefrag(config) + document.querySelector('#frag-footer').textContent);
+	console.log(atob(vert))
+	const dcIndex = btoa(new Uint32Array(thedc.index));
+	const dcMult = btoa(new Float32Array(thedc.mult));
+	const dcOffset = btoa(new Float32Array(thedc.offset));
+	const dcMinMult = 1.0 - thedc.combine;
+	const dcMaxMult = thedc.combine;
+
+	return `tile/${dataset}/{z}/{x}/{y}/,vert,base64:${vert},frag,base64:${frag},dcIdent,${dcIdent},dcIndex,base64:${dcIndex},dcMult,base64:${dcMult},dcOffset,base64:${dcOffset},dcMinMult,${dcMinMult},dcMaxMult,${dcMaxMult}`;
 }
 </script>

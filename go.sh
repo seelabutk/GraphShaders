@@ -89,7 +89,11 @@ destroy() {
 }
 
 logs() {
-	docker service logs $name "$@"
+	if [ $# -eq 0 ]; then
+		cat logs/*.log | ./scripts/sort.sh | ./scripts/reorder.sh
+	else
+		tail -q "$@" logs/*.log
+	fi | ./scripts/duration.awk | ./scripts/pretty.sh
 }
 
 fg() {
