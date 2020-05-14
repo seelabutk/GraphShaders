@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+<meta charset="utf-8">
+<title>FG</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.3.1/dist/leaflet.css"
+   integrity="sha512-Rksm5RenBEKSKFjgI3a41vrjkw4EVPlJ3+OiI65vTjIdo9brlAacEuKOiQ5OFh7cOI1bkDwLqdLw3Zg0cRJAAQ=="
+   crossorigin="">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-easybutton@2/src/easy-button.css">
+<!-- <link rel="stylesheet" href="https://unpkg.com/dat.gui@0.7.7/build/dat.gui.css"> -->
+<link rel="stylesheet" href="https://unpkg.com/prismjs@1.20.0/themes/prism-funky.css">
+<style>
+* {
+	margin: auto;
+	padding: auto;
+	box-sizing: border-box;
+}
+
+body {
+	overflow: hidden;
+}
+
+#map {
+	width: 100vw; 
+	height: 100vh;
+}
+
+.dg.ac {
+	z-index: 9999999 !important;
+}
+
+#editor {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 40vw;
+	height: 100vh;
+	z-index: 1000000;
+	background-color: #33333377;
+}
+#editor:focus {
+	background-color: #111111ee;
+	border-right: 1px solid green;
+}
+#editor::-webkit-scrollbar {
+	display: none;
+}
+
+pre[class*="language-"],
+code[class*="language-"] {
+	text-shadow: none !important;
+	box-shadow: none !important;
+}
+
+.dg .c .slider-fg {
+	margin-left: 0;
+}
+</style>
+<body>
+<div id="map"></div>
+<pre class="language-js"><code id="editor"></code></pre>
+<script src="https://unpkg.com/leaflet@1.3.1/dist/leaflet.js"
+   integrity="sha512-/Nsx9X4HebavoBvEBuyp3I7od5tA0UzAxs+j83KgC8PU0kgB4XiK4Lfe4y4cgBtaRJQEIFCW+oC506aPT2L1zw=="
+   crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-easybutton@2/src/easy-button.js"></script>
+<script src="https://unpkg.com/dat.gui@0.6.5/build/dat.gui.min.js"></script>
+<script src="static/shaders.js"></script>
+<script src="https://unpkg.com/prismjs@1.20.0/prism.js"></script>
+<script src="https://unpkg.com/prismjs@1.20.0/plugins/autoloader/prism-autoloader.min.js"></script>
+<script src="https://unpkg.com/mathjs@7.0.0/dist/math.min.js"></script>
+<script type="x-shader/x-vertex" id="vert-header">#version 300 es
+precision mediump float;
+
+in float aNode1, aNode2, aNode3, aNode4, aNode5, aNode6, aNode7, aNode8;
+uniform float uNodeMin1, uNodeMin2, uNodeMin3, uNodeMin4, uNodeMin5, uNodeMin6, uNodeMin7, uNodeMin8;
+uniform float uNodeMax1, uNodeMax2, uNodeMax3, uNodeMax4, uNodeMax5, uNodeMax6, uNodeMax7, uNodeMax8;
+
+uniform float uTranslateX, uTranslateY, uScale;
+
+out vec4 fg_FragCoord;
+out float fg_Attribute;
+
+#define main() TheUserMain(out vec4 fg_Position, out float fg_Attribute)
+</script><!-- vert-header -->
+<script type="x-shader/x-vertex" id="default-vert">
+		void main() {
+			float x = (aX - uXMin) / (uXMax - uXMin);
+			float y = (aY - uYMin) / (uYMax - uYMin);
+
+			float attrib = x;
+
+			fg_Position = vec4(x, y, attrib, 1.0);
+			fg_Attribute = attrib;
+		}
+</script><!-- #default-vert -->
+<script type="x-shader/x-vertex" id="vert-footer">
+#undef main
+
+void main() {
+	vec4 pos;
+	float attrib;
+
+	TheUserMain(pos, attrib);
+	vec2 scaled = uScale * pos.xy + vec2(uTranslateX, uTranslateY);
+
+	fg_FragCoord = pos;
+	fg_Attribute = attrib;
+	gl_Position = vec4(2.0 * scaled - 1.0, pos.zw);
+}
+</script><!-- vert-footer -->
+<script type="x-shader/x-fragment" id="frag-header">#version 300 es
+precision mediump float;
+
+in vec4 fg_FragCoord;
+in float fg_Attribute;
+
+out vec4 fg_FragColor;
+
+#define main() TheUserMain(out vec4 fg_FragColor)
+</script><!-- frag-header -->
+<script type="x-shader/x-fragment" id="default-frag">
+		void main() {
+			if (fg_Attribute < 0.01) discard;
+			fg_FragColor = mix(vec4(0.0), vec4(1.0, 0.0, 0.0, 1.0), fg_Attribute);
+		}
+</script><!-- default-frag -->
+<script type="x-shader/x-fragment" id="frag-footer">
+#undef main
+
+void main() {
+	vec4 color;
+
+	TheUserMain(color);
+
+	fg_FragColor = color;
+}
+</script><!-- #frag-footer-->
+<script type="module">
+import {CodeJar} from 'https://unpkg.com/codejar@2.0.0/codejar.js';
+
+const oldbtoa = btoa;
+window.btoa = function(x) {
+	if (x instanceof Float32Array || x instanceof Uint32Array) {
+		return oldbtoa(String.fromCharCode.apply(null, new Uint8Array(x.buffer)));
+	}
+	return oldbtoa(x);
+};
+
+const jar = new CodeJar(document.querySelector('#editor'), Prism.highlightElement);
+jar.updateCode(
+`fg({
+	params: [
+		{ name: 'selector', initial: 0.5, min: 0.0, max: 1.0 },
+	],
+	variables: 'X Y',
+	depth: 'mean(X)',
+	node: (config) => \`
+		${document.querySelector('#default-vert').textContent.trim()}
+	\`,
+	edge: (config) => \`
+		${document.querySelector('#default-frag').textContent.trim()}
+	\`,
+});
+`);
+
+let gui = null, config = null, dcIdent = 1000*Math.random()|0, lastdepth = null, thevariables, thedc = null, thedepth = null, thevert = null, thefrag = null;
+let debounce = null;
+function fg({ params, variables, depth, node, edge }) {
+	if (gui === null) {
+		gui = new dat.GUI();
+		config = {};
+		for (const param of params) {
+			const { name, initial, min, max } = param;
+			config[name] = initial;
+			gui.add(config, name, min, max).onChange(update);
+		}
+	}
+
+	if (JSON.stringify(depth) !== lastdepth) {
+		dcIdent++;
+		lastdepth = JSON.stringify(depth);
+	}
+
+	thedepth = depth;
+	thevert = node;
+	thefrag = edge;
+	thevariables = variables;
+	thedc = makeDC();
+	if (thedc === null) return;
+	if (debounce == null)
+	debounce = setTimeout(() => {
+		debounce = null;
+		update();
+	}, 100);
+}
+
+let lastCode = null;
+jar.onUpdate(runCode);
+runCode();
+
+function runCode() {
+	const code = jar.toString();
+	if (lastCode && lastCode === code) return;
+	console.log('running user code');
+	lastCode = code;
+	eval(code);
+}
+
+
+function uuidv4() {
+	return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+		(c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+	);
+}
+
+let _mabLogHost;
+function mabContext(task, levels, continued) {
+	this.task = task;
+	this.levels = levels;
+	this.continued = continued;
+}
+Object.assign(mabContext.prototype, {
+	action: mabLogAction,
+	message: mabLogMessage,
+	forward: mabLogForward,
+	end: mabLogEnd,
+	write: mabWrite,
+});
+
+
+function mabWrite(task, levels, now, name, value) {
+	const log = encodeURI(`${task}/${levels.join('/')}\t${now.toFixed(6)}\t${name}\t${value}`);
+	console.log({ log });
+	return fetch(`//${_mabLogHost}/log/${log}`, {
+		method: 'POST',
+	}).then((r) => r.text());
+}
+
+
+function mabLogToServer(host) {
+	_mabLogHost = host;
+	return new mabContext(null, [], false);
+}
+
+function mabNewContext() {
+	return new mabContext(null, [], false);
+}
+
+function mabLogAction(message) {
+	const now = Date.now() / 1000.0;
+	if (this.levels.length === 0) {
+		this.task = uuidv4();
+		this.levels = [1];
+	} else {
+		if (!this.continued) {
+			this.levels = [...this.levels];
+			this.levels[this.levels.length-1]++;
+		} else this.continued = false;
+		this.levels = [...this.levels, 1];
+	}
+
+	return this.write(this.task, this.levels, now, "@started", message);
+}
+
+function mabLogMessage(name, message) {
+	const now = Date.now() / 1000.0;
+	if (this.continued) console.error('after continuing, start an action, not a log message');
+	this.levels = [...this.levels];
+	this.levels[this.levels.length-1]++;
+
+	return this.write(this.task, this.levels, now, name, message);
+}
+
+function mabLogForward() {
+	this.levels = [...this.levels];
+	this.levels[this.levels.length-1]++;
+	return `${this.task}/${this.levels.join('/')}`;
+}
+
+function mabLogContinue(info) {
+	const task = info.substring(0, 36);
+	const levels = info.substring(37);
+	return new mabContext(task, levels.split('/').map((d) => +d), true);
+}
+
+function mabLogEnd(message='') {
+	const ret = this.message('@finished', message);
+	this.levels = [...this.levels];
+	this.levels.pop();
+	return ret;
+}
+
+
+const log = mabLogToServer(window.location.host);
+log.action('my action');
+log.message('my log', 'value');
+log.action('subaction');
+log.message('sub', 'new value');
+const info = log.forward();
+log.end('final value');
+log.end();
+
+const newlog = mabLogContinue(info);
+newlog.action('continued action');
+newlog.message('continued message', 'value');
+newlog.end();
+
+
+L.TileLayer.LoggingTileLayer = L.TileLayer.extend({
+	createTile: function (coords, done) {
+		var tile = document.createElement('img');
+
+		L.DomEvent.on(tile, 'load', L.Util.bind(this._tileOnLoad, this, done, tile));
+		L.DomEvent.on(tile, 'error', L.Util.bind(this._tileOnError, this, done, tile));
+
+		if (this.options.crossOrigin || this.options.crossOrigin === '') {
+			tile.crossOrigin = this.options.crossOrigin === true ? '' : this.options.crossOrigin;
+		}
+
+		/*
+		 Alt tag is set to empty string to keep screen readers from reading URL and for compliance reasons
+		 http://www.w3.org/TR/WCAG20-TECHS/H67
+		*/
+		tile.alt = '';
+
+		/*
+		 Set role="presentation" to force screen readers to ignore this
+		 https://www.w3.org/TR/wai-aria/roles#textalternativecomputation
+		*/
+		tile.setAttribute('role', 'presentation');
+
+		var ctx = mabNewContext();
+		ctx.action('requesting tile');
+		ctx.message('coords', '' + coords);
+		fetch(this.getTileUrl(coords), {
+			headers: {
+				'X-MAB-Log-Info': ctx.forward(),
+			},
+		}).then((r) => {
+			return r.blob();
+		}).then((blob) => {
+			ctx.end('' + blob.size);
+			tile.src = URL.createObjectURL(blob);
+		});
+
+		return tile;
+
+		Object.defineProperty(tile, 'parentNode', {
+			get() { console.log('get'); return tile.parentNode; },
+		});
+		return tile;
+
+		//return tile;
+		return new Proxy(tile, {
+			get(...args) {
+				console.log('get', args);
+				return args[0][args[1]];
+				return Reflect.get(...args);
+			},
+		});
+	},
+});
+
+
+const map = L.map('map', {
+        crs: L.CRS.Simple,
+        center: [-128, 128],
+        zoom: 6,
+        tms: true,
+        fadeAnimation: false
+});
+window.map = map;
+map.zoomControl.setPosition('bottomright');
+
+let tiles = null;
+
+let newTiles = null, newTilesNextCB = null;
+function update() {
+	console.log('update');
+	if (newTiles) { newTilesNextCB = update; return; }
+	newTiles = new L.TileLayer.LoggingTileLayer(makeUrlTemplate(), {
+		tileSize: 256,
+	}).addTo(map).bringToFront();
+	if (!tiles) return tiles = newTiles, newTiles = null, newTilesNextCB = null;
+
+	tiles.setUrl(L.Util.emptyImageUrl, true);
+	newTiles.on('load', removeOldLayer);
+}
+
+function removeOldLayer() {
+	newTiles.off('load', removeOldLayer);
+	map.removeLayer(tiles);
+	tiles._map = {};
+	tiles = newTiles;
+	newTiles = null;
+	if (newTilesNextCB) { const cb = newTilesNextCB; newTilesNextCB = null; cb(); }
+}
+
+window.makeDC = makeDC;
+function makeDC() {
+	const dc = {
+		index: [],
+		mult: [],
+		offset: [],
+		combine: 0.5,
+	};
+	const code = math.compile(thedepth);
+	const variables = thevariables.split(' ');
+
+	const scope = {
+		min: (v) => v,
+		max: (v) => v,
+		mean: (v) => v,
+	};
+	variables.forEach((v) => { scope[v] = 0.0; });
+
+	try {
+		const combine = code.evaluate({ ...scope,
+			min: () => 'min',
+			max: () => 'max',
+			mean: () => 'mean',
+		});
+		if (combine === 'min') dc.combine = 0.0;
+		else if (combine === 'max') dc.combine = 1.0;
+		else if (combine === 'mean') dc.combine = 0.5;
+		else {
+			console.error('depth expression needs min, max, or mean');
+			return null;
+		}
+	} catch (e) {
+		console.error('syntax error in depth expression', e);
+		return null;
+	}
+
+	variables.forEach((variable, i) => {
+		try {
+			const at0 = code.evaluate({ ...scope, [variable]: 0.0 });
+			const at1 = code.evaluate({ ...scope, [variable]: 1.0 });
+			const at2 = code.evaluate({ ...scope, [variable]: 2.0 });
+			const mult01 = at1 - at0;
+			const mult02 = (at2 - at0) / 2.0;
+			console.log({ variable, at0, at1, at2, mult01, mult02 });
+			if (Math.abs(at0 - at1) < 0.01) {
+				console.log('variable not used' + variable);
+				return;
+			}
+			if (Math.abs(mult01 - mult02) > 0.01) {
+				console.error('nonlinear function involving ' + variable);
+				return;
+			}
+
+			const offset = dc.offset.length === 0 ? at0 : 0.0;
+			const mult = mult01;
+
+			dc.index.push(i + 1);
+			dc.mult.push(mult);
+			dc.offset.push(offset);
+		} catch (e) {
+			//console.warn({ variable, e });
+		}
+	});
+
+	dc.index.push(0);
+
+	return dc;
+}
+
+function makeUrlTemplate() {
+	const dataset = window.location.hash.substring(1) || 'R';
+	const defines = thevariables.split(' ').map((d, i) => {
+		return `
+			#define a${d} aNode${i+1}
+			#define u${d}Min uNodeMin${i+1}
+			#define u${d}Max uNodeMax${i+1}
+		`;
+	}).join('\n');
+	const vert = btoa(document.querySelector('#vert-header').textContent + defines + thevert(config) + document.querySelector('#vert-footer').textContent);
+	const frag = btoa(document.querySelector('#frag-header').textContent + thefrag(config) + document.querySelector('#frag-footer').textContent);
+	console.log(atob(vert))
+	const dcIndex = btoa(new Uint32Array(thedc.index));
+	const dcMult = btoa(new Float32Array(thedc.mult));
+	const dcOffset = btoa(new Float32Array(thedc.offset));
+	const dcMinMult = 1.0 - thedc.combine;
+	const dcMaxMult = thedc.combine;
+
+	return `tile/${dataset}/{z}/{x}/{y}/,vert,base64:${vert},frag,base64:${frag},dcIdent,${dcIdent},dcIndex,base64:${dcIndex},dcMult,base64:${dcMult},dcOffset,base64:${dcOffset},dcMinMult,${dcMinMult},dcMaxMult,${dcMaxMult}`;
+}
+</script>
