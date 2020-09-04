@@ -221,6 +221,12 @@ void *render(void *v) {
 		}
 	}
 	__attribute__((fallthrough));
+
+	case INIT_PARTITION:
+	MAB_WRAP("init partition") {
+
+	}
+	__attribute__((fallthrough));
 	
 	case INIT_DC:
 	MAB_WRAP("init index data") {
@@ -443,7 +449,6 @@ wait_for_request:
 
 	if (fabsf(x - _x) > 0.1) { x = _x; where = RENDER; }
 	if (fabsf(y - _y) > 0.1) { y = _y; where = RENDER; }
-	if (fabsf(z - _z) > 0.1) { z = _z; where = RENDER; }
 	if (vertexShaderSource == NULL || strcmp(vertexShaderSource, _vertexShaderSource) != 0) {
 		if (vertexShaderSource) free(vertexShaderSource);
 		vertexShaderSource = strdup(_vertexShaderSource);
@@ -466,6 +471,7 @@ wait_for_request:
 		dcMaxMult = _dcMaxMult;
 		where = INIT_DC;
 	}
+	if (fabsf(z - _z) > 0.1) { z = _z; where = INIT_PARTITION; }
 	if (dataset == NULL || strcmp(dataset, _dataset) != 0) {
 		if (dataset) free(dataset);
 		dataset = strdup(_dataset);

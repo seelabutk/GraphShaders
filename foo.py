@@ -24,7 +24,10 @@ def main(nodesf, edgesf, root, ncols, ecols, missing):
 				try:
 					float(row[c])
 				except ValueError:
-					row[c] = lastrow[c]
+					if missing == 'reuse':
+						row[c] = lastrow[c]
+					else:
+						raise
 			nodes.append(row)
 			lastrow = row
 
