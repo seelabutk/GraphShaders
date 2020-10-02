@@ -113,4 +113,11 @@ create-fg() {
 		"$@"
 }
 
+use-dataset() {
+	local dataset
+	dataset=${1:?need dataset}
+
+	ln -sf ${dataset:?}.index.html static/index.html
+}
+
 "$@"

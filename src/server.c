@@ -89,7 +89,7 @@ void *render(void *v) {
 	GLchar log[512];
 	struct attrib nattribs[16], eattribs[16], *edges;
 	FILE *f;
-	enum { INIT_OSMESA, INIT_GRAPH, INIT_BUFFERS, INIT_PROGRAM, INIT_UNIFORMS, INIT_ATTRIBUTES, INIT_DC, INIT_INDEX_BUFFER, RENDER, WAIT } where;
+	enum { INIT_OSMESA, INIT_GRAPH, INIT_BUFFERS, INIT_PROGRAM, INIT_UNIFORMS, INIT_PARTITION, INIT_ATTRIBUTES, INIT_DC, INIT_INDEX_BUFFER, RENDER, WAIT } where;
 
 	GLfloat x, y, z;
 	GLchar *dataset, *vertexShaderSource, *fragmentShaderSource;
