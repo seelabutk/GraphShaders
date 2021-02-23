@@ -1,4 +1,8 @@
 #include "server.h"
+
+#include "voxel_traversal.h"
+#include "vec.h"
+
 #include <sys/types.h>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -26,6 +30,9 @@
 #define GLAPIENTRY APIENTRY
 #include <GL/osmesa.h>
 
+
+#define isPow2(v) (v && !(v & (v-1)))
+
 struct attrib {
 	GLuint64 size;
 	union {
@@ -46,6 +53,11 @@ struct attrib {
 		GLuint *uints;
 	};
 };
+
+typedef struct partition_data {
+	Vec_GLuint partitions;
+	GLuint indexBuffer;
+} PartitionData;
 
 enum {
 	ERROR_NONE = 0,
@@ -81,9 +93,15 @@ static volatile GLubyte volatile _error;
 static pthread_mutex_t *_lock;
 static pthread_barrier_t *_barrier;
 
+static const GLuint _max_depth = 16;
+static PartitionData **_partition_cache;
+
+//currently must stay depth+1 only because depth order cannot be guarenteed otherwise
+static inline GLuint resolution_depth(GLuint depth){ return depth+1; }
+
 void *render(void *v) {
 	OSMesaContext context;
-	GLuint i, vertexShader, fragmentShader, program, indexBuffer, aNodeBuffers[16];
+	GLuint i, j, vertexShader, fragmentShader, program, /*indexBuffer,*/ aNodeBuffers[16];
 	GLuint64 ncount, ecount;
 	GLint rc, uTranslateX, uTranslateY, uScale, uNodeMins[16], uNodeMaxs[16], aNodeLocations[16];
 	GLchar log[512];
@@ -96,6 +114,8 @@ void *render(void *v) {
 	GLboolean first;
 	GLuint dcIdent, *dcIndex;
 	GLfloat *dcMult, *dcOffset, dcMinMult, dcMaxMult;
+	
+	_partition_cache = NULL;	
 
 	_resolution = 256;
 	context = NULL;
@@ -105,7 +125,7 @@ void *render(void *v) {
 	edges = malloc(sizeof(*edges));
 	*edges = (struct attrib){ 0 };
 	aNodeBuffers[0] = 0;
-	indexBuffer = 0;
+	//indexBuffer = 0;
 	dcIdent = 0;
 	dcIndex = NULL;
 	dcMult = dcOffset = NULL;
@@ -221,12 +241,6 @@ void *render(void *v) {
 		}
 	}
 	__attribute__((fallthrough));
-
-	case INIT_PARTITION:
-	MAB_WRAP("init partition") {
-
-	}
-	__attribute__((fallthrough));
 	
 	case INIT_DC:
 	MAB_WRAP("init index data") {
@@ -234,7 +248,7 @@ void *render(void *v) {
 		dcDepth = malloc(eattribs[0].count / 2 * sizeof(*dcDepth));
 		for (i=0; i<eattribs[0].count/2; ++i) {
 			dcDepth[i] = 0.0;
-			for (int j=0; j<16; ++j) {
+			for (j=0; j<16; ++j) {
 				if (!dcIndex[j]) break;
 				float sourceDepth, targetDepth;
 
@@ -275,6 +289,65 @@ void *render(void *v) {
 
 		free(dcReorder);
 		free(dcDepth);
+	}
+	__attribute__((fallthrough));	
+
+	case INIT_PARTITION:
+	MAB_WRAP("init partition") {
+		unsigned j;
+	
+		//clear previous partitions & create anew - TODO: move this
+		{	
+		if(_partition_cache){
+			for(i=0; i<_max_depth; ++i){
+				GLuint res = resolution_depth(i);
+				for(j=0; j<res*res; ++j){
+					vec_destroy(&_partition_cache[i][j].partitions);
+				}
+				free(_partition_cache[i]);
+				_partition_cache[i] = NULL;
+			}
+			free(_partition_cache);
+			_partition_cache = NULL;
+		}
+		_partition_cache = (PartitionData **)malloc(_max_depth*sizeof(PartitionData*));
+		for(i=0; i<_max_depth; ++i){
+			GLuint res = resolution_depth(i);
+			_partition_cache[i] = (PartitionData*)calloc(res*res, sizeof(PartitionData));
+			for(j=0; j<res*res; ++j){
+				vec_init(&_partition_cache[i][j].partitions);
+			}
+		}
+		}
+	
+		GLuint depth = floor(_z);
+
+		GLfloat *vertsX = nattribs[0].floats;		
+		GLfloat *vertsY = nattribs[1].floats;		
+
+		GLfloat minX = nattribs[0].frange[0];
+		GLfloat maxX = nattribs[0].frange[1];
+		GLfloat minY = nattribs[1].frange[0];
+		GLfloat maxY = nattribs[1].frange[1];
+
+		unsigned res = resolution_depth(depth);
+		
+		for(i=0; i<edges->count; i+=2) {
+			GLuint e0 = edges->uints[i+0];
+			GLuint e1 = edges->uints[i+1];
+			
+			GLfloat x0 = vertsX[e0];
+			GLfloat y0 = vertsY[e0];
+			GLfloat x1 = vertsX[e1];
+			GLfloat y1 = vertsY[e1];
+				
+			Vec_GLuint partitions = voxel_traversal(res, x0, y0, x1, y1, minX, minY, maxX, maxY);
+			for(j=0; j<partitions.length; ++j){
+				assert(vec_push(&_partition_cache[depth][partitions.data[j]].partitions, e0) != -1);
+				assert(vec_push(&_partition_cache[depth][partitions.data[j]].partitions, e1) != -1);
+			}
+			vec_destroy(&partitions);
+		}
 	}
 	__attribute__((fallthrough));
 
@@ -376,14 +449,12 @@ void *render(void *v) {
 		for (i=0; i<ncount; ++i) {
 			char temp[32];
 			snprintf(temp, sizeof(temp), "uNodeMin%d", i + 1);
-
 			uNodeMins[i] = glGetUniformLocation(program, temp);
 		}
 
 		for (i=0; i<ncount; ++i) {
 			char temp[32];
 			snprintf(temp, sizeof(temp), "uNodeMax%d", i + 1);
-
 			uNodeMaxs[i] = glGetUniformLocation(program, temp);
 		}
 	}
@@ -391,14 +462,30 @@ void *render(void *v) {
 
 	case INIT_INDEX_BUFFER:
 	MAB_WRAP("init index buffer") {
+		/*
+		unsigned i, j, k, curr;
 		if (indexBuffer)
-		glDeleteBuffers(1, &indexBuffer);
-
+			glDeleteBuffers(1, &indexBuffer);
 
 		glGenBuffers(1, &indexBuffer);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, edges->size, edges->data, GL_STATIC_DRAW);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+		*/
+
+		//partition cache index buffers
+		for(i=0; i<_max_depth; ++i){
+			GLuint res = resolution_depth(i);
+			for(j=0; j<res*res; ++j){
+				if (_partition_cache[i][j].indexBuffer)
+					glDeleteBuffers(1, &_partition_cache[i][j].indexBuffer);
+		
+				glGenBuffers(1, &_partition_cache[i][j].indexBuffer);
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[i][j].indexBuffer);
+				glBufferData(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[i][j].partitions.length*sizeof(GLuint), _partition_cache[i][j].partitions.data, GL_STATIC_DRAW);
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+			}
+		}
 	}
 	__attribute__((fallthrough));
 
@@ -420,11 +507,37 @@ void *render(void *v) {
 		//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+		
+		/*
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
 		glDrawElements(GL_LINES, edges->count, GL_UNSIGNED_INT, 0);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+		*/
+		
+		//get current partition zoom level
+		GLuint zoom = (GLuint)floor(_z);
+		GLuint res = resolution_depth(zoom);
+		
+		//figure out which partition we're rendering in
+		GLuint rx = (GLuint)interpolate(nattribs[0].frange[0], nattribs[0].frange[1], 0, res, _x);
+		GLuint ry = (GLuint)interpolate(nattribs[1].frange[0], nattribs[1].frange[1], 0, res, _y);
+		assert(rx < res && ry < res);
+		
+		//I think we need to add 1 extra tile to X and Y in _some_ cases of _x and _y spanning multiple tiles
+		int numTilesX = (int)ceil(res/pow(2, _z));
+		//if(!isPow2(_x))	++numTilesX;
+		int numTilesY = (int)ceil(res/pow(2, _z));
+		//if(!isPow2(_y))	++numTilesY;
 
+		for(i=0; i<numTilesX; ++i){
+			for(j=0; j<numTilesY; ++j){
+				GLuint idx = (ry+j)*res+(rx+i);
+
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[zoom][idx].indexBuffer);
+				glDrawElements(GL_LINES, _partition_cache[zoom][idx].partitions.length, GL_UNSIGNED_INT, 0);
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+			}
+		}
 		glFinish();
 	}
 	__attribute__((fallthrough));

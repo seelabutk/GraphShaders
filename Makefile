@@ -59,13 +59,15 @@ src/shaders/%.h: src/shaders/%
 		> $@
 
 build/base64.o:
+build/voxel_traversal.o:
+build/vec.o:
 
 build/fg.o:
 
 build/render.o: src/fg.h
 
 build/server.o: CFLAGS += $(libmicrohttpd_CFLAGS)
-build/server.o: src/server.h
+build/server.o: src/server.h src/voxel_traversal.h src/vec.h
 
 build/glad.o: CFLAGS += $(dl_CFLAGS)
 build/glad.o: src/glad/glad.h
@@ -75,7 +77,7 @@ build/MAB/log.o: src/MAB/log.h
 build/server: CFLAGS += $(libmicrohttpd_CFLAGS) $(zlib_CFLAGS)
 build/server: LDLIBS += $(libmicrohttpd_LDLIBS) $(zlib_LDLIBS) $(egl_LDLIBS) $(dl_LDLIBS) $(m_LDLIBS) $(zorder_LDLIBS) -pthread
 build/server: build/glad.o
-build/server: build/base64.o
+build/server: build/base64.o build/voxel_traversal.o build/vec.o
 
 build/server: LDLIBS += -luuid
 build/server: LDFLAGS += -pthread

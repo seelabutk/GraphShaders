@@ -1,4 +1,6 @@
 /build
+layouts
+__pycache__/*
 rc_*
 temp_*
 /src/shaders/*.h
