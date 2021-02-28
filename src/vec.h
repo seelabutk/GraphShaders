@@ -3,9 +3,10 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <glad/glad.h>
 
 #define Vec(T)\
-	struct { T *data; unsigned length, capacity; }
+	struct { T *data; unsigned long length, capacity; }
 
 
 #define vec_init(v)\
@@ -24,7 +25,9 @@
 #define vec_at(v, idx)\
 	(v)->data[idx]
 
-int _vec_expand(char **data, unsigned *length, unsigned *capacity, unsigned memsz);
+int _vec_expand(char **data, unsigned long *length, unsigned long *capacity, unsigned long memsz);
+
+typedef Vec(GLuint) Vec_GLuint;
 
 #endif
 

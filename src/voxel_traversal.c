@@ -8,12 +8,12 @@
 
 #define MAX_ITER 100
 
-unsigned to_tile_id(unsigned resolution, unsigned x, unsigned y)
+unsigned to_tile_id(unsigned long resolution, unsigned x, unsigned y)
 {
 	return y*resolution+x;
 }
 
-Vec_GLuint voxel_traversal(unsigned RESOLUTION, double x0, double y0, double x1, double y1, double xMin, double yMin, double xMax, double yMax)
+Vec_GLuint voxel_traversal(unsigned long RESOLUTION, double x0, double y0, double x1, double y1, double xMin, double yMin, double xMax, double yMax)
 {	
 	const double VOXEL_SIZE =  ( double ) 1 / ( double ) RESOLUTION;
 	
