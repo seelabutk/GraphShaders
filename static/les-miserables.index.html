@@ -61,7 +61,6 @@ code[class*="language-"] {
 <script src="https://unpkg.com/leaflet@1.3.1/dist/leaflet.js"
    integrity="sha512-/Nsx9X4HebavoBvEBuyp3I7od5tA0UzAxs+j83KgC8PU0kgB4XiK4Lfe4y4cgBtaRJQEIFCW+oC506aPT2L1zw=="
    crossorigin=""></script>
-<script src="https://rawcdn.githack.com/mutsuyuki/Leaflet.SmoothWheelZoom/3da9393ddac798179916ebfb5390936136f5cace/SmoothWheelZoom.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet-easybutton@2/src/easy-button.js"></script>
 <script src="https://unpkg.com/dat.gui@0.6.5/build/dat.gui.min.js"></script>
 <script src="static/shaders.js"></script>
@@ -86,13 +85,8 @@ out float fg_Attribute;
 		void main() {
 			float x = (aX - uXMin) / (uXMax - uXMin);
 			float y = (aY - uYMin) / (uYMax - uYMin);
-			float date = (aDate - uDateMin) / (uDateMax - uDateMin);
-			float numMaint = (aNumMaint - uNumMaintMin) / (uNumMaintMax - uNumMaintMin);
-			float cve = (aCVE - uCVEMin) / (uCVEMax - uCVEMin);
 
-			float attrib = 1.0 - abs(date - ${config.selector});
-			//float attrib = aNumMaint - 5;
-			//float attrib = 1.0 - (0.2 + 0.6 * cve);
+			float attrib = x;
 
 			fg_Position = vec4(x, y, attrib, 1.0);
 			fg_Attribute = attrib;
@@ -125,7 +119,8 @@ out vec4 fg_FragColor;
 </script><!-- frag-header -->
 <script type="x-shader/x-fragment" id="default-frag">
 		void main() {
-			fg_FragColor = mix(vec4(1.0, 0.0, 0.0, 1.0), vec4(0.0), fg_Attribute);
+			if (fg_Attribute < 0.01) discard;
+			fg_FragColor = mix(vec4(0.0), vec4(1.0, 0.0, 0.0, 1.0), fg_Attribute);
 		}
 </script><!-- default-frag -->
 <script type="x-shader/x-fragment" id="frag-footer">
@@ -156,8 +151,8 @@ jar.updateCode(
 	params: [
 		{ name: 'selector', initial: 0.5, min: 0.0, max: 1.0 },
 	],
-	variables: 'X Y Date NumMaint CVE IsSource',
-	depth: 'mean(1.23 * (Date - 4.56) / 7.89)',
+	variables: 'X Y',
+	depth: 'mean(X)',
 	node: (config) => \`
 		${document.querySelector('#default-vert').textContent.trim()}
 	\`,
@@ -344,8 +339,6 @@ L.TileLayer.LoggingTileLayer = L.TileLayer.extend({
 			return r.blob();
 		}).then((blob) => {
 			ctx.end('' + blob.size);
-			//tile.style.width = '257px';
-			//tile.style.height = '257px';
 			tile.src = URL.createObjectURL(blob);
 		});
 
@@ -368,17 +361,12 @@ L.TileLayer.LoggingTileLayer = L.TileLayer.extend({
 });
 
 
-window.L_DISABLE_3D = true;
-
 const map = L.map('map', {
         crs: L.CRS.Simple,
         center: [-128, 128],
-        zoom: 6,
+        zoom: 3,
         tms: true,
-        fadeAnimation: false,
-	scrollWheelZoom: false, // disable original zoom
-	smoothScrollWheel: true, // enable smooth scroll
-	smoothSensitivity: 1, // zoom speed
+        fadeAnimation: false
 });
 window.map = map;
 map.zoomControl.setPosition('bottomright');
@@ -387,11 +375,11 @@ let tiles = null;
 
 let newTiles = null, newTilesNextCB = null;
 function update() {
+	console.log('update');
 	if (newTiles) { newTilesNextCB = update; return; }
 	newTiles = new L.TileLayer.LoggingTileLayer(makeUrlTemplate(), {
 		tileSize: 256,
 	}).addTo(map).bringToFront();
-	console.log('update', Object.keys(newTiles._tiles).length);
 	if (!tiles) return tiles = newTiles, newTiles = null, newTilesNextCB = null;
 
 	tiles.setUrl(L.Util.emptyImageUrl, true);
@@ -477,7 +465,7 @@ function makeDC() {
 }
 
 function makeUrlTemplate() {
-	const dataset = window.location.hash.substring(1) || 'knit-graph';
+	const dataset = window.location.hash.substring(1) || 'les-miserables';
 	const defines = thevariables.split(' ').map((d, i) => {
 		return `
 			#define a${d} aNode${i+1}

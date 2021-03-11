@@ -54,6 +54,7 @@ struct attrib {
 typedef struct partition_data {
 	Vec_GLuint partitions;
 	GLuint indexBuffer;
+    GLuint count;
 } PartitionData;
 
 enum {
@@ -304,7 +305,7 @@ void *render(void *v) {
 		}
         unsigned long blkSize = _max_res*_max_res*sizeof(PartitionData);
         printf("Attempting to allocate %lu bytes for patition table\n", blkSize);
-		_partition_cache = (PartitionData *)malloc(blkSize);
+		_partition_cache = (PartitionData *)calloc(blkSize, sizeof(char));
         if(!_partition_cache){
             printf("Could not create partition cache of size %lu bytes!\n", blkSize);
             exit(1);
@@ -512,33 +513,35 @@ void *render(void *v) {
 		//get current partition resolution by zoom level
 		unsigned long res = (unsigned long)pow(2, _z);
 
-        /*float minX = nattribs[0].frange[0];
-        float maxX = nattribs[0].frange[1];
-        float minY = nattribs[1].frange[0];
-        float maxY = nattribs[1].frange[1];*/
-
 		//figure out which partition we're rendering in
 		unsigned long rx = (unsigned long)interpolate(0, res, 0, _max_res, _x);
 		unsigned long ry = (unsigned long)interpolate(0, res, 0, _max_res, _y);
 		
 		int numTilesX = (int)ceil((float)_max_res/(float)res); 
         int numTilesY = numTilesX; //seperated just in case if in the future we want to have different x and y
-	
+
+        /*
         printf("res: (%lux%lu)\n", res, res);
         printf("max: (%lux%lu)\n", _max_res, _max_res);
         printf("_x: %f, _y: %f\n", _x, _y);
         printf("rx: %lu, ry: %lu\n", rx, ry);
 		printf("------------- numTilesX: %d, numTilesY: %d -----------------\n", numTilesX, numTilesY);
+        */
+        
+        MAB_WRAP("rendering (%dx%d) tiles at zoom level %d", numTilesX, numTilesY, (int)_z){
+		    for(i=0; i<numTilesX; ++i){
+		    	for(j=0; j<numTilesY; ++j){
+		    		unsigned long idx = (ry+j)*_max_res+(rx+i);
+                    PartitionData *pd = &_partition_cache[idx];
+                    pd->count++;
+		    		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[idx].indexBuffer);
+		    		glDrawElements(GL_LINES, pd->partitions.length, GL_UNSIGNED_INT, 0);
+		    		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+		    	}
+		    }
+        }
 
-		for(i=0; i<numTilesX; ++i){
-			for(j=0; j<numTilesY; ++j){
-				unsigned long idx = (ry+j)*_max_res+(rx+i);
 
-				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[idx].indexBuffer);
-				glDrawElements(GL_LINES, _partition_cache[idx].partitions.length, GL_UNSIGNED_INT, 0);
-				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-			}
-		}
 		glFinish();
 	}
 	__attribute__((fallthrough));
