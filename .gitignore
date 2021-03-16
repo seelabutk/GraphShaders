@@ -1,4 +1,5 @@
 /build
+/env.sh
 layouts
 __pycache__/*
 rc_*
