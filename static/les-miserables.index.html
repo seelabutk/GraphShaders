@@ -331,7 +331,7 @@ L.TileLayer.LoggingTileLayer = L.TileLayer.extend({
 		var ctx = mabNewContext();
 		ctx.action('requesting tile');
 		ctx.message('coords', '' + coords);
-		fetch(this.getTileUrl(coords), {
+		fetch(window.location.origin + '/' + this.getTileUrl(coords), {
 			headers: {
 				'X-MAB-Log-Info': ctx.forward(),
 			},
@@ -465,7 +465,7 @@ function makeDC() {
 }
 
 function makeUrlTemplate() {
-	const dataset = window.location.hash.substring(1) || 'les-miserables';
+	const dataset = /*window.location.hash.substring(1) || */ 'les-miserables';
 	const defines = thevariables.split(' ').map((d, i) => {
 		return `
 			#define a${d} aNode${i+1}

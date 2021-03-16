@@ -533,40 +533,42 @@ void *render(void *v) {
 		//figure out which partition we're rendering in
 		unsigned long rx = (unsigned long)interpolate(0, res, 0, _max_res, _x);
 		unsigned long ry = (unsigned long)interpolate(0, res, 0, _max_res, _y);
-		
-		int numTilesX = (int)ceil((float)_max_res/(float)res); 
-        int numTilesY = numTilesX; //seperated just in case if in the future we want to have different x and y
+	    
+        if(rx < _max_res && ry < _max_res){
 
-        /*
-        printf("res: (%lux%lu)\n", res, res);
-        printf("max: (%lux%lu)\n", _max_res, _max_res);
-        printf("_x: %f, _y: %f\n", _x, _y);
-        printf("rx: %lu, ry: %lu\n", rx, ry);
-		printf("------------- numTilesX: %d, numTilesY: %d -----------------\n", numTilesX, numTilesY);
-        */
+		    int numTilesX = (int)ceil((float)_max_res/(float)res); 
+            int numTilesY = numTilesX; //seperated just in case if in the future we want to have different x and y
+
+            /*
+            printf("res: (%lux%lu)\n", res, res);
+            printf("max: (%lux%lu)\n", _max_res, _max_res);
+            printf("_x: %f, _y: %f\n", _x, _y);
+            printf("rx: %lu, ry: %lu\n", rx, ry);
+		    printf("------------- numTilesX: %d, numTilesY: %d -----------------\n", numTilesX, numTilesY);
+            */
         
-        MAB_WRAP("rendering tiles"){
-            mabLogMessage("left", "%d", (int)rx);
-            mabLogMessage("top", "%d", (int)ry);
-            mabLogMessage("numTilesX", "%d", numTilesX);
-            mabLogMessage("numTilesY", "%d", numTilesY);
-            mabLogMessage("zoom", "%d", (int)_z);
-		    for(i=0; i<numTilesX; ++i){
-		    	for(j=0; j<numTilesY; ++j){
-		    		unsigned long idx = (ry+j)*_max_res+(rx+i);
-                    PartitionData *pd = &_partition_cache[idx];
-                    pd->count++;
-                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[idx].indexBuffer);
-                    MAB_WRAP("glDrawElements") {
-                        mabLogMessage("index", "%lu", idx);
-                        mabLogMessage("size", "%lu", pd->partitions.length);
-                        glDrawElements(GL_LINES, pd->partitions.length, GL_UNSIGNED_INT, 0);
-                    }
-                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-		    	}
-		    }
+            MAB_WRAP("rendering tiles"){
+                mabLogMessage("left", "%d", (int)rx);
+                mabLogMessage("top", "%d", (int)ry);
+                mabLogMessage("numTilesX", "%d", numTilesX);
+                mabLogMessage("numTilesY", "%d", numTilesY);
+                mabLogMessage("zoom", "%d", (int)_z);
+		        for(i=0; i<numTilesX; ++i){
+		    	    for(j=0; j<numTilesY; ++j){
+		    		    unsigned long idx = (ry+j)*_max_res+(rx+i);
+                        PartitionData *pd = &_partition_cache[idx];
+                        pd->count++;
+		    	    	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[idx].indexBuffer);
+                        MAB_WRAP("glDrawElements") {
+                            mabLogMessage("index", "%lu", idx);
+                            mabLogMessage("size", "%lu", pd->partitions.length);
+                            glDrawElements(GL_LINES, pd->partitions.length, GL_UNSIGNED_INT, 0);
+                        }
+		    	    	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+		     	    }
+		        }
+            }
         }
-
 
 		glFinish();
 	}
