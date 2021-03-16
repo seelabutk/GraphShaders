@@ -354,24 +354,31 @@ void *render(void *v) {
 	MAB_WRAP("init node buffers") {
 		if (aNodeBuffers[0])
 		for (i=0; i<ncount; ++i)
-		glDeleteBuffers(1, &aNodeBuffers[i]);
+        glDeleteBuffers(1, &aNodeBuffers[i]);
 
 		for (i=0; i<ncount; ++i)
-		MAB_WRAP("init buffer i=%d", i) {
-			glGenBuffers(1, &aNodeBuffers[i]);
-			glBindBuffer(GL_ARRAY_BUFFER, aNodeBuffers[i]);
-			glBufferData(GL_ARRAY_BUFFER, nattribs[i].size, nattribs[i].data, GL_STATIC_DRAW);
-			glBindBuffer(GL_ARRAY_BUFFER, 0);
+		MAB_WRAP("init buffer") {
+            glGenBuffers(1, &aNodeBuffers[i]);
+            glBindBuffer(GL_ARRAY_BUFFER, aNodeBuffers[i]);
+            MAB_WRAP("glBufferData") {
+                mabLogMessage("size", "%lu", nattribs[i].size);
+                glBufferData(GL_ARRAY_BUFFER, nattribs[i].size, nattribs[i].data, GL_STATIC_DRAW);
+            }
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
 		}
 	}
 
 	case INIT_PROGRAM:
 	MAB_WRAP("create program") {
 		MAB_WRAP("create vertex shader") {
-			if (vertexShader) glDeleteShader(vertexShader);
-			vertexShader = glCreateShader(GL_VERTEX_SHADER);
-			glShaderSource(vertexShader, 1, (const GLchar *const *)&_vertexShaderSource, NULL);
-			glCompileShader(vertexShader);
+			if (vertexShader) {
+                glDeleteShader(vertexShader);
+            }
+            vertexShader = glCreateShader(GL_VERTEX_SHADER);
+
+            glShaderSource(vertexShader, 1, (const GLchar *const *)&_vertexShaderSource, NULL);
+
+            glCompileShader(vertexShader);
 
 			glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &rc);
 			if (!rc) {
@@ -385,10 +392,13 @@ void *render(void *v) {
 		}
 
 		MAB_WRAP("create fragment shader") {
-			if (fragmentShader) glDeleteShader(fragmentShader);
-			fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-			glShaderSource(fragmentShader, 1, (const GLchar *const *)&_fragmentShaderSource, NULL);
-			glCompileShader(fragmentShader);
+			if (fragmentShader) {
+                glDeleteShader(fragmentShader);
+            }
+
+            fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+            glShaderSource(fragmentShader, 1, (const GLchar *const *)&_fragmentShaderSource, NULL);
+            glCompileShader(fragmentShader);
 	
 			glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &rc);
 			if (!rc) {
@@ -402,11 +412,14 @@ void *render(void *v) {
 		}
 
 		MAB_WRAP("link program") {
-			if (program) glDeleteProgram(program);
-			program = glCreateProgram();
-			glAttachShader(program, vertexShader);
-			glAttachShader(program, fragmentShader);
-			glLinkProgram(program);
+			if (program) {
+                glDeleteProgram(program);
+            }
+
+            program = glCreateProgram();
+            glAttachShader(program, vertexShader);
+            glAttachShader(program, fragmentShader);
+            glLinkProgram(program);
 			
 			glGetProgramiv(program, GL_LINK_STATUS, &rc);
 			if(!rc){
@@ -430,31 +443,31 @@ void *render(void *v) {
 			char temp[32];
 			snprintf(temp, sizeof(temp), "aNode%lu", i + 1);
 
-			aNodeLocations[i] = glGetAttribLocation(program, temp);
-			glBindBuffer(GL_ARRAY_BUFFER, aNodeBuffers[i]);
-			glVertexAttribPointer(aNodeLocations[i], 1, nattribs[i].type, GL_FALSE, 0, 0);
-			glEnableVertexAttribArray(aNodeLocations[i]);
-			glBindBuffer(GL_ARRAY_BUFFER, 0);
+            aNodeLocations[i] = glGetAttribLocation(program, temp);
+            glBindBuffer(GL_ARRAY_BUFFER, aNodeBuffers[i]);
+            glVertexAttribPointer(aNodeLocations[i], 1, nattribs[i].type, GL_FALSE, 0, 0);
+            glEnableVertexAttribArray(aNodeLocations[i]);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
 		}
 	}
 	__attribute__((fallthrough));
 
 	case INIT_UNIFORMS:
 	MAB_WRAP("init uniforms") {
-		uTranslateX = glGetUniformLocation(program, "uTranslateX");
-		uTranslateY = glGetUniformLocation(program, "uTranslateY");
-		uScale = glGetUniformLocation(program, "uScale");
+        uTranslateX = glGetUniformLocation(program, "uTranslateX");
+        uTranslateY = glGetUniformLocation(program, "uTranslateY");
+        uScale = glGetUniformLocation(program, "uScale");
 
 		for (i=0; i<ncount; ++i) {
 			char temp[32];
 			snprintf(temp, sizeof(temp), "uNodeMin%lu", i + 1);
-			uNodeMins[i] = glGetUniformLocation(program, temp);
+            uNodeMins[i] = glGetUniformLocation(program, temp);
 		}
 
 		for (i=0; i<ncount; ++i) {
 			char temp[32];
 			snprintf(temp, sizeof(temp), "uNodeMax%lu", i + 1);
-			uNodeMaxs[i] = glGetUniformLocation(program, temp);
+            uNodeMaxs[i] = glGetUniformLocation(program, temp);
 		}
 	}
 	__attribute__((fallthrough));
@@ -477,27 +490,31 @@ void *render(void *v) {
 			if (_partition_cache[i].indexBuffer)
 				glDeleteBuffers(1, &_partition_cache[i].indexBuffer);
 		
-			glGenBuffers(1, &_partition_cache[i].indexBuffer);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[i].indexBuffer);
-			glBufferData(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[i].partitions.length*sizeof(GLuint), _partition_cache[i].partitions.data, GL_STATIC_DRAW);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+            glGenBuffers(1, &_partition_cache[i].indexBuffer);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[i].indexBuffer);
+            MAB_WRAP("glBufferData") {
+                mabLogMessage("index", "%lu", (size_t)i);
+                mabLogMessage("size", "%lu", _partition_cache[i].partitions.length*sizeof(GLuint));
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[i].partitions.length*sizeof(GLuint), _partition_cache[i].partitions.data, GL_STATIC_DRAW);
+            }
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 		}
 	}
 	__attribute__((fallthrough));
 
 	case RENDER:
 	MAB_WRAP("render") {
-		glUniform1f(uTranslateX, -1.0f * _x);
-		glUniform1f(uTranslateY, -1.0f * _y);
-		glUniform1f(uScale, pow(2.0f, _z));
+        glUniform1f(uTranslateX, -1.0f * _x);
+        glUniform1f(uTranslateY, -1.0f * _y);
+        glUniform1f(uScale, pow(2.0f, _z));
 
 		for (i=0; i<ncount; ++i) {
-			glUniform1f(uNodeMins[i], nattribs[i].frange[0]);
-			glUniform1f(uNodeMaxs[i], nattribs[i].frange[1]);
+            glUniform1f(uNodeMins[i], nattribs[i].frange[0]);
+            glUniform1f(uNodeMaxs[i], nattribs[i].frange[1]);
 		}
 		
 		//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		
 		//glEnable(GL_BLEND);
 		//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -528,15 +545,24 @@ void *render(void *v) {
 		printf("------------- numTilesX: %d, numTilesY: %d -----------------\n", numTilesX, numTilesY);
         */
         
-        MAB_WRAP("rendering (%dx%d) tiles at zoom level %d", numTilesX, numTilesY, (int)_z){
+        MAB_WRAP("rendering tiles"){
+            mabLogMessage("left", "%d", (int)rx);
+            mabLogMessage("top", "%d", (int)ry);
+            mabLogMessage("numTilesX", "%d", numTilesX);
+            mabLogMessage("numTilesY", "%d", numTilesY);
+            mabLogMessage("zoom", "%d", (int)_z);
 		    for(i=0; i<numTilesX; ++i){
 		    	for(j=0; j<numTilesY; ++j){
 		    		unsigned long idx = (ry+j)*_max_res+(rx+i);
                     PartitionData *pd = &_partition_cache[idx];
                     pd->count++;
-		    		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[idx].indexBuffer);
-		    		glDrawElements(GL_LINES, pd->partitions.length, GL_UNSIGNED_INT, 0);
-		    		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[idx].indexBuffer);
+                    MAB_WRAP("glDrawElements") {
+                        mabLogMessage("index", "%lu", idx);
+                        mabLogMessage("size", "%lu", pd->partitions.length);
+                        glDrawElements(GL_LINES, pd->partitions.length, GL_UNSIGNED_INT, 0);
+                    }
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 		    	}
 		    }
         }
@@ -560,7 +586,7 @@ wait_for_request:
 	pthread_barrier_wait(_barrier);
 
 	mabLogContinue(_info);
-	mabLogAction("render thread");
+	mabLogAction("receive from request thread");
 
 	where = RENDER;
 
@@ -713,6 +739,7 @@ ANSWER(Tile) {
 	}
 
 	MAB_WRAP("answer tile request") {
+    mabLogMessage("rxsize", "%zu", strlen(url));
 	float x, y, z;
 	char *dataset, *options;
 	if (5 != (rc = sscanf(url, "/tile/%m[^/]/%f/%f/%f/%ms", &dataset, &z, &x, &y, &options))) {
@@ -797,7 +824,7 @@ ANSWER(Tile) {
 	mabLogMessage("opt_frag length", "%d", strlen(opt_frag));
 	mabLogMessage("opt_dcIdent", "%u", opt_dcIdent);
 
-	MAB_WRAP("render") {
+	MAB_WRAP("send to render thread") {
 		MAB_WRAP("lock")
 		pthread_mutex_lock(_lock);
 
@@ -827,6 +854,9 @@ ANSWER(Tile) {
 		if (_error != ERROR_NONE) {
 			char *message;
 			message = errorMessages[_error];
+
+            mabLogMessage("error", "%s", message);
+
 			response = MHD_create_response_from_buffer(strlen(message), message, MHD_RESPMEM_PERSISTENT);
 			rc = MHD_queue_response(conn, MHD_HTTP_NOT_ACCEPTABLE, response);
 			MHD_destroy_response(response);
@@ -853,6 +883,8 @@ ANSWER(Tile) {
 			pthread_mutex_unlock(_lock);
 		}
 	}
+
+    mabLogMessage("txsize", "%zu", outputlen);
 	
 	response = MHD_create_response_from_buffer(outputlen, output, MHD_RESPMEM_MUST_FREE);
 	

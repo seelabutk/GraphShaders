@@ -1,11 +1,16 @@
+"""
+
+"""
+
 from __future__ import annotations
 from contextlib import contextmanager
 import csv
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import TextIOWrapper
 from pathlib import Path
 import re
+from statistics import mean, stdev
 import subprocess
 import sys
 from typing import *
@@ -44,7 +49,10 @@ class TreeValueProxy:
     tree: Tree
 
     def __getitem__(self, key) -> str:
-        return self.tree[key][1]
+        ret = self.tree[key]
+        if ret is None:
+            return None
+        return ret[1]
 
     @property
     def logs(self) -> Dict[str, str]:
@@ -61,7 +69,10 @@ class TreeTimestampProxy:
     tree: Tree
 
     def __getitem__(self, key) -> datetime:
-        return self.tree[key][0]
+        ret = self.tree[key]
+        if ret is None:
+            return None
+        return ret[0]
 
     @property
     def logs(self) -> Dict[str, datetime]:
@@ -72,11 +83,17 @@ class TreeTimestampProxy:
         return { k: v[0] for k, v in self.tree.attributes.items() }
 
 
+class TreeChildrenProxy(list):
+    def match(self, pattern) -> Iterator[Tree]:
+        for tree in self:
+            yield from tree.match(pattern)
+
+
 @dataclass
 class Tree:
     attributes: Dict[str, Tuple[datetime, str]]
     logs: Dict[str, Tuple[datetime, str]]
-    children: List[Tree]
+    _children: List[Tree]
     parent: Tree
 
     @property
@@ -87,6 +104,13 @@ class Tree:
     def times(self) -> TreeTimestampProxy:
         return TreeTimestampProxy(self)
 
+    @property
+    def children(self) -> TreeChildrenProxy:
+        return TreeChildrenProxy(self._children)
+
+    @property
+    def duration(self) -> timedelta:
+        return self.times['finished'] - self.times['started']
 
     def __getitem__(self, key) -> Tuple[datetime, str]:
         if (value := self.attributes.get(f'@{key}', None)) is not None:
@@ -111,21 +135,35 @@ class Tree:
     ''', re.VERBOSE)
 
     @classmethod
-    def readiter(cls, infiles: List[Path]) -> Iterator[Tree]:
-        with subprocess_as_stdin([
-            'sort',
-            '-t\t',      # tab delimited
-            '-k1,1.36',  # sort by first column, first 36 characters (task id)
-            '-k1.36V',   # sort by first column, characters after first 36, as a version (task levels)
-            '-k2,2n',    # sort by second column, as a number (timestamp)
-            *infiles,    # sort these files
-        ]):
+    def readiter(cls, infiles: List[Path], *, presorted: bool=False) -> Iterator[Tree]:
+        if not presorted:
+            args = [
+                'sort',
+                '-t\t',      # tab delimited
+                '-k1,1.36',  # sort by first column, first 36 characters (task id)
+                '-k1.36V',   # sort by first column, characters after first 36, as a version (task levels)
+                '-k2,2n',    # sort by second column, as a number (timestamp)
+                *infiles,    # sort these files
+            ]
+        else:
+            args = [
+                'sort',
+                '-t\t',      # tab delimited
+                '-k1,1.36',  # sort by first column, first 36 characters (task id)
+                '-k1.36V',   # sort by first column, characters after first 36, as a version (task levels)
+                '-k2,2n',    # sort by second column, as a number (timestamp)
+                '-m',        # merge already sorted files
+                *infiles,    # sort these files
+            ]
+
+        with subprocess_as_stdin(args):
             last_task_id = None
             last_task_level = None
             last_timestamp = None
             last_variable = None
             last_value = None
 
+            root = None
             tree = None
 
             for line in sys.stdin:
@@ -144,7 +182,8 @@ class Tree:
                 #print(f'{task_id=} {task_level=} {timestamp=} {variable=} {value=}')
 
                 if last_task_id is not None and task_id != last_task_id:
-                    yield tree
+                    yield root
+                    root = None
                     tree = None
 
                 if tree is None:
@@ -154,11 +193,13 @@ class Tree:
                     last_timestamp = None
                     last_variable = None
                     last_value = None
-                    #print('new tree')
+
+                if root is None:
+                    root = tree
 
                 if last_task_id is not None and len(task_level) > len(last_task_level):
                     tree = cls({}, {}, [], tree)
-                    tree.parent.children.append(tree)
+                    tree.parent._children.append(tree)
 
                 if last_task_id is not None and len(task_level) < len(last_task_level):
                     tree = tree.parent
@@ -166,7 +207,7 @@ class Tree:
                 if last_task_id is not None and len(task_level) == len(last_task_level):
                     if task_level[-1] < last_task_level[-1]:
                         tree = cls({}, {}, [], tree.parent)
-                        tree.parent.children.append(tree)
+                        tree.parent._children.append(tree)
 
                 if variable.startswith('@'):
                     tree.attributes[variable] = (timestamp, value)
@@ -179,20 +220,20 @@ class Tree:
                 last_variable = variable
                 last_value = value
 
-        if tree is not None:
-            yield tree
-    
+        if root is not None:
+            yield root
+
     def pprint(self):
         def p(tree, depth=0):
             for attr, (timestamp, value) in tree.attributes.items():
                 print(f'{" "*depth}{timestamp} {attr}={value!r}')
             for log, (timestamp, value) in tree.logs.items():
                 print(f'{" "*depth}{timestamp} {log}={value!r}')
-            for tree in tree.children:
+            for tree in tree._children:
                 p(tree, depth+2)
 
         p(self)
-    
+
     def match(self, pattern):
         class _Temporary:
             p: pattern
@@ -244,7 +285,7 @@ class Tree:
             elif expected_list and got_something:
                 exp_class = get_args(expected)[0]
 
-                for tree in self.children:
+                for tree in self._children:
                     if next(tree.match(exp_class), None) is not None:
                         break
 
@@ -253,9 +294,8 @@ class Tree:
             return
 
         if recursive:
-            for tree in self.children:
+            for tree in self._children:
                 yield from tree.match(pattern)
-
 
 
 T = TypeVar('T')
@@ -263,107 +303,150 @@ Recursive = Annotated[T, True]
 NonRecursive = Annotated[T, False]
 
 
-class BatchPattern:
-    started: Tuple[Any, Literal['batch']]
-    finished: Tuple[Any, Literal['batch']]
-    epoch: Any
-    loss: Any
-    accuracy: Any
+class ClientRequest:
+    started: Tuple[Any, Literal['requesting tile']]
+    finished: Tuple[Any, Any]
 
 
-class EpochPattern:
-    started: Tuple[Any, Literal['epoch']]
-    finished: Tuple[Any, Literal['epoch']]
-    epoch: Any
-    loss: Any
-    accuracy: Any
-    children: List[BatchPattern]
-
-
-class TrainPattern:
-    started: Tuple[Any, Literal['epoch']]
-    finished: Tuple[Any, Literal['epoch']]
-    children: List[Recursive[BatchPattern]]
-
-
-class TrialPattern:
-    started: Tuple[Any, Literal['trial']]
-    finished: Tuple[Any, Literal['trial']]
-    children: List[Recursive[TrainPattern]]
-
-
-class TripleRPattern:
-    started: Tuple[Any, Literal['triple-r.py']]
-    finished: Tuple[Any, Literal['triple-r.py']]
+class ServerResponse:
+    started: Tuple[Any, Literal['answer tile request']]
+    finished: Tuple[Any, Literal['']]
+    #error: Optional[Any]
+    rxsize: Any
+    txsize: Any
+    x: Any
+    y: Any
+    z: Any
+    dataset: Any
+    opt_dcIdent: Any
     
 
+class SendToRenderThread:
+    started: Tuple[Any, Literal['send to render thread']]
+    finished: Tuple[Any, Literal['']]
 
-def main(outfile, infiles):
-    writer = csv.writer(outfile)
 
-    '''for tree in Tree.readiter(infiles):
-        Epoch = NewType('Epoch', int)
-        Batch = NewType('Batch', int)
-        Seconds = NewType('Seconds', float)
-        Loss = NewType('Loss', float)
-        Accuracy = NewType('Accuracy', float)
+class Lock:
+    started: Tuple[Any, Literal['lock']]
+    finished: Tuple[Any, Literal['']]
 
-        per_epoch: Dict[Tuple[Epoch], Tuple[Seconds, Loss, Accuracy]] = {}
-        per_batch: Dict[Tuple[Epoch, Batch], Tuple[Seconds, Loss]] = {}
-        parameters = {}
 
-        match = next(tree.match(Recursive[TripleRPattern]), None)
-        if match is not None:
-            parameters['events'] = match.values['events']
+class ReceiveFromRequestThread:
+    started: Tuple[Any, Literal['receive from request thread']]
+    finished: Tuple[Any, Literal['']]
 
-        for trial in tree.match(Recursive[TripleRPattern]):
-            total_trial_time = (trial.times['finished'] - trial.times['started']).total_seconds()
-            print(f'{total_trial_time = }s')
-            parameters = { **parameters, **trial.values.logs }
-            for train in tree.match(Recursive[TrainPattern]):
-                for epoch in train.match(Recursive[EpochPattern]):
-                    per_epoch[(int(epoch.values['epoch']),)] = (
-                        (epoch.times['finished'] - epoch.times['started']).total_seconds(),
-                        float(epoch.values['loss']),
-                        float(epoch.values['accuracy']),
-                    )
 
-                    for batch in epoch.children:
-                        per_batch[int(epoch.values['epoch']), int(batch.values['batch'])] = (
-                            (batch.times['finished'] - batch.times['started']).total_seconds(),
-                            float(batch.values['loss']),
-                        )
+class Render:
+    started: Tuple[Any, Literal['render']]
+    finished: Tuple[Any, Literal['']]
 
-        print(parameters)
 
-        writer.writerow(['=== EPOCH ==='])
-        writer.writerow(['epoch', 'seconds', 'loss', 'accuracy'])
-        for key, row in per_epoch.items():
-            writer.writerow([*key, *row])
+class RenderingTiles:
+    started: Tuple[Any, Literal['rendering tiles']]
+    finished: Tuple[Any, Literal['']]
+    top: Any
+    left: Any
+    numTilesX: Any
+    numTilesY: Any
+    zoom: Any
 
-        writer.writerow(['=== BATCH ==='])
-        writer.writerow(['epoch', 'batch', 'seconds', 'loss'])
-        for key, row in per_batch.items():
-            writer.writerow([*key, *row])'''
 
-    class RenderPattern:
-        started: Tuple[Any, Literal['answer tile request']]
-        finished: Tuple[Any, Literal['']]
-    
-    for tree in Tree.readiter(infiles):
-        for render in tree.match(Recursive[RenderPattern]):
-            start = render.times['started']
-            finish = render.times['finished']
-            print(f'{(finish - start).total_seconds()}')
+class JpegEncoding:
+    started: Tuple[Any, Literal['jpeg']]
+    finished: Tuple[Any, Literal['']]
+    resolution: Any
+
+
+class Unlock:
+    started: Tuple[Any, Literal['unlock']]
+    finished: Tuple[Any, Literal['']]
+
+
+def main_metrics(outfile, infiles, presorted):
+    STR = '%s'
+    INT = '%d'
+    FLOAT = '%f'
+    fieldformats = {
+        'dataset': STR,
+        'z': FLOAT, 'x': FLOAT, 'y': FLOAT, 'opt_dcIdent': INT, 'resolution': INT,
+        'partition_left': INT, 'partition_top': INT, 'partition_width': INT, 'partition_height': INT,
+        'rxsize': INT, 'txsize': INT,
+        'client_latency': FLOAT, 'server_latency': FLOAT, 'lock_latency': FLOAT, 'unlock_latency': FLOAT, 'jpeg_latency': FLOAT, 'prepare_latency': FLOAT, 'render_latency': FLOAT,
+        'error': STR,
+    }
+    writer = csv.DictWriter(outfile, list(fieldformats.keys()))
+    writer.writeheader()
+
+    for tree in Tree.readiter(infiles, presorted=presorted):
+        row = { k: None for k in fieldformats }
+        for tree in tree.match(ClientRequest):
+            row['client_latency'] = tree.duration.total_seconds()
+
+            for tree in tree.children.match(ServerResponse):
+                row['rxsize'] = int(tree.values['rxsize'])
+                row['txsize'] = int(tree.values['txsize'])
+                row['x'] = float(tree.values['x'])
+                row['y'] = float(tree.values['y'])
+                row['z'] = float(tree.values['z'])
+                row['opt_dcIdent'] = int(tree.values['opt_dcIdent'])
+                row['dataset'] = tree.values['dataset']
+                row['error'] = tree.values['error']
+                row['server_latency'] = tree.duration.total_seconds()
+
+                for tree in tree.children.match(SendToRenderThread):
+                    for lock in tree.children.match(Lock):
+                        row['lock_latency'] = lock.duration.total_seconds()
+
+                    for unlock in tree.children.match(Unlock):
+                        row['unlock_latency'] = unlock.duration.total_seconds()
+
+                    for jpeg in tree.children.match(JpegEncoding):
+                        row['resolution'] = int(jpeg.values['resolution'])
+                        row['jpeg_latency'] = jpeg.duration.total_seconds()
+
+                    for tree in tree.children.match(ReceiveFromRequestThread):
+                        row['prepare_latency'] = tree.duration.total_seconds()
+
+                        for tree in tree.children.match(Render):
+                            row['render_latency'] = tree.duration.total_seconds()
+
+                            for tree in tree.children.match(RenderingTiles):
+                                row['partition_left'] = int(tree.values['left'])
+                                row['partition_top'] = int(tree.values['top'])
+                                row['partition_width'] = int(tree.values['numTilesX'])
+                                row['partition_height'] = int(tree.values['numTilesY'])
+
+        row = { k: fieldformats[k] % (v,) if v is not None else None for k, v in row.items() }
+        writer.writerow(row)
+
+
+def main_debug(infiles, presorted):
+    for tree in Tree.readiter(infiles, presorted=presorted):
+        tree.pprint()
+        print()
+
 
 def cli():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--outfile', '-o', default=sys.stdout, type=argparse.FileType('w'))
-    parser.add_argument('infiles', nargs='+', type=Path)
-    args = vars(parser.parse_args())
 
+    parser.set_defaults(main=None)
+    subparsers = parser.add_subparsers(required=True)
+
+    metrics = subparsers.add_parser('metrics')
+    metrics.set_defaults(main=main_metrics)
+    metrics.add_argument('--outfile', '-o', default=sys.stdout, type=argparse.FileType('w'))
+    metrics.add_argument('--presorted', action='store_true')
+    metrics.add_argument('infiles', nargs='+', type=Path)
+
+    debug = subparsers.add_parser('debug')
+    debug.set_defaults(main=main_debug)
+    debug.add_argument('--presorted', action='store_true')
+    debug.add_argument('infiles', nargs='+', type=Path)
+
+    args = vars(parser.parse_args())
+    main = args.pop('main')
     main(**args)
 
 

@@ -1,5 +1,7 @@
 README.md
 go.sh
+env.sh
 Dockerfile
 src/server.c
 static/index.html
+logparse.py
