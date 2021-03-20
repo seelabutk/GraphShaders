@@ -91,9 +91,27 @@ static volatile GLubyte volatile _error;
 static pthread_mutex_t *_lock;
 static pthread_barrier_t *_barrier;
 
-static const GLuint _max_depth = 8;
+static const GLuint _max_depth = 2;
 static unsigned long _max_res;
 static PartitionData *_partition_cache;
+
+void log_partition_cache(PartitionData *pdc){
+    printf("tot: %lu\n", _max_res*_max_res);
+    for(int i = 0; i < _max_res*_max_res; ++i){
+        PartitionData *pd = &(pdc[i]);
+
+        if(pd->partitions.length == 0) continue;
+
+        printf("idx: %d\n", i);
+        printf("edgeCount: %lu\n", pd->partitions.length/2);
+        printf("     ");
+        for(int j = 0; j < pd->partitions.length; ++j){
+            printf("%d,", pd->partitions.data[j]);
+        }
+        printf("\n---------------------------------------\n\n");
+    }
+
+}
 
 void *render(void *v) {
 	OSMesaContext context;
@@ -317,19 +335,18 @@ void *render(void *v) {
 		GLfloat *vertsX = nattribs[0].floats;		
 		GLfloat *vertsY = nattribs[1].floats;		
 
-		GLfloat minX = nattribs[0].frange[0];
-		GLfloat maxX = nattribs[0].frange[1];
-		GLfloat minY = nattribs[1].frange[0];
-		GLfloat maxY = nattribs[1].frange[1];
+		GLfloat minX = nattribs[0].frange[0] - 1.0;
+		GLfloat maxX = nattribs[0].frange[1] + 1.0;
+		GLfloat minY = nattribs[1].frange[0] - 1.0;
+		GLfloat maxY = nattribs[1].frange[1] + 1.0;
 
         printf("partitioning data...\n");
         long sz = edges->count;
         long tenth = sz/10;
+        if(tenth == 0) ++tenth;
 		for(i=0; i<sz; i+=2) {
 
-            if(i%tenth < 2){
-                printf("%d%% done...\n", (int)(100*(double)i/(double)sz));
-            }
+            if(i%tenth < 2) printf("%d%% done...\n", (int)(100*(double)i/(double)sz));
 
 			GLuint e0 = edges->uints[i+0];
 			GLuint e1 = edges->uints[i+1];
@@ -340,13 +357,17 @@ void *render(void *v) {
 			GLfloat y1 = vertsY[e1];
 				
 			Vec_GLuint partitions = voxel_traversal(_max_res, x0, y0, x1, y1, minX, minY, maxX, maxY);
+            //printf("edge lies in %lu voxels\n", partitions.length);
 			for(j=0; j<partitions.length; ++j){
+                //printf("pushing edge (%d,%d) to partition %d\n", e0, e1, partitions.data[j]);
 				assert(vec_push(&_partition_cache[partitions.data[j]].partitions, e0) != -1);
 				assert(vec_push(&_partition_cache[partitions.data[j]].partitions, e1) != -1);
 			}
 			vec_destroy(&partitions);
 		}
         printf("100%% done\n");
+
+        log_partition_cache(_partition_cache);
 	}
 	__attribute__((fallthrough));
 
@@ -539,13 +560,10 @@ void *render(void *v) {
 		    int numTilesX = (int)ceil((float)_max_res/(float)res); 
             int numTilesY = numTilesX; //seperated just in case if in the future we want to have different x and y
 
-            /*
-            printf("res: (%lux%lu)\n", res, res);
-            printf("max: (%lux%lu)\n", _max_res, _max_res);
+            printf("res: (%lux%lu)/(%lux%lu)\n", res, res, _max_res, _max_res);
             printf("_x: %f, _y: %f\n", _x, _y);
             printf("rx: %lu, ry: %lu\n", rx, ry);
 		    printf("------------- numTilesX: %d, numTilesY: %d -----------------\n", numTilesX, numTilesY);
-            */
         
             MAB_WRAP("rendering tiles"){
                 mabLogMessage("left", "%d", (int)rx);
@@ -553,13 +571,21 @@ void *render(void *v) {
                 mabLogMessage("numTilesX", "%d", numTilesX);
                 mabLogMessage("numTilesY", "%d", numTilesY);
                 mabLogMessage("zoom", "%d", (int)_z);
+
 		        for(i=0; i<numTilesX; ++i){
 		    	    for(j=0; j<numTilesY; ++j){
 		    		    unsigned long idx = (ry+j)*_max_res+(rx+i);
                         PartitionData *pd = &_partition_cache[idx];
                         pd->count++;
+
+                        if(pd->partitions.length == 0) continue;
+
 		    	    	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[idx].indexBuffer);
                         MAB_WRAP("glDrawElements") {
+                            
+                            printf("index: %lu\n", idx);
+                            printf("size:  %lu\n", pd->partitions.length);
+
                             mabLogMessage("index", "%lu", idx);
                             mabLogMessage("size", "%lu", pd->partitions.length);
                             glDrawElements(GL_LINES, pd->partitions.length, GL_UNSIGNED_INT, 0);

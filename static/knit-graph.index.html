@@ -506,7 +506,7 @@ function makeDC() {
 }
 
 function makeUrlTemplate() {
-	const dataset = window.location.hash.substring(1) || 'knit-graph';
+	const dataset = 'knit-graph';
 	const defines = thevariables.split(' ').map((d, i) => {
 		return `
 			#define a${d} aNode${i+1}
