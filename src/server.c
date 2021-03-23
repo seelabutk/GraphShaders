@@ -356,7 +356,7 @@ void *render(void *v) {
 			GLfloat x1 = vertsX[e1];
 			GLfloat y1 = vertsY[e1];
 				
-			Vec_GLuint partitions = voxel_traversal(_max_res, x0, y0, x1, y1, minX, minY, maxX, maxY);
+			Vec_GLuint partitions = voxel_traversal(_max_res, _max_res, x0, y0, x1, y1, minX, minY, maxX, maxY);
             //printf("edge lies in %lu voxels\n", partitions.length);
 			for(j=0; j<partitions.length; ++j){
                 //printf("pushing edge (%d,%d) to partition %d\n", e0, e1, partitions.data[j]);
