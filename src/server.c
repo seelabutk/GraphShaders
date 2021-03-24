@@ -92,11 +92,11 @@ static pthread_mutex_t *_lock;
 static pthread_barrier_t *_barrier;
 
 static volatile GLuint _max_depth = 0;
-static unsigned long volatile  _max_res;
+static unsigned volatile  _max_res;
 static PartitionData *_partition_cache;
 
 void log_partition_cache(PartitionData *pdc){
-    printf("tot: %lu\n", _max_res*_max_res);
+    printf("tot: %u\n", _max_res*_max_res);
     for(int i = 0; i < _max_res*_max_res; ++i){
         PartitionData *pd = &(pdc[i]);
 
@@ -132,10 +132,8 @@ void *render(void *v) {
 	GLfloat *dcMult, *dcOffset, dcMinMult, dcMaxMult;
 	
 	_partition_cache = NULL;	
-    _max_res = pow(2, _max_depth);
-
-
 	_resolution = 256;
+
 	context = NULL;
 	vertexShader = fragmentShader = program = 0;
 	nattribs[0] = (struct attrib){ 0 };
@@ -312,16 +310,19 @@ void *render(void *v) {
 
 	case INIT_PARTITION:
 	MAB_WRAP("init partition") {
-		unsigned j;
-	
-		//clear previous partitions & create anew - TODO: move this
-		{	
+        unsigned j;
+
+		//clear previous partitions
 		if(_partition_cache){
 			for(i=0; i<_max_res*_max_res; ++i)
 				vec_destroy(&_partition_cache[i].partitions);
 			free(_partition_cache);
 			_partition_cache = NULL;
 		}
+        
+        //create new partitions
+        _max_res = pow(2, _max_depth);
+		printf("partition res: (%ux%u)\n", _max_res, _max_res);
         unsigned long blkSize = _max_res*_max_res*sizeof(PartitionData);
         printf("Attempting to allocate %lu bytes for patition table\n", blkSize);
 		_partition_cache = (PartitionData *)calloc(blkSize, sizeof(char));
@@ -331,7 +332,6 @@ void *render(void *v) {
         }
 			for(i=0; i<_max_res*_max_res; ++i)
 				vec_init(&_partition_cache[i].partitions);
-		}
 	
 		GLfloat *vertsX = nattribs[0].floats;		
 		GLfloat *vertsY = nattribs[1].floats;		
@@ -634,7 +634,7 @@ wait_for_request:
 		fragmentShaderSource = strdup(_fragmentShaderSource);
 		where = INIT_PROGRAM;
 	}
-	if (max_depth != _max_depth) { _max_depth = max_depth; where = INIT_PARTITION; }
+	if (max_depth != _max_depth) { max_depth = _max_depth; where = INIT_PARTITION; }
 	if (dcIdent != _dcIdent) {
 		dcIdent = _dcIdent;
 		if (dcIndex) free(dcIndex);
@@ -775,14 +775,12 @@ ANSWER(Tile) {
 	float x, y, z;
     int max_depth;
 	char *dataset, *options;
-	if (6 != (rc = sscanf(url, "/tile/%m[^/]/%d/%f/%f/%f/%ms", &dataset, &max_depth, &z, &x, &y, &options))) {
+	if (5 != (rc = sscanf(url, "/tile/%m[^/]/%f/%f/%f/%ms", &dataset, &z, &x, &y, &options))) {
 		fprintf(stderr, "rc: %d\n", rc);
 		fprintf(stderr, "options: %s\n", options);
 		rc = MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);	
 		goto end;
 	}
-    printf("max_depth: %d\n", max_depth);
-    mabLogMessage("max_depth", "%d", max_depth);
 	mabLogMessage("x", "%f", x);
 	mabLogMessage("y", "%f", y);
 	mabLogMessage("z", "%f", z);
@@ -835,7 +833,9 @@ ANSWER(Tile) {
 			opt_vert = value;
 		} else if (strcmp(key, "frag") == 0) {
 			opt_frag = value;
-		} else if (strcmp(key, "dcIdent") == 0) {
+		} else if (strcmp(key, "pDepth") == 0){
+            max_depth = atoi(value);
+        } else if (strcmp(key, "dcIdent") == 0) {
 			opt_dcIdent = atoi(value);
 		} else if (strcmp(key, "dcIndex") == 0) {
 			opt_dcIndex = value;
