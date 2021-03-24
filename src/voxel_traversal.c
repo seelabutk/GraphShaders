@@ -78,10 +78,10 @@ Vec_GLuint voxel_traversal(int xres, int yres, double X, double Y, double FX, do
             int curr_tile_id;            
             if(steep){
                 curr_tile_id = to_tile_id(xres, j, i);
-                printf(" ==Output== %d: voxel (i, j) = (%d, %d)\n", curr_tile_id, j, i);
+                //printf(" ==Output== %d: voxel (i, j) = (%d, %d)\n", curr_tile_id, j, i);
             } else {
                 curr_tile_id = to_tile_id(xres, i, j);
-                printf(" ==Output== %d: voxel (i, j) = (%d, %d)\n", curr_tile_id, i, j);
+                //printf(" ==Output== %d: voxel (i, j) = (%d, %d)\n", curr_tile_id, i, j);
             }
             vec_push(&tiles, curr_tile_id);
         }

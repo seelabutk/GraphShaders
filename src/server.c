@@ -91,8 +91,8 @@ static volatile GLubyte volatile _error;
 static pthread_mutex_t *_lock;
 static pthread_barrier_t *_barrier;
 
-static const GLuint _max_depth = 2;
-static unsigned long _max_res;
+static volatile GLuint _max_depth = 0;
+static unsigned long volatile  _max_res;
 static PartitionData *_partition_cache;
 
 void log_partition_cache(PartitionData *pdc){
@@ -125,6 +125,7 @@ void *render(void *v) {
 	enum { INIT_OSMESA, INIT_GRAPH, INIT_BUFFERS, INIT_PROGRAM, INIT_UNIFORMS, INIT_PARTITION, INIT_ATTRIBUTES, INIT_DC, INIT_INDEX_BUFFER, RENDER, WAIT } where;
 
 	GLfloat x, y, z;
+    int max_depth;
 	GLchar *dataset, *vertexShaderSource, *fragmentShaderSource;
 	GLboolean first;
 	GLuint dcIdent, *dcIndex;
@@ -367,7 +368,7 @@ void *render(void *v) {
 		}
         printf("100%% done\n");
 
-        log_partition_cache(_partition_cache);
+        //log_partition_cache(_partition_cache);
 	}
 	__attribute__((fallthrough));
 
@@ -560,18 +561,21 @@ void *render(void *v) {
 		    int numTilesX = (int)ceil((float)_max_res/(float)res); 
             int numTilesY = numTilesX; //seperated just in case if in the future we want to have different x and y
 
+            /*
             printf("res: (%lux%lu)/(%lux%lu)\n", res, res, _max_res, _max_res);
             printf("_x: %f, _y: %f\n", _x, _y);
             printf("rx: %lu, ry: %lu\n", rx, ry);
 		    printf("------------- numTilesX: %d, numTilesY: %d -----------------\n", numTilesX, numTilesY);
-        
+            */
+
             MAB_WRAP("rendering tiles"){
+                /*
                 mabLogMessage("left", "%d", (int)rx);
                 mabLogMessage("top", "%d", (int)ry);
                 mabLogMessage("numTilesX", "%d", numTilesX);
                 mabLogMessage("numTilesY", "%d", numTilesY);
                 mabLogMessage("zoom", "%d", (int)_z);
-
+                */
 		        for(i=0; i<numTilesX; ++i){
 		    	    for(j=0; j<numTilesY; ++j){
 		    		    unsigned long idx = (ry+j)*_max_res+(rx+i);
@@ -582,12 +586,12 @@ void *render(void *v) {
 
 		    	    	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[idx].indexBuffer);
                         MAB_WRAP("glDrawElements") {
-                            
+                            /*
                             printf("index: %lu\n", idx);
                             printf("size:  %lu\n", pd->partitions.length);
-
                             mabLogMessage("index", "%lu", idx);
                             mabLogMessage("size", "%lu", pd->partitions.length);
+                            */
                             glDrawElements(GL_LINES, pd->partitions.length, GL_UNSIGNED_INT, 0);
                         }
 		    	    	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
@@ -630,6 +634,7 @@ wait_for_request:
 		fragmentShaderSource = strdup(_fragmentShaderSource);
 		where = INIT_PROGRAM;
 	}
+	if (max_depth != _max_depth) { _max_depth = max_depth; where = INIT_PARTITION; }
 	if (dcIdent != _dcIdent) {
 		dcIdent = _dcIdent;
 		if (dcIndex) free(dcIndex);
@@ -642,7 +647,6 @@ wait_for_request:
 		dcMaxMult = _dcMaxMult;
 		where = INIT_DC;
 	}
-	//if (fabsf(z - _z) > 0.1) { z = _z; where = INIT_PARTITION; }
 	if (dataset == NULL || strcmp(dataset, _dataset) != 0) {
 		if (dataset) free(dataset);
 		dataset = strdup(_dataset);
@@ -769,14 +773,16 @@ ANSWER(Tile) {
 	MAB_WRAP("answer tile request") {
     mabLogMessage("rxsize", "%zu", strlen(url));
 	float x, y, z;
+    int max_depth;
 	char *dataset, *options;
-	if (5 != (rc = sscanf(url, "/tile/%m[^/]/%f/%f/%f/%ms", &dataset, &z, &x, &y, &options))) {
+	if (6 != (rc = sscanf(url, "/tile/%m[^/]/%d/%f/%f/%f/%ms", &dataset, &max_depth, &z, &x, &y, &options))) {
 		fprintf(stderr, "rc: %d\n", rc);
 		fprintf(stderr, "options: %s\n", options);
 		rc = MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);	
 		goto end;
 	}
-
+    printf("max_depth: %d\n", max_depth);
+    mabLogMessage("max_depth", "%d", max_depth);
 	mabLogMessage("x", "%f", x);
 	mabLogMessage("y", "%f", y);
 	mabLogMessage("z", "%f", z);
@@ -855,7 +861,8 @@ ANSWER(Tile) {
 	MAB_WRAP("send to render thread") {
 		MAB_WRAP("lock")
 		pthread_mutex_lock(_lock);
-
+        
+        _max_depth = max_depth;
 		_x = x;
 		_y = y;
 		_z = z;
