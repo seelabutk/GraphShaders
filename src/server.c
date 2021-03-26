@@ -340,7 +340,7 @@ void *render(void *v) {
 		GLfloat maxX = nattribs[0].frange[1] + 1.0;
 		GLfloat minY = nattribs[1].frange[0] - 1.0;
 		GLfloat maxY = nattribs[1].frange[1] + 1.0;
-
+        
         printf("partitioning data...\n");
         long sz = edges->count;
         long tenth = sz/10;
@@ -576,6 +576,7 @@ void *render(void *v) {
                 mabLogMessage("numTilesY", "%d", numTilesY);
                 mabLogMessage("zoom", "%d", (int)_z);
                 */
+
 		        for(i=0; i<numTilesX; ++i){
 		    	    for(j=0; j<numTilesY; ++j){
 		    		    unsigned long idx = (ry+j)*_max_res+(rx+i);
@@ -592,7 +593,26 @@ void *render(void *v) {
                             mabLogMessage("index", "%lu", idx);
                             mabLogMessage("size", "%lu", pd->partitions.length);
                             */
-                            glDrawElements(GL_LINES, pd->partitions.length, GL_UNSIGNED_INT, 0);
+
+                            int batchRenderSize = 10000; //experiment with this, should be some function of max_res
+                            int numEdges = pd->partitions.length/2;
+                            for(int i = 0; i < (int)ceil((double)numEdges/(double)batchRenderSize); ++i){
+                                int startIdx = i*batchRenderSize;
+                                int length = numEdges > (startIdx + batchRenderSize) ? batchRenderSize : numEdges - startIdx;
+                                
+
+                                GLuint q;
+                                glGenQueries(1, &q);
+                                
+                                glBeginQuery(GL_SAMPLES_PASSED, q);
+                                glDrawElements(GL_LINES, length*2, GL_UNSIGNED_INT, (void*)(intptr_t)startIdx);
+                                glEndQuery(GL_SAMPLES_PASSED);
+
+                                GLint samples;
+                                glGetQueryObjectiv(q, GL_QUERY_RESULT, &samples);
+                                
+                                if(samples == 0)    break;    
+                            }
                         }
 		    	    	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 		     	    }
