@@ -523,6 +523,8 @@ function makeUrlTemplate() {
 	const dcMinMult = 1.0 - thedc.combine;
 	const dcMaxMult = thedc.combine;
 
-	return `/tile/${dataset}/{z}/{x}/{y}/,vert,base64:${vert},frag,base64:${frag},dcIdent,${dcIdent},dcIndex,base64:${dcIndex},dcMult,base64:${dcMult},dcOffset,base64:${dcOffset},dcMinMult,${dcMinMult},dcMaxMult,${dcMaxMult}`;
+    const pDepth = 10;
+
+	return `/tile/${dataset}/{z}/{x}/{y}/,vert,base64:${vert},frag,base64:${frag},pDepth,${pDepth},dcIdent,${dcIdent},dcIndex,base64:${dcIndex},dcMult,base64:${dcMult},dcOffset,base64:${dcOffset},dcMinMult,${dcMinMult},dcMaxMult,${dcMaxMult}`;
 }
 </script>
