@@ -91,6 +91,9 @@ static volatile GLubyte volatile _error;
 static pthread_mutex_t *_lock;
 static pthread_barrier_t *_barrier;
 
+static volatile int _logGLCalls;
+static volatile int _doOcclusionCulling;
+
 static volatile GLuint _max_depth = 0;
 static unsigned volatile  _max_res;
 static PartitionData *_partition_cache;
@@ -130,6 +133,7 @@ void *render(void *v) {
 	GLboolean first;
 	GLuint dcIdent, *dcIndex;
 	GLfloat *dcMult, *dcOffset, dcMinMult, dcMaxMult;
+    int logGLCalls, doOcclusionCulling;
 	
 	_partition_cache = NULL;	
 	_resolution = 256;
@@ -145,6 +149,8 @@ void *render(void *v) {
 	dcIdent = 0;
 	dcIndex = NULL;
 	dcMult = dcOffset = NULL;
+    logGLCalls = 0;
+    doOcclusionCulling = 0;
 
 	x = y = z = INFINITY;
 	dataset = vertexShaderSource = fragmentShaderSource = NULL;
@@ -381,6 +387,7 @@ void *render(void *v) {
 		for (i=0; i<ncount; ++i) {
             glGenBuffers(1, &aNodeBuffers[i]);
             glBindBuffer(GL_ARRAY_BUFFER, aNodeBuffers[i]);
+            if (logGLCalls)
             mabLogMessage("glBufferData", "%lu", nattribs[i].size);
             glBufferData(GL_ARRAY_BUFFER, nattribs[i].size, nattribs[i].data, GL_STATIC_DRAW);
             glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -511,11 +518,10 @@ void *render(void *v) {
 		
             glGenBuffers(1, &_partition_cache[i].indexBuffer);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[i].indexBuffer);
-            MAB_WRAP("glBufferData") {
-                mabLogMessage("index", "%lu", (size_t)i);
-                mabLogMessage("size", "%lu", _partition_cache[i].partitions.length*sizeof(GLuint));
-                glBufferData(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[i].partitions.length*sizeof(GLuint), _partition_cache[i].partitions.data, GL_STATIC_DRAW);
-            }
+            if (logGLCalls)
+            if (_partition_cache[i].partitions.length*sizeof(GLuint) > 0)
+            mabLogMessage("glBufferData", "%lu", _partition_cache[i].partitions.length*sizeof(GLuint));
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[i].partitions.length*sizeof(GLuint), _partition_cache[i].partitions.data, GL_STATIC_DRAW);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 		}
 	}
@@ -583,14 +589,12 @@ void *render(void *v) {
 
                         if(pd->partitions.length == 0) continue;
 
-		    	    	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[idx].indexBuffer);
-                        MAB_WRAP("glDrawElements") {
-                            /*
-                            printf("index: %lu\n", idx);
-                            printf("size:  %lu\n", pd->partitions.length);
-                            mabLogMessage("index", "%lu", idx);
-                            mabLogMessage("size", "%lu", pd->partitions.length);
-                            */
+                        if (doOcclusionCulling) {
+
+                            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[idx].indexBuffer);
+                            if (logGLCalls)
+                            if (pd->partitions.length > 0)
+                            mabLogMessage("glDrawElements", "%lu", pd->partitions.length);
 
                             int batchRenderSize = 10000; //experiment with this, should be some function of max_res
                             int numEdges = pd->partitions.length/2;
@@ -609,10 +613,19 @@ void *render(void *v) {
                                 GLint samples;
                                 glGetQueryObjectiv(q, GL_QUERY_RESULT, &samples);
                                 
-                                if(samples == 0)    break;    
+                                //if(samples == 0)    break;    
                             }
+                            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+                        } else {
+                            if (logGLCalls)
+                            if (pd->partitions.length > 0)
+                            mabLogMessage("glDrawElements", "%lu", pd->partitions.length);
+
+                            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[idx].indexBuffer);
+                            glDrawElements(GL_LINES, pd->partitions.length, GL_UNSIGNED_INT, 0);
+                            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
                         }
-		    	    	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 		     	    }
 		        }
             }
@@ -640,6 +653,9 @@ wait_for_request:
 
 	where = RENDER;
 
+    logGLCalls = _logGLCalls;
+    doOcclusionCulling = _doOcclusionCulling;
+    
 	if (fabsf(x - _x) > 0.1) { x = _x; where = RENDER; }
 	if (fabsf(y - _y) > 0.1) { y = _y; where = RENDER; }
 	if (vertexShaderSource == NULL || strcmp(vertexShaderSource, _vertexShaderSource) != 0) {
@@ -815,6 +831,8 @@ ANSWER(Tile) {
 	GLfloat *opt_dcOffset = NULL;
 	GLfloat opt_dcMinMult = 0.0;
 	GLfloat opt_dcMaxMult = 0.0;
+    int opt_logGLCalls = 0;
+    int opt_doOcclusionCulling = 0;
 
 	//fprintf(stderr, "options: '''\n%s\n'''\n", options);
 
@@ -865,6 +883,10 @@ ANSWER(Tile) {
 			opt_dcMinMult = atof(value);
 		} else if (strcmp(key, "dcMaxMult") == 0) {
 			opt_dcMaxMult = atof(value);
+        } else if (strcmp(key, "logGLCalls") == 0) {
+            opt_logGLCalls = atoi(value);
+        } else if (strcmp(key, "doOcclusionCulling") == 0) {
+            opt_doOcclusionCulling = atoi(value);
 		} else {
 			fprintf(stderr, "WARNING: unhandled option '%s' = '%s'\n", key, (char *)value);
 		}
@@ -893,6 +915,8 @@ ANSWER(Tile) {
 		_dcOffset = opt_dcOffset;
 		_dcMinMult = opt_dcMinMult;
 		_dcMaxMult = opt_dcMaxMult;
+        _logGLCalls = opt_logGLCalls;
+        _doOcclusionCulling = opt_doOcclusionCulling;
 		_error = ERROR_NONE;
 
 		mabLogForward(&renderInfo);
