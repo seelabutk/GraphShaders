@@ -378,14 +378,11 @@ void *render(void *v) {
 		for (i=0; i<ncount; ++i)
         glDeleteBuffers(1, &aNodeBuffers[i]);
 
-		for (i=0; i<ncount; ++i)
-		MAB_WRAP("init buffer") {
+		for (i=0; i<ncount; ++i) {
             glGenBuffers(1, &aNodeBuffers[i]);
             glBindBuffer(GL_ARRAY_BUFFER, aNodeBuffers[i]);
-            MAB_WRAP("glBufferData") {
-                mabLogMessage("size", "%lu", nattribs[i].size);
-                glBufferData(GL_ARRAY_BUFFER, nattribs[i].size, nattribs[i].data, GL_STATIC_DRAW);
-            }
+            mabLogMessage("glBufferData", "%lu", nattribs[i].size);
+            glBufferData(GL_ARRAY_BUFFER, nattribs[i].size, nattribs[i].data, GL_STATIC_DRAW);
             glBindBuffer(GL_ARRAY_BUFFER, 0);
 		}
 	}
