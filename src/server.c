@@ -535,7 +535,8 @@ void *render(void *v) {
 		//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		
-		//glEnable(GL_BLEND);
+		glEnable(GL_DEPTH_TEST);
+		glDepthFunc(GL_LEQUAL);
 		//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

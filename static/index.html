@@ -78,15 +78,43 @@ uniform float uTranslateX, uTranslateY, uScale;
 
 out vec4 fg_FragCoord;
 out float fg_Attribute;
+out float mine;
 
 #define main() TheUserMain(out vec4 fg_Position, out float fg_Attribute)
 </script><!-- vert-header -->
-<script type="x-shader/x-vertex" id="default-vert">
+
+<!--
+fg({
+	params: guiParams, 
+	variables: 'X Y Date MaintainerCount CVE Source',
+	depth: 'mean(X)',
+	node: (config) => `
 		void main() {
 			float x = (aX - uXMin) / (uXMax - uXMin);
 			float y = (aY - uYMin) / (uYMax - uYMin);
 
-			float attrib = x;
+			float attrib = (Date - uMinDate) / (uMaxDate - uMinDate);
+
+			fg_Position = vec4(x, y, attrib, 1.0);
+			fg_Attribute = attrib;
+		}
+	`,
+	edge: (config) => `
+		void main() {
+			if (fg_Attribute < 0.01) discard;
+			fg_FragColor = mix(vec4(0.0), vec4(1.0, 0.0, 0.0, 1.0), fg_Attribute);
+		}
+	`,
+});
+-->
+
+<script type="x-shader/x-vertex" id="default-vert">
+		void main() {
+			float x = (aX - uXMin) / (uXMax - uXMin);
+			float y = (aY - uYMin) / (uYMax - uYMin);
+			mine = aCVE;
+
+			float attrib = (aDate - uDateMin) / (uDateMax - uDateMin);
 
 			fg_Position = vec4(x, y, attrib, 1.0);
 			fg_Attribute = attrib;
@@ -112,6 +140,7 @@ precision mediump float;
 
 in vec4 fg_FragCoord;
 in float fg_Attribute;
+in float mine;
 
 out vec4 fg_FragColor;
 
@@ -120,7 +149,8 @@ out vec4 fg_FragColor;
 <script type="x-shader/x-fragment" id="default-frag">
 		void main() {
 			if (fg_Attribute < 0.01) discard;
-			fg_FragColor = mix(vec4(0.0), vec4(1.0, 0.0, 0.0, 1.0), fg_Attribute);
+      vec4 c = mix(vec4(0.8, 0.1, 0.1, 1.0), vec4(0.0, 1.0, 0.0, 1.0), mine);
+			fg_FragColor = (1.0 - fg_Attribute) * c;
 		}
 </script><!-- default-frag -->
 <script type="x-shader/x-fragment" id="frag-footer">
@@ -154,7 +184,7 @@ const jar = new CodeJar(document.querySelector('#editor'), Prism.highlightElemen
 jar.updateCode(
 `fg({
 	params: guiParams, 
-	variables: 'X Y',
+	variables: 'X Y Date MaintainerCount CVE Source',
 	depth: 'mean(X)',
 	node: (config) => \`
 		${document.querySelector('#default-vert').textContent.trim()}
