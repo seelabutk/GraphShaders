@@ -101,6 +101,9 @@ WORKDIR /app
 COPY Makefile /app
 COPY src /app/src
 ENV PKG_CONFIG_PATH=/app/contrib/lib/pkgconfig
+ENV MESA_GL_VERSION_OVERRIDE=4.5
+ENV MESA_GLSL_VERSION_OVERRIDE=450
+ENV GALLIUM_DRIVER=llvmpipe
 RUN ls -lahR /app/ && make
 
 CMD ["/app/build/server"]

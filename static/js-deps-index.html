@@ -67,7 +67,7 @@ code[class*="language-"] {
 <script src="https://unpkg.com/prismjs@1.20.0/prism.js"></script>
 <script src="https://unpkg.com/prismjs@1.20.0/plugins/autoloader/prism-autoloader.min.js"></script>
 <script src="https://unpkg.com/mathjs@7.0.0/dist/math.min.js"></script>
-<script type="x-shader/x-vertex" id="vert-header">#version 300 es
+<script type="x-shader/x-vertex" id="vert-header">#version 450
 precision mediump float;
 
 in float aNode1, aNode2, aNode3, aNode4, aNode5, aNode6, aNode7, aNode8;
@@ -78,7 +78,7 @@ uniform float uTranslateX, uTranslateY, uScale;
 
 out vec4 fg_FragCoord;
 out float fg_Attribute;
-out float mine;
+out float fg_Attribute2;
 
 #define main() TheUserMain(out vec4 fg_Position, out float fg_Attribute)
 </script><!-- vert-header -->
@@ -112,12 +112,12 @@ fg({
 		void main() {
 			float x = (aX - uXMin) / (uXMax - uXMin);
 			float y = (aY - uYMin) / (uYMax - uYMin);
-			mine = aCVE;
 
-			float attrib = (aDate - uDateMin) / (uDateMax - uDateMin);
+			float z = (aDate - uDateMin) / (uDateMax - uDateMin);
 
-			fg_Position = vec4(x, y, attrib, 1.0);
-			fg_Attribute = attrib;
+			fg_Position = vec4(x, y, z, 1.0);
+			fg_Attribute = 1.00 - z;
+			fg_Attribute2 = aCVE;
 		}
 </script><!-- #default-vert -->
 <script type="x-shader/x-vertex" id="vert-footer">
@@ -135,12 +135,13 @@ void main() {
 	gl_Position = vec4(2.0 * scaled - 1.0, pos.zw);
 }
 </script><!-- vert-footer -->
-<script type="x-shader/x-fragment" id="frag-header">#version 300 es
+<script type="x-shader/x-fragment" id="frag-header">#version 450
+layout(early_fragment_tests) in;
 precision mediump float;
 
 in vec4 fg_FragCoord;
 in float fg_Attribute;
-in float mine;
+in float fg_Attribute2;
 
 out vec4 fg_FragColor;
 
@@ -148,9 +149,12 @@ out vec4 fg_FragColor;
 </script><!-- frag-header -->
 <script type="x-shader/x-fragment" id="default-frag">
 		void main() {
-			if (fg_Attribute < 0.01) discard;
-      vec4 c = mix(vec4(0.8, 0.1, 0.1, 1.0), vec4(0.0, 1.0, 0.0, 1.0), mine);
-			fg_FragColor = (1.0 - fg_Attribute) * c;
+			vec3 red = vec3(.9866, 0.2933, 0.204);
+			vec3 green = vec3(0.32, 0.6355, 0.2177);
+			float vulnerability = fg_Attribute2;
+			float z = clamp(fg_Attribute, 0.1, 1.0);
+			vec3 c = mix(green, red, vulnerability);
+			fg_FragColor = vec4(c * z, 1.0);
 		}
 </script><!-- default-frag -->
 <script type="x-shader/x-fragment" id="frag-footer">
@@ -185,7 +189,7 @@ jar.updateCode(
 `fg({
 	params: guiParams, 
 	variables: 'X Y Date MaintainerCount CVE Source',
-	depth: 'mean(-Date)',
+	depth: 'min(-Date)',
 	node: (config) => \`
 		${document.querySelector('#default-vert').textContent.trim()}
 	\`,
