@@ -1,78 +1,78 @@
 #include "server.h"
 
-#include "voxel_traversal.h"
-#include "vec.h"
-
-#include <sys/types.h>
+#include <arpa/inet.h>
+#include <math.h>
+#include <microhttpd.h>
+#include <netinet/in.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/select.h>
 #include <sys/socket.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
+#include <sys/types.h>
 #include <time.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <unistd.h>
-#include <math.h>
-
-#include <microhttpd.h>
 #include <zlib.h>
-#include <pthread.h>
 #include <zorder.h>
 
-#include "base64.h"
 #include "MAB/log.h"
+#include "base64.h"
+#include "vec.h"
+#include "voxel_traversal.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb_image_write.h"
-
 #include <glad/glad.h>
+#include <glad/glad_egl.h>
+
+#include "stb_image_write.h"
 #define GLAPIENTRY APIENTRY
-#include <GL/osmesa.h>
 
 struct attrib {
-	GLuint64 size;
-	union {
-		GLuint64 rawtype;
-		GLenum type;
-	};
-	GLuint64 count;
-	union {
-		GLbyte range[8];
-		GLfloat frange[2];
-		GLint irange[2];
-		GLuint urange[2];
-	};
-	union {
-		GLbyte *data;
-		GLfloat *floats;
-		GLint *ints;
-		GLuint *uints;
-	};
+  GLuint64 size;
+  union {
+    GLuint64 rawtype;
+    GLenum type;
+  };
+  GLuint64 count;
+  union {
+    GLbyte range[8];
+    GLfloat frange[2];
+    GLint irange[2];
+    GLuint urange[2];
+  };
+  union {
+    GLbyte *data;
+    GLfloat *floats;
+    GLint *ints;
+    GLuint *uints;
+  };
 };
 
 typedef struct partition_data {
-	Vec_GLuint partitions;
-	GLuint indexBuffer;
-    GLuint count;
+  Vec_GLuint partitions;
+  GLuint indexBuffer;
+  GLuint count;
 } PartitionData;
 
 enum {
-	ERROR_NONE = 0,
-	ERROR_COMPILE_VERTEX_SHADER,
-	ERROR_COMPILE_FRAGMENT_SHADER,
-	ERROR_LINK_PROGRAM,
-	NUM_ERRORS,
+  ERROR_NONE = 0,
+  ERROR_COMPILE_VERTEX_SHADER,
+  ERROR_COMPILE_FRAGMENT_SHADER,
+  ERROR_LINK_PROGRAM,
+  NUM_ERRORS,
 };
 
 char *errorMessages[NUM_ERRORS] = {
-	[ERROR_NONE] = "Render Successful",
-	[ERROR_COMPILE_VERTEX_SHADER] = "Could not compile vertex shader",
-	[ERROR_COMPILE_FRAGMENT_SHADER] = "Could not compile fragment shader",
-	[ERROR_LINK_PROGRAM] = "Could not link program",
+    [ERROR_NONE] = "Render Successful",
+    [ERROR_COMPILE_VERTEX_SHADER] = "Could not compile vertex shader",
+    [ERROR_COMPILE_FRAGMENT_SHADER] = "Could not compile fragment shader",
+    [ERROR_LINK_PROGRAM] = "Could not link program",
 };
 
-static volatile GLsizei _resolution;
+static const int _g_resolution = 256;
+static volatile GLsizei _resolution = _g_resolution;
+static volatile GLsizei _depth = 4;
 static volatile GLfloat _x;
 static volatile GLfloat _y;
 static volatile GLfloat _z;
@@ -95,1012 +95,1161 @@ static volatile int _logGLCalls;
 static volatile int _doOcclusionCulling;
 
 static volatile GLuint _max_depth = 0;
-static unsigned volatile  _max_res;
+static unsigned volatile _max_res;
 static PartitionData *_partition_cache;
 
-void log_partition_cache(PartitionData *pdc){
-    printf("tot: %u\n", _max_res*_max_res);
-    for(int i = 0; i < _max_res*_max_res; ++i){
-        PartitionData *pd = &(pdc[i]);
+// EGL STATICS
+static volatile EGLDisplay eglDisplay = EGL_NO_DISPLAY;
+static volatile EGLSurface eglSurface = EGL_NO_SURFACE;
 
-        if(pd->partitions.length == 0) continue;
+/** EGL SPECIFIC SETUP **/
+static const EGLint configAttribs[] = {
+        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+        EGL_COLOR_BUFFER_TYPE, EGL_RGB_BUFFER,
+        EGL_BLUE_SIZE, 8,
+        EGL_GREEN_SIZE, 8,
+        EGL_RED_SIZE, 8,
+        EGL_ALPHA_SIZE, 8,
+        EGL_DEPTH_SIZE, 16,
+        EGL_STENCIL_SIZE, 0,
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+        EGL_CONFORMANT, EGL_OPENGL_BIT,
+        EGL_LUMINANCE_SIZE,
+        0,
+        EGL_LEVEL,
+        0,
+        EGL_NONE
+};    
 
-        printf("idx: %d\n", i);
-        printf("edgeCount: %lu\n", pd->partitions.length/2);
-        printf("     ");
-        for(int j = 0; j < pd->partitions.length; ++j){
-            printf("%d,", pd->partitions.data[j]);
-        }
-        printf("\n---------------------------------------\n\n");
+static const int pbufferWidth = _g_resolution;
+static const int pbufferHeight = _g_resolution;
+
+static const EGLint pbufferAttribs[] = {
+      EGL_WIDTH, pbufferWidth,
+      EGL_HEIGHT, pbufferHeight,
+      EGL_NONE,
+};
+
+void log_partition_cache(PartitionData *pdc) {
+  printf("tot: %u\n", _max_res * _max_res);
+  for (int i = 0; i < _max_res * _max_res; ++i) {
+    PartitionData *pd = &(pdc[i]);
+
+    if (pd->partitions.length == 0) continue;
+
+    printf("idx: %d\n", i);
+    printf("edgeCount: %lu\n", pd->partitions.length / 2);
+    printf("     ");
+    for (int j = 0; j < pd->partitions.length; ++j) {
+      printf("%d,", pd->partitions.data[j]);
     }
-
+    printf("\n---------------------------------------\n\n");
+  }
 }
 
 void *render(void *v) {
-	OSMesaContext context;
-	GLuint vertexShader, fragmentShader, program, /*indexBuffer,*/ aNodeBuffers[16];
-    unsigned long i, j;
-	GLuint64 ncount, ecount;
-	GLint rc, uTranslateX, uTranslateY, uScale, uNodeMins[16], uNodeMaxs[16], aNodeLocations[16];
-	GLchar log[512];
-	struct attrib nattribs[16], eattribs[16], *edges;
-	FILE *f;
-	enum { INIT_OSMESA, INIT_GRAPH, INIT_BUFFERS, INIT_PROGRAM, INIT_UNIFORMS, INIT_PARTITION, INIT_ATTRIBUTES, INIT_DC, INIT_INDEX_BUFFER, RENDER, WAIT } where;
+  EGLContext context;
 
-	GLfloat x, y, z;
-    int max_depth;
-	GLchar *dataset, *vertexShaderSource, *fragmentShaderSource;
-	GLboolean first;
-	GLuint dcIdent, *dcIndex;
-	GLfloat *dcMult, *dcOffset, dcMinMult, dcMaxMult;
-    int logGLCalls, doOcclusionCulling;
-	
-	_partition_cache = NULL;	
-	_resolution = 256;
+  GLuint vertexShader, fragmentShader, program,
+      /*indexBuffer,*/ aNodeBuffers[16];
+  unsigned long i, j;
+  GLuint64 ncount, ecount;
+  GLint rc, uTranslateX, uTranslateY, uScale, uNodeMins[16], uNodeMaxs[16],
+      aNodeLocations[16];
+  GLchar log[512];
+  struct attrib nattribs[16], eattribs[16], *edges;
+  FILE *f;
+  enum {
+    INIT_OSMESA,
+    INIT_GRAPH,
+    INIT_BUFFERS,
+    INIT_PROGRAM,
+    INIT_UNIFORMS,
+    INIT_PARTITION,
+    INIT_ATTRIBUTES,
+    INIT_DC,
+    INIT_INDEX_BUFFER,
+    RENDER,
+    WAIT
+  } where;
 
-	context = NULL;
-	vertexShader = fragmentShader = program = 0;
-	nattribs[0] = (struct attrib){ 0 };
-	eattribs[0] = (struct attrib){ 0 };
-	edges = malloc(sizeof(*edges));
-	*edges = (struct attrib){ 0 };
-	aNodeBuffers[0] = 0;
-	//indexBuffer = 0;
-	dcIdent = 0;
-	dcIndex = NULL;
-	dcMult = dcOffset = NULL;
-    logGLCalls = 0;
-    doOcclusionCulling = 0;
+  GLfloat x, y, z;
+  int max_depth;
+  GLchar *dataset, *vertexShaderSource, *fragmentShaderSource;
+  GLboolean first;
+  GLuint dcIdent, *dcIndex;
+  GLfloat *dcMult, *dcOffset, dcMinMult, dcMaxMult;
+  int logGLCalls, doOcclusionCulling;
 
-	x = y = z = INFINITY;
-	dataset = vertexShaderSource = fragmentShaderSource = NULL;
-	first = GL_TRUE;
+  _partition_cache = NULL;
 
-	// sync with main function
-	pthread_barrier_wait(_barrier);
-	goto wait_for_request;
+  context = NULL;
+  vertexShader = fragmentShader = program = 0;
+  nattribs[0] = (struct attrib){0};
+  eattribs[0] = (struct attrib){0};
+  edges = malloc(sizeof(*edges));
+  *edges = (struct attrib){0};
+  aNodeBuffers[0] = 0;
+  // indexBuffer = 0;
+  dcIdent = 0;
+  dcIndex = NULL;
+  dcMult = dcOffset = NULL;
+  logGLCalls = 0;
+  doOcclusionCulling = 0;
 
-	for (;;)
-	switch (where) {
-	case INIT_OSMESA:
-	MAB_WRAP("create osmesa context") {
-		if (context) OSMesaDestroyContext(context);
-		context = OSMesaCreateContextExt(OSMESA_RGBA, 16, 0, 0, NULL);
-		if(!context) {
-			fprintf(stderr, "could not init OSMesa context\n");
-			exit(1);
-		}
+  x = y = z = INFINITY;
+  dataset = vertexShaderSource = fragmentShaderSource = NULL;
+  first = GL_TRUE;
 
-		_image = malloc(4 * _resolution * _resolution);
-		if (!_image) {
-			fprintf(stderr, "could not allocate image buffer\n");
-			exit(1);
-		}
+  // sync with main function
+  pthread_barrier_wait(_barrier);
+  goto wait_for_request;
 
-		rc = OSMesaMakeCurrent(context, _image, GL_UNSIGNED_BYTE, _resolution, _resolution);
-		if(!rc) {
-			fprintf(stderr, "could not bind to image buffer\n");
-			exit(1);
-		}
+  for (;;) switch (where) {
+      case INIT_OSMESA:
+        MAB_WRAP("create osmesa context") {
 
-		if (!gladLoadGLLoader((GLADloadproc)OSMesaGetProcAddress)) {
-			printf("gladLoadGL failed\n");
-			exit(1);
-		}
-		printf("OpenGL %s\n", glGetString(GL_VERSION));
-	}
-	__attribute__((fallthrough));
+          //if (!gladLoadGLLoader((GLADloadproc)OSMesaGetProcAddress)) {
+          if (!gladLoadEGL()) {
+            fprintf(stderr, "Could not load EGL!");
+          }
 
-	case INIT_GRAPH:
-	MAB_WRAP("load graph") {
-		if (nattribs[0].data)
-		for (i=0; i<ncount; ++i)
-		free(nattribs[i].data);
+          // 1. Initialize EGL
+          eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+          if (EGL_NO_DISPLAY == eglDisplay) {
+            fprintf(stderr,"Could not create the EGL Display!");
+          }
 
-		MAB_WRAP("load node attributes") {
-			char temp[512];
-			snprintf(temp, sizeof(temp), "data/%s/nodes.dat", _dataset);
+          EGLint major, minor;
+          EGLBoolean initSuccess = eglInitialize(eglDisplay, &major, &minor);
+          if(EGL_FALSE == initSuccess) {
+            fprintf(stderr, "Could not initialize EGL!");
+          }
 
-			f = fopen(temp, "r");
-			fread(&ncount, sizeof(ncount), 1, f);
+          // 2. Select an appropriate configuration
+          EGLint numConfigs;
+          EGLConfig eglCfg;
+          // Ideally, iterate eglCfg and make sure numConfigs matches configAttribs but I digress
+          eglChooseConfig(eglDisplay, configAttribs, &eglCfg, 1, &numConfigs);
 
-			for (i=0; i<ncount; ++i) {
-				nattribs[i] = (struct attrib){ 0 };
+           // 3. Create a surface
+          eglSurface = eglCreatePbufferSurface(eglDisplay, eglCfg, 
+                                                      pbufferAttribs);
+          if (EGL_NO_SURFACE == eglSurface) {
+            fprintf(stderr, "Could not load an EGL PBuffer!");
+          }
 
-				fread(&nattribs[i].size, sizeof(nattribs[i].size), 1, f);
+          // 4. Bind the API
+          eglBindAPI(EGL_OPENGL_API);
 
-				fread(&nattribs[i].rawtype, sizeof(nattribs[i].rawtype), 1, f);
-				switch (nattribs[i].rawtype) {
-				case 'f': nattribs[i].type = GL_FLOAT; break;
-				case 'i': nattribs[i].type = GL_INT; break;
-				case 'u': nattribs[i].type = GL_UNSIGNED_INT; break;
-				}
-
-				fread(&nattribs[i].count, sizeof(nattribs[i].count), 1, f);
-
-				fread(nattribs[i].range, sizeof(nattribs[i].range), 1, f);
-
-				nattribs[i].data = malloc(nattribs[i].size);
-				fread(nattribs[i].data, 1, nattribs[i].size, f);
-			}
-
-			fclose(f);
-		}
-
-		if (eattribs[0].data)
-		for (i=0; i<ecount; ++i)
-		free(eattribs[i].data);
-
-
-		MAB_WRAP("load edge data") {
-			char temp[512];
-			snprintf(temp, sizeof(temp), "data/%s/edges.dat", _dataset);
-
-			f = fopen(temp, "r");
-			fread(&ecount, sizeof(ecount), 1, f);
-
-			for (i=0; i<ecount; ++i) {
-				eattribs[i] = (struct attrib){ 0 };
-
-				fread(&eattribs[i].size, sizeof(eattribs[i].size), 1, f);
-
-				fread(&eattribs[i].rawtype, sizeof(eattribs[i].rawtype), 1, f);
-				switch (eattribs[i].rawtype) {
-				case 'f': eattribs[i].type = GL_FLOAT; break;
-				case 'i': eattribs[i].type = GL_INT; break;
-				case 'u': eattribs[i].type = GL_UNSIGNED_INT; break;
-				}
-
-				fread(&eattribs[i].count, sizeof(eattribs[i].count), 1, f);
-
-				fread(eattribs[i].range, sizeof(eattribs[i].range), 1, f);
-
-				eattribs[i].data = malloc(eattribs[i].size);
-				fread(eattribs[i].data, 1, eattribs[i].size, f);
-			}
-
-			fclose(f);
-		}
-	}
-	__attribute__((fallthrough));
-	
-	case INIT_DC:
-	MAB_WRAP("init index data") {
-		GLfloat *dcDepth;
-		dcDepth = malloc(eattribs[0].count / 2 * sizeof(*dcDepth));
-		for (i=0; i<eattribs[0].count/2; ++i) {
-			dcDepth[i] = 0.0;
-			for (j=0; j<16; ++j) {
-				if (!dcIndex[j]) break;
-				float sourceDepth, targetDepth;
-
-				sourceDepth = dcMult[j] * nattribs[dcIndex[j]-1].floats[eattribs[0].uints[2*i+0]] + dcOffset[j];
-				targetDepth = dcMult[j] * nattribs[dcIndex[j]-1].floats[eattribs[0].uints[2*i+1]] + dcOffset[j];
-
-				dcDepth[i] += sourceDepth < targetDepth
-					? dcMinMult * sourceDepth + dcMaxMult * targetDepth
-					: dcMinMult * targetDepth + dcMaxMult * sourceDepth;
-			}
-		}
-
-		GLuint64 *dcReorder;
-		dcReorder = malloc(eattribs[0].count / 2 * sizeof(*dcReorder));
-		for (i=0; i<eattribs[0].count/2; ++i) {
-			dcReorder[i] = i;
-		}
-
-		int compare(const void *av, const void *bv) {
-			const GLuint64 *a = av;
-			const GLuint64 *b = bv;
-
-			if (dcDepth[*a] < dcDepth[*b]) return -1;
-			if (dcDepth[*a] > dcDepth[*b]) return 1;
-			return 0;
-		}
-
-		qsort(dcReorder, eattribs[0].count/2, sizeof(*dcReorder), compare);
-
-		if (edges->data) free(edges->data);
-
-		*edges = eattribs[0];
-		edges->data = malloc(edges->size);
-		for (i=0; i<eattribs[0].count/2; ++i) {
-			edges->uints[2*i+0] = eattribs[0].uints[2*dcReorder[i]+0];
-			edges->uints[2*i+1] = eattribs[0].uints[2*dcReorder[i]+1];
-		}
-
-		free(dcReorder);
-		free(dcDepth);
-	}
-	__attribute__((fallthrough));	
-
-	case INIT_PARTITION:
-	MAB_WRAP("init partition") {
-        unsigned j;
-
-		//clear previous partitions
-		if(_partition_cache){
-			for(i=0; i<_max_res*_max_res; ++i)
-				vec_destroy(&_partition_cache[i].partitions);
-			free(_partition_cache);
-			_partition_cache = NULL;
-		}
-        
-        //create new partitions
-        _max_res = pow(2, _max_depth);
-		printf("partition res: (%ux%u)\n", _max_res, _max_res);
-        unsigned long blkSize = _max_res*_max_res*sizeof(PartitionData);
-        printf("Attempting to allocate %lu bytes for patition table\n", blkSize);
-		_partition_cache = (PartitionData *)calloc(blkSize, sizeof(char));
-        if(!_partition_cache){
-            printf("Could not create partition cache of size %lu bytes!\n", blkSize);
+          /** if (context) OSMesaDestroyContext(context); **/
+          EGLint contextAttribs[] = { EGL_CONTEXT_CLIENT_VERSION, 2,
+                                                     EGL_NONE };
+          context = eglCreateContext(eglDisplay, eglCfg, EGL_NO_CONTEXT, 
+                                       &contextAttribs);//OSMesaCreateContextExt(OSMESA_RGBA, 16, 0, 0, NULL);
+          if (!context) {
+            fprintf(stderr, "could not init EGL context\n");
             exit(1);
+          }
+
+          // rc = OSMesaMakeCurrent(context, _image, GL_UNSIGNED_BYTE, _resolution,
+          //                        _resolution);
+          EGLBoolean currentSuccess = eglMakeCurrent(eglDisplay, eglSurface, eglSurface, context);
+          if (!currentSuccess) {
+            fprintf(stderr, "could not bind to image buffer\n");
+            exit(1);
+          }
+
+          if (!gladLoadGL()) {
+            fprintf(stderr, "Could not load GL!\n");
+          }
+
+          _image = malloc(_depth * _resolution * _resolution);
+          if (!_image) {
+            fprintf(stderr, "could not allocate image buffer\n");
+            exit(1);
+          }
+
+          printf("OpenGL %s\n", glGetString(GL_VERSION));
+          fprintf(stderr,"OpenGL %s\n", glGetString(GL_VERSION));
         }
-			for(i=0; i<_max_res*_max_res; ++i)
-				vec_init(&_partition_cache[i].partitions);
-	
-		GLfloat *vertsX = nattribs[0].floats;		
-		GLfloat *vertsY = nattribs[1].floats;		
+        __attribute__((fallthrough));
 
-		GLfloat minX = nattribs[0].frange[0] - 1.0;
-		GLfloat maxX = nattribs[0].frange[1] + 1.0;
-		GLfloat minY = nattribs[1].frange[0] - 1.0;
-		GLfloat maxY = nattribs[1].frange[1] + 1.0;
-        
-        printf("partitioning data...\n");
-        long sz = edges->count;
-        long tenth = sz/10;
-        if(tenth == 0) ++tenth;
-		for(i=0; i<sz; i+=2) {
+      case INIT_GRAPH:
+        MAB_WRAP("load graph") {
+          if (nattribs[0].data)
+            for (i = 0; i < ncount; ++i) free(nattribs[i].data);
 
-            if(i%tenth < 2) printf("%d%% done...\n", (int)(100*(double)i/(double)sz));
+          MAB_WRAP("load node attributes") {
+            char temp[512];
+            snprintf(temp, sizeof(temp), "data/%s/nodes.dat", _dataset);
 
-			GLuint e0 = edges->uints[i+0];
-			GLuint e1 = edges->uints[i+1];
+            f = fopen(temp, "r");
+            fread(&ncount, sizeof(ncount), 1, f);
 
-			GLfloat x0 = vertsX[e0];
-			GLfloat y0 = vertsY[e0];
-			GLfloat x1 = vertsX[e1];
-			GLfloat y1 = vertsY[e1];
-				
-			Vec_GLuint partitions = voxel_traversal(_max_res, _max_res, x0, y0, x1, y1, minX, minY, maxX, maxY);
-            //printf("edge lies in %lu voxels\n", partitions.length);
-			for(j=0; j<partitions.length; ++j){
-                //printf("pushing edge (%d,%d) to partition %d\n", e0, e1, partitions.data[j]);
-				assert(vec_push(&_partition_cache[partitions.data[j]].partitions, e0) != -1);
-				assert(vec_push(&_partition_cache[partitions.data[j]].partitions, e1) != -1);
-			}
-			vec_destroy(&partitions);
-		}
-        printf("100%% done\n");
+            for (i = 0; i < ncount; ++i) {
+              nattribs[i] = (struct attrib){0};
 
-        //log_partition_cache(_partition_cache);
-	}
-	__attribute__((fallthrough));
+              fread(&nattribs[i].size, sizeof(nattribs[i].size), 1, f);
 
-	case INIT_BUFFERS:
-	MAB_WRAP("init node buffers") {
-		if (aNodeBuffers[0])
-		for (i=0; i<ncount; ++i)
-        glDeleteBuffers(1, &aNodeBuffers[i]);
+              fread(&nattribs[i].rawtype, sizeof(nattribs[i].rawtype), 1, f);
+              switch (nattribs[i].rawtype) {
+                case 'f':
+                  nattribs[i].type = GL_FLOAT;
+                  break;
+                case 'i':
+                  nattribs[i].type = GL_INT;
+                  break;
+                case 'u':
+                  nattribs[i].type = GL_UNSIGNED_INT;
+                  break;
+              }
 
-		for (i=0; i<ncount; ++i) {
+              fread(&nattribs[i].count, sizeof(nattribs[i].count), 1, f);
+
+              fread(nattribs[i].range, sizeof(nattribs[i].range), 1, f);
+
+              nattribs[i].data = malloc(nattribs[i].size);
+              fread(nattribs[i].data, 1, nattribs[i].size, f);
+            }
+
+            fclose(f);
+          }
+
+          if (eattribs[0].data)
+            for (i = 0; i < ecount; ++i) free(eattribs[i].data);
+
+          MAB_WRAP("load edge data") {
+            char temp[512];
+            snprintf(temp, sizeof(temp), "data/%s/edges.dat", _dataset);
+
+            f = fopen(temp, "r");
+            fread(&ecount, sizeof(ecount), 1, f);
+
+            for (i = 0; i < ecount; ++i) {
+              eattribs[i] = (struct attrib){0};
+
+              fread(&eattribs[i].size, sizeof(eattribs[i].size), 1, f);
+
+              fread(&eattribs[i].rawtype, sizeof(eattribs[i].rawtype), 1, f);
+              switch (eattribs[i].rawtype) {
+                case 'f':
+                  eattribs[i].type = GL_FLOAT;
+                  break;
+                case 'i':
+                  eattribs[i].type = GL_INT;
+                  break;
+                case 'u':
+                  eattribs[i].type = GL_UNSIGNED_INT;
+                  break;
+              }
+
+              fread(&eattribs[i].count, sizeof(eattribs[i].count), 1, f);
+
+              fread(eattribs[i].range, sizeof(eattribs[i].range), 1, f);
+
+              eattribs[i].data = malloc(eattribs[i].size);
+              fread(eattribs[i].data, 1, eattribs[i].size, f);
+            }
+
+            fclose(f);
+          }
+        }
+        __attribute__((fallthrough));
+
+      case INIT_DC:
+        MAB_WRAP("init index data") {
+          GLfloat *dcDepth;
+          dcDepth = malloc(eattribs[0].count / 2 * sizeof(*dcDepth));
+          for (i = 0; i < eattribs[0].count / 2; ++i) {
+            dcDepth[i] = 0.0;
+            for (j = 0; j < 16; ++j) {
+              if (!dcIndex[j]) break;
+              float sourceDepth, targetDepth;
+
+              sourceDepth =
+                  dcMult[j] * nattribs[dcIndex[j] - 1]
+                                  .floats[eattribs[0].uints[2 * i + 0]] +
+                  dcOffset[j];
+              targetDepth =
+                  dcMult[j] * nattribs[dcIndex[j] - 1]
+                                  .floats[eattribs[0].uints[2 * i + 1]] +
+                  dcOffset[j];
+
+              dcDepth[i] +=
+                  sourceDepth < targetDepth
+                      ? dcMinMult * sourceDepth + dcMaxMult * targetDepth
+                      : dcMinMult * targetDepth + dcMaxMult * sourceDepth;
+            }
+          }
+
+          GLuint64 *dcReorder;
+          dcReorder = malloc(eattribs[0].count / 2 * sizeof(*dcReorder));
+          for (i = 0; i < eattribs[0].count / 2; ++i) {
+            dcReorder[i] = i;
+          }
+
+          int compare(const void *av, const void *bv) {
+            const GLuint64 *a = av;
+            const GLuint64 *b = bv;
+
+            if (dcDepth[*a] < dcDepth[*b]) return -1;
+            if (dcDepth[*a] > dcDepth[*b]) return 1;
+            return 0;
+          }
+
+          qsort(dcReorder, eattribs[0].count / 2, sizeof(*dcReorder), compare);
+
+          if (edges->data) free(edges->data);
+
+          *edges = eattribs[0];
+          edges->data = malloc(edges->size);
+          for (i = 0; i < eattribs[0].count / 2; ++i) {
+            edges->uints[2 * i + 0] = eattribs[0].uints[2 * dcReorder[i] + 0];
+            edges->uints[2 * i + 1] = eattribs[0].uints[2 * dcReorder[i] + 1];
+          }
+
+          free(dcReorder);
+          free(dcDepth);
+        }
+        __attribute__((fallthrough));
+
+      case INIT_PARTITION:
+        MAB_WRAP("init partition") {
+          unsigned j;
+
+          // clear previous partitions
+          if (_partition_cache) {
+            for (i = 0; i < _max_res * _max_res; ++i)
+              vec_destroy(&_partition_cache[i].partitions);
+            free(_partition_cache);
+            _partition_cache = NULL;
+          }
+
+          // create new partitions
+          _max_res = pow(2, _max_depth);
+          printf("partition res: (%ux%u)\n", _max_res, _max_res);
+          unsigned long blkSize = _max_res * _max_res * sizeof(PartitionData);
+          printf("Attempting to allocate %lu bytes for patition table\n",
+                 blkSize);
+          _partition_cache = (PartitionData *)calloc(blkSize, sizeof(char));
+          if (!_partition_cache) {
+            printf("Could not create partition cache of size %lu bytes!\n",
+                   blkSize);
+            exit(1);
+          }
+          for (i = 0; i < _max_res * _max_res; ++i)
+            vec_init(&_partition_cache[i].partitions);
+
+          GLfloat *vertsX = nattribs[0].floats;
+          GLfloat *vertsY = nattribs[1].floats;
+
+          GLfloat minX = nattribs[0].frange[0] - 1.0;
+          GLfloat maxX = nattribs[0].frange[1] + 1.0;
+          GLfloat minY = nattribs[1].frange[0] - 1.0;
+          GLfloat maxY = nattribs[1].frange[1] + 1.0;
+
+          printf("partitioning data...\n");
+          long sz = edges->count;
+          long tenth = sz / 10;
+          if (tenth == 0) ++tenth;
+          for (i = 0; i < sz; i += 2) {
+            if (i % tenth < 2)
+              printf("%d%% done...\n", (int)(100 * (double)i / (double)sz));
+
+            GLuint e0 = edges->uints[i + 0];
+            GLuint e1 = edges->uints[i + 1];
+
+            GLfloat x0 = vertsX[e0];
+            GLfloat y0 = vertsY[e0];
+            GLfloat x1 = vertsX[e1];
+            GLfloat y1 = vertsY[e1];
+
+            Vec_GLuint partitions = voxel_traversal(
+                _max_res, _max_res, x0, y0, x1, y1, minX, minY, maxX, maxY);
+            // printf("edge lies in %lu voxels\n", partitions.length);
+            for (j = 0; j < partitions.length; ++j) {
+              // printf("pushing edge (%d,%d) to partition %d\n", e0, e1,
+              // partitions.data[j]);
+              assert(vec_push(&_partition_cache[partitions.data[j]].partitions,
+                              e0) != -1);
+              assert(vec_push(&_partition_cache[partitions.data[j]].partitions,
+                              e1) != -1);
+            }
+            vec_destroy(&partitions);
+          }
+          printf("100%% done\n");
+
+          // log_partition_cache(_partition_cache);
+        }
+        __attribute__((fallthrough));
+
+      case INIT_BUFFERS:
+        MAB_WRAP("init node buffers") {
+          if (aNodeBuffers[0])
+            for (i = 0; i < ncount; ++i) glDeleteBuffers(1, &aNodeBuffers[i]);
+
+          for (i = 0; i < ncount; ++i) {
             glGenBuffers(1, &aNodeBuffers[i]);
             glBindBuffer(GL_ARRAY_BUFFER, aNodeBuffers[i]);
             if (logGLCalls)
-            mabLogMessage("glBufferData", "%lu", nattribs[i].size);
-            glBufferData(GL_ARRAY_BUFFER, nattribs[i].size, nattribs[i].data, GL_STATIC_DRAW);
+              mabLogMessage("glBufferData", "%lu", nattribs[i].size);
+            glBufferData(GL_ARRAY_BUFFER, nattribs[i].size, nattribs[i].data,
+                         GL_STATIC_DRAW);
             glBindBuffer(GL_ARRAY_BUFFER, 0);
-		}
-	}
+          }
+        }
 
-	case INIT_PROGRAM:
-	MAB_WRAP("create program") {
-		MAB_WRAP("create vertex shader") {
-			if (vertexShader) {
-                glDeleteShader(vertexShader);
+      case INIT_PROGRAM:
+        MAB_WRAP("create program") {
+          MAB_WRAP("create vertex shader") {
+            if (vertexShader) {
+              glDeleteShader(vertexShader);
             }
             vertexShader = glCreateShader(GL_VERTEX_SHADER);
 
-            glShaderSource(vertexShader, 1, (const GLchar *const *)&_vertexShaderSource, NULL);
+            glShaderSource(vertexShader, 1,
+                           (const GLchar *const *)&_vertexShaderSource, NULL);
 
             glCompileShader(vertexShader);
 
-			glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &rc);
-			if (!rc) {
-				glGetShaderInfoLog(vertexShader, sizeof(log), NULL, log);
-				printf("ERROR: Vertex Shader Compilation Failed\n%s\n", log);
-				mabLogEnd("ERROR: Vertex Shader Compilation Failed");
-				mabLogEnd("ERROR: Vertex Shader Compilation Failed");
-				_error = ERROR_COMPILE_VERTEX_SHADER;
-				goto done_with_request;
-			}
-		}
+            glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &rc);
+            if (!rc) {
+              glGetShaderInfoLog(vertexShader, sizeof(log), NULL, log);
+              printf("ERROR: Vertex Shader Compilation Failed\n%s\n", log);
+              mabLogEnd("ERROR: Vertex Shader Compilation Failed");
+              mabLogEnd("ERROR: Vertex Shader Compilation Failed");
+              _error = ERROR_COMPILE_VERTEX_SHADER;
+              goto done_with_request;
+            }
+          }
 
-		MAB_WRAP("create fragment shader") {
-			if (fragmentShader) {
-                glDeleteShader(fragmentShader);
+          MAB_WRAP("create fragment shader") {
+            if (fragmentShader) {
+              glDeleteShader(fragmentShader);
             }
 
             fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-            glShaderSource(fragmentShader, 1, (const GLchar *const *)&_fragmentShaderSource, NULL);
+            glShaderSource(fragmentShader, 1,
+                           (const GLchar *const *)&_fragmentShaderSource, NULL);
             glCompileShader(fragmentShader);
-	
-			glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &rc);
-			if (!rc) {
-				glGetShaderInfoLog(fragmentShader, sizeof(log), NULL, log);
-				printf("ERROR: Fragment Shader Compilation Failed\n%s\n", log);
-				mabLogEnd("ERROR: Fragment Shader Compilation Failed");
-				mabLogEnd("ERROR: Fragment Shader Compilation Failed");
-				_error = ERROR_COMPILE_FRAGMENT_SHADER;
-				goto done_with_request;
-			}
-		}
 
-		MAB_WRAP("link program") {
-			if (program) {
-                glDeleteProgram(program);
+            glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &rc);
+            if (!rc) {
+              glGetShaderInfoLog(fragmentShader, sizeof(log), NULL, log);
+              printf("ERROR: Fragment Shader Compilation Failed\n%s\n", log);
+              mabLogEnd("ERROR: Fragment Shader Compilation Failed");
+              mabLogEnd("ERROR: Fragment Shader Compilation Failed");
+              _error = ERROR_COMPILE_FRAGMENT_SHADER;
+              goto done_with_request;
+            }
+          }
+
+          MAB_WRAP("link program") {
+            if (program) {
+              glDeleteProgram(program);
             }
 
             program = glCreateProgram();
             glAttachShader(program, vertexShader);
             glAttachShader(program, fragmentShader);
             glLinkProgram(program);
-			
-			glGetProgramiv(program, GL_LINK_STATUS, &rc);
-			if(!rc){
-				glGetProgramInfoLog(program, sizeof(log), NULL, log);
-				printf("ERROR: Shader Program Linking Failed\n%s\n", log);
-				mabLogEnd("ERROR: Shader Program Linking Failed");
-				mabLogEnd("ERROR: Shader Program Linking Failed");
-				_error = ERROR_LINK_PROGRAM;
-				goto done_with_request;
-			}
-			
-			glUseProgram(program);
-		}
-	}
-	__attribute__((fallthrough));
 
-	case INIT_ATTRIBUTES:
-	MAB_WRAP("init node attributes") {
-		for (i=0; i<ncount; ++i)
-		MAB_WRAP("init attribute i=%d", i) {
-			char temp[32];
-			snprintf(temp, sizeof(temp), "aNode%lu", i + 1);
+            glGetProgramiv(program, GL_LINK_STATUS, &rc);
+            if (!rc) {
+              glGetProgramInfoLog(program, sizeof(log), NULL, log);
+              printf("ERROR: Shader Program Linking Failed\n%s\n", log);
+              mabLogEnd("ERROR: Shader Program Linking Failed");
+              mabLogEnd("ERROR: Shader Program Linking Failed");
+              _error = ERROR_LINK_PROGRAM;
+              goto done_with_request;
+            }
 
-            aNodeLocations[i] = glGetAttribLocation(program, temp);
-            glBindBuffer(GL_ARRAY_BUFFER, aNodeBuffers[i]);
-            glVertexAttribPointer(aNodeLocations[i], 1, nattribs[i].type, GL_FALSE, 0, 0);
-            glEnableVertexAttribArray(aNodeLocations[i]);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-		}
-	}
-	__attribute__((fallthrough));
+            glUseProgram(program);
+          }
+        }
+        __attribute__((fallthrough));
 
-	case INIT_UNIFORMS:
-	MAB_WRAP("init uniforms") {
-        uTranslateX = glGetUniformLocation(program, "uTranslateX");
-        uTranslateY = glGetUniformLocation(program, "uTranslateY");
-        uScale = glGetUniformLocation(program, "uScale");
+      case INIT_ATTRIBUTES:
+        MAB_WRAP("init node attributes") {
+          for (i = 0; i < ncount; ++i) MAB_WRAP("init attribute i=%d", i) {
+              char temp[32];
+              snprintf(temp, sizeof(temp), "aNode%lu", i + 1);
 
-		for (i=0; i<ncount; ++i) {
-			char temp[32];
-			snprintf(temp, sizeof(temp), "uNodeMin%lu", i + 1);
+              aNodeLocations[i] = glGetAttribLocation(program, temp);
+              glBindBuffer(GL_ARRAY_BUFFER, aNodeBuffers[i]);
+              glVertexAttribPointer(aNodeLocations[i], 1, nattribs[i].type,
+                                    GL_FALSE, 0, 0);
+              glEnableVertexAttribArray(aNodeLocations[i]);
+              glBindBuffer(GL_ARRAY_BUFFER, 0);
+            }
+        }
+        __attribute__((fallthrough));
+
+      case INIT_UNIFORMS:
+        MAB_WRAP("init uniforms") {
+          uTranslateX = glGetUniformLocation(program, "uTranslateX");
+          uTranslateY = glGetUniformLocation(program, "uTranslateY");
+          uScale = glGetUniformLocation(program, "uScale");
+
+          for (i = 0; i < ncount; ++i) {
+            char temp[32];
+            snprintf(temp, sizeof(temp), "uNodeMin%lu", i + 1);
             uNodeMins[i] = glGetUniformLocation(program, temp);
-		}
+          }
 
-		for (i=0; i<ncount; ++i) {
-			char temp[32];
-			snprintf(temp, sizeof(temp), "uNodeMax%lu", i + 1);
+          for (i = 0; i < ncount; ++i) {
+            char temp[32];
+            snprintf(temp, sizeof(temp), "uNodeMax%lu", i + 1);
             uNodeMaxs[i] = glGetUniformLocation(program, temp);
-		}
-	}
-	__attribute__((fallthrough));
+          }
+        }
+        __attribute__((fallthrough));
 
-	case INIT_INDEX_BUFFER:
-	MAB_WRAP("init index buffer") {
-		/*
-		unsigned i, j, k, curr;
-		if (indexBuffer)
-			glDeleteBuffers(1, &indexBuffer);
+      case INIT_INDEX_BUFFER:
+        MAB_WRAP("init index buffer") {
+          /*
+          unsigned i, j, k, curr;
+          if (indexBuffer)
+                  glDeleteBuffers(1, &indexBuffer);
 
-		glGenBuffers(1, &indexBuffer);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, edges->size, edges->data, GL_STATIC_DRAW);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-		*/
+          glGenBuffers(1, &indexBuffer);
+          glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
+          glBufferData(GL_ELEMENT_ARRAY_BUFFER, edges->size, edges->data,
+          GL_STATIC_DRAW); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+          */
 
-		//partition cache index buffers
-		for(i=0; i<_max_res*_max_res; ++i){
-			if (_partition_cache[i].indexBuffer)
-				glDeleteBuffers(1, &_partition_cache[i].indexBuffer);
-		
+          // partition cache index buffers
+          for (i = 0; i < _max_res * _max_res; ++i) {
+            if (_partition_cache[i].indexBuffer)
+              glDeleteBuffers(1, &_partition_cache[i].indexBuffer);
+
             glGenBuffers(1, &_partition_cache[i].indexBuffer);
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[i].indexBuffer);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
+                         _partition_cache[i].indexBuffer);
             if (logGLCalls)
-            if (_partition_cache[i].partitions.length*sizeof(GLuint) > 0)
-            mabLogMessage("glBufferData", "%lu", _partition_cache[i].partitions.length*sizeof(GLuint));
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[i].partitions.length*sizeof(GLuint), _partition_cache[i].partitions.data, GL_STATIC_DRAW);
+              if (_partition_cache[i].partitions.length * sizeof(GLuint) > 0)
+                mabLogMessage(
+                    "glBufferData", "%lu",
+                    _partition_cache[i].partitions.length * sizeof(GLuint));
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                         _partition_cache[i].partitions.length * sizeof(GLuint),
+                         _partition_cache[i].partitions.data, GL_STATIC_DRAW);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-		}
-	}
-	__attribute__((fallthrough));
+          }
+        }
+        __attribute__((fallthrough));
 
-	case RENDER:
-	MAB_WRAP("render") {
-        glUniform1f(uTranslateX, -1.0f * _x);
-        glUniform1f(uTranslateY, -1.0f * _y);
-        glUniform1f(uScale, pow(2.0f, _z));
+      case RENDER:
+        MAB_WRAP("render") {
+          glUniform1f(uTranslateX, -1.0f * _x);
+          glUniform1f(uTranslateY, -1.0f * _y);
+          glUniform1f(uScale, pow(2.0f, _z));
 
-		for (i=0; i<ncount; ++i) {
+          for (i = 0; i < ncount; ++i) {
             glUniform1f(uNodeMins[i], nattribs[i].frange[0]);
             glUniform1f(uNodeMaxs[i], nattribs[i].frange[1]);
-		}
-		
-		//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+          }
 
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+          // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+          glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
 
-		glEnable(GL_DEPTH_TEST);
-		glDepthFunc(GL_LEQUAL);
+          glEnable(GL_BLEND);
+          glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		
-		/*
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
-		glDrawElements(GL_LINES, edges->count, GL_UNSIGNED_INT, 0);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-		*/
-		
-		//get current partition resolution by zoom level
-		unsigned long res = (unsigned long)pow(2, _z);
+          glEnable(GL_DEPTH_TEST);
+          glDepthFunc(GL_LEQUAL);
 
-		//figure out which partition we're rendering in
-		unsigned long rx = (unsigned long)interpolate(0, res, 0, _max_res, _x);
-		unsigned long ry = (unsigned long)interpolate(0, res, 0, _max_res, _y);
-	    
-        if(rx < _max_res && ry < _max_res){
+          glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		    int numTilesX = (int)ceil((float)_max_res/(float)res); 
-            int numTilesY = numTilesX; //seperated just in case if in the future we want to have different x and y
+          /*
+          glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
+          glDrawElements(GL_LINES, edges->count, GL_UNSIGNED_INT, 0);
+          glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+          */
+
+          // get current partition resolution by zoom level
+          unsigned long res = (unsigned long)pow(2, _z);
+
+          // figure out which partition we're rendering in
+          unsigned long rx =
+              (unsigned long)interpolate(0, res, 0, _max_res, _x);
+          unsigned long ry =
+              (unsigned long)interpolate(0, res, 0, _max_res, _y);
+
+          if (rx < _max_res && ry < _max_res) {
+            int numTilesX = (int)ceil((float)_max_res / (float)res);
+            int numTilesY =
+                numTilesX;  // seperated just in case if in the future we want
+                            // to have different x and y
 
             /*
             printf("res: (%lux%lu)/(%lux%lu)\n", res, res, _max_res, _max_res);
             printf("_x: %f, _y: %f\n", _x, _y);
             printf("rx: %lu, ry: %lu\n", rx, ry);
-		    printf("------------- numTilesX: %d, numTilesY: %d -----------------\n", numTilesX, numTilesY);
+                    printf("------------- numTilesX: %d, numTilesY: %d
+            -----------------\n", numTilesX, numTilesY);
             */
 
-            MAB_WRAP("rendering tiles"){
-                /*
-                mabLogMessage("left", "%d", (int)rx);
-                mabLogMessage("top", "%d", (int)ry);
-                mabLogMessage("numTilesX", "%d", numTilesX);
-                mabLogMessage("numTilesY", "%d", numTilesY);
-                mabLogMessage("zoom", "%d", (int)_z);
-                */
+            MAB_WRAP("rendering tiles") {
+              mabLogMessage("left", "%d", (int)rx);
+              mabLogMessage("top", "%d", (int)ry);
+              mabLogMessage("numTilesX", "%d", numTilesX);
+              mabLogMessage("numTilesY", "%d", numTilesY);
+              mabLogMessage("zoom", "%d", (int)_z);
 
-		        for(i=0; i<numTilesX; ++i){
-		    	    for(j=0; j<numTilesY; ++j){
-		    		    unsigned long idx = (ry+j)*_max_res+(rx+i);
-                        PartitionData *pd = &_partition_cache[idx];
-                        pd->count++;
+              for (i = 0; i < numTilesX; ++i) {
+                for (j = 0; j < numTilesY; ++j) {
+                  unsigned long idx = (ry + j) * _max_res + (rx + i);
+                  PartitionData *pd = &_partition_cache[idx];
+                  pd->count++;
 
-                        if(pd->partitions.length == 0) continue;
+                  if (pd->partitions.length == 0) continue;
 
-                        if (doOcclusionCulling) {
+                  if (doOcclusionCulling) {
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
+                                 _partition_cache[idx].indexBuffer);
+                    if (logGLCalls)
+                      if (pd->partitions.length > 0)
+                        mabLogMessage("glDrawElements", "%lu",
+                                      pd->partitions.length);
 
-                            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[idx].indexBuffer);
-                            if (logGLCalls)
-                            if (pd->partitions.length > 0)
-                            mabLogMessage("glDrawElements", "%lu", pd->partitions.length);
+                    int batchRenderSize =
+                        10000;  // experiment with this, should be some function
+                                // of max_res
+                    int numEdges = pd->partitions.length / 2;
+                    for (int i = 0; i < (int)ceil((double)numEdges /
+                                                  (double)batchRenderSize);
+                         ++i) {
+                      int startIdx = i * batchRenderSize;
+                      int length = numEdges > (startIdx + batchRenderSize)
+                                       ? batchRenderSize
+                                       : numEdges - startIdx;
 
-                            int batchRenderSize = 10000; //experiment with this, should be some function of max_res
-                            int numEdges = pd->partitions.length/2;
-                            for(int i = 0; i < (int)ceil((double)numEdges/(double)batchRenderSize); ++i){
-                                int startIdx = i*batchRenderSize;
-                                int length = numEdges > (startIdx + batchRenderSize) ? batchRenderSize : numEdges - startIdx;
-                                
+                      GLuint q;
+                      glGenQueries(1, &q);
 
-                                GLuint q;
-                                glGenQueries(1, &q);
-                                
-                                glBeginQuery(GL_SAMPLES_PASSED, q);
-                                glDrawElements(GL_LINES, length*2, GL_UNSIGNED_INT, (void*)(intptr_t)startIdx);
-                                glEndQuery(GL_SAMPLES_PASSED);
+                      glBeginQuery(GL_SAMPLES_PASSED, q);
+                      glDrawElements(GL_LINES, length * 2, GL_UNSIGNED_INT,
+                                     (void *)(intptr_t)startIdx);
+                      glEndQuery(GL_SAMPLES_PASSED);
 
-                                GLint samples;
-                                glGetQueryObjectiv(q, GL_QUERY_RESULT, &samples);
-                                
-                                //if(samples == 0)    break;    
-                            }
-                            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+                      GLint samples;
+                      glGetQueryObjectiv(q, GL_QUERY_RESULT, &samples);
 
-                        } else {
-                            if (logGLCalls)
-                            if (pd->partitions.length > 0)
-                            mabLogMessage("glDrawElements", "%lu", pd->partitions.length);
+                      // if(samples == 0)    break;
+                    }
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-                            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[idx].indexBuffer);
-                            glDrawElements(GL_LINES, pd->partitions.length, GL_UNSIGNED_INT, 0);
-                            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-                        }
-		     	    }
-		        }
+                  } else {
+                    if (logGLCalls)
+                      if (pd->partitions.length > 0)
+                        mabLogMessage("glDrawElements", "%lu",
+                                      pd->partitions.length);
+
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
+                                 _partition_cache[idx].indexBuffer);
+                    glDrawElements(GL_LINES, pd->partitions.length,
+                                   GL_UNSIGNED_INT, 0);
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+                  }
+                }
+              }
             }
+          }
+
+          glFinish();
+        }
+        __attribute__((fallthrough));
+
+      case WAIT:
+      done_with_request:
+        // give control of buffer
+        pthread_barrier_wait(_barrier);
+
+        // wait for them to be done
+        pthread_barrier_wait(_barrier);
+        mabLogEnd(NULL);
+
+      wait_for_request:
+        // wait for request
+        pthread_barrier_wait(_barrier);
+
+        mabLogContinue(_info);
+        mabLogAction("receive from request thread");
+
+        where = RENDER;
+
+        logGLCalls = _logGLCalls;
+        doOcclusionCulling = _doOcclusionCulling;
+
+        if (fabsf(x - _x) > 0.1) {
+          x = _x;
+          where = RENDER;
+        }
+        if (fabsf(y - _y) > 0.1) {
+          y = _y;
+          where = RENDER;
+        }
+        if (vertexShaderSource == NULL ||
+            strcmp(vertexShaderSource, _vertexShaderSource) != 0) {
+          if (vertexShaderSource) free(vertexShaderSource);
+          vertexShaderSource = strdup(_vertexShaderSource);
+          where = INIT_PROGRAM;
+        }
+        if (fragmentShaderSource == NULL ||
+            strcmp(fragmentShaderSource, _fragmentShaderSource) != 0) {
+          if (fragmentShaderSource) free(fragmentShaderSource);
+          fragmentShaderSource = strdup(_fragmentShaderSource);
+          where = INIT_PROGRAM;
+        }
+        if (max_depth != _max_depth) {
+          max_depth = _max_depth;
+          where = INIT_PARTITION;
+        }
+        if (dcIdent != _dcIdent) {
+          dcIdent = _dcIdent;
+          if (dcIndex) free(dcIndex);
+          dcIndex = _dcIndex;
+          if (dcMult) free(dcMult);
+          dcMult = _dcMult;
+          if (dcOffset) free(dcOffset);
+          dcOffset = _dcOffset;
+          dcMinMult = _dcMinMult;
+          dcMaxMult = _dcMaxMult;
+          where = INIT_DC;
+        }
+        if (dataset == NULL || strcmp(dataset, _dataset) != 0) {
+          if (dataset) free(dataset);
+          dataset = strdup(_dataset);
+          where = INIT_GRAPH;
+        }
+        if (first) {
+          first = GL_FALSE;
+          where = INIT_OSMESA;
         }
 
-		glFinish();
-	}
-	__attribute__((fallthrough));
-
-	case WAIT:
-done_with_request:
-	// give control of buffer
-	pthread_barrier_wait(_barrier);
-
-	// wait for them to be done
-	pthread_barrier_wait(_barrier);
-	mabLogEnd(NULL);
-
-wait_for_request:
-	// wait for request
-	pthread_barrier_wait(_barrier);
-
-	mabLogContinue(_info);
-	mabLogAction("receive from request thread");
-
-	where = RENDER;
-
-    logGLCalls = _logGLCalls;
-    doOcclusionCulling = _doOcclusionCulling;
-    
-	if (fabsf(x - _x) > 0.1) { x = _x; where = RENDER; }
-	if (fabsf(y - _y) > 0.1) { y = _y; where = RENDER; }
-	if (vertexShaderSource == NULL || strcmp(vertexShaderSource, _vertexShaderSource) != 0) {
-		if (vertexShaderSource) free(vertexShaderSource);
-		vertexShaderSource = strdup(_vertexShaderSource);
-		where = INIT_PROGRAM;
-	}
-	if (fragmentShaderSource == NULL || strcmp(fragmentShaderSource, _fragmentShaderSource) != 0) {
-		if (fragmentShaderSource) free(fragmentShaderSource);
-		fragmentShaderSource = strdup(_fragmentShaderSource);
-		where = INIT_PROGRAM;
-	}
-	if (max_depth != _max_depth) { max_depth = _max_depth; where = INIT_PARTITION; }
-	if (dcIdent != _dcIdent) {
-		dcIdent = _dcIdent;
-		if (dcIndex) free(dcIndex);
-		dcIndex = _dcIndex;
-		if (dcMult) free(dcMult);
-		dcMult = _dcMult;
-		if (dcOffset) free(dcOffset);
-		dcOffset = _dcOffset;
-		dcMinMult = _dcMinMult;
-		dcMaxMult = _dcMaxMult;
-		where = INIT_DC;
-	}
-	if (dataset == NULL || strcmp(dataset, _dataset) != 0) {
-		if (dataset) free(dataset);
-		dataset = strdup(_dataset);
-		where = INIT_GRAPH;
-	}
-	if (first) {
-		first = GL_FALSE;
-		where = INIT_OSMESA;
-	}
-
-	break;
-	} /* switch */
+        break;
+    } /* switch */
 } /* render */
 
+size_t tojpeg(void *rgba, int resolution, void **jpg, size_t *jpgsize) {
+  size_t jpglen;
 
-size_t
-tojpeg(void *rgba, int resolution, void **jpg, size_t *jpgsize) {
-	size_t jpglen;
+  mabLogMessage("resolution", "%d", resolution);
+  mabLogMessage("rgba", "%p", rgba);
 
-	mabLogMessage("resolution", "%d", resolution);
-	mabLogMessage("rgba", "%p", rgba);
+  *jpgsize = 1024;
+  *jpg = malloc(*jpgsize);
+  jpglen = 0;
 
-        *jpgsize = 1024;
-        *jpg = malloc(*jpgsize);
-        jpglen = 0;
+  void mywriter(void *context, void *data, int size) {
+    // mabLogMessage("size", "%d", size);
+    if (jpglen + size > *jpgsize) {
+      // mabLogMessage("realloc", "%lu bytes -> %lu bytes", *jpgsize, jpglen +
+      // size);
+      *jpgsize = jpglen + size;
+      *jpg = realloc(*jpg, *jpgsize);
+    }
+    memcpy(*jpg + jpglen, data, size);
+    jpglen += size;
+  }
 
-        void mywriter(void *context, void *data, int size) {
-		//mabLogMessage("size", "%d", size);
-                if (jpglen + size > *jpgsize) {
-			//mabLogMessage("realloc", "%lu bytes -> %lu bytes", *jpgsize, jpglen + size);
-                        *jpgsize = jpglen + size;
-                        *jpg = realloc(*jpg, *jpgsize);
-                }
-                memcpy(*jpg + jpglen, data, size);
-                jpglen += size;
-        }
+  (void)stbi_write_jpg_to_func(mywriter, NULL, resolution, resolution, 4, rgba,
+                               95);
 
-	(void)stbi_write_jpg_to_func(mywriter, NULL, resolution, resolution, 4, rgba, 95);
-
-	return jpglen;
+  return jpglen;
 }
 
-struct MHD_Response *
-MAB_create_response_from_file(const char *filename) {
-	FILE *f;
-	size_t size, actual;
-	char *data;
+struct MHD_Response *MAB_create_response_from_file(const char *filename) {
+  FILE *f;
+  size_t size, actual;
+  char *data;
 
-	f = fopen(filename, "rb");
-	if (f == NULL) {
-		fprintf(stderr, "could not open %s\n", filename);
-		//exit(1);
-		return NULL;
-	}
-	fseek(f, 0, SEEK_END);
-	size = ftell(f);
-	rewind(f);
-	
-	data = malloc(size);
-	actual = fread(data, 1, size, f);
-	if (actual != size) {
-		fprintf(stderr, "didn't read all of %s\n", filename);
-		//exit(1);
-		free(data);
-		fclose(f);
-		return NULL;
-	}
-	fclose(f);
-	
-	return MHD_create_response_from_buffer(size, data, MHD_RESPMEM_MUST_FREE);
+  f = fopen(filename, "rb");
+  if (f == NULL) {
+    fprintf(stderr, "could not open %s\n", filename);
+    // exit(1);
+    return NULL;
+  }
+  fseek(f, 0, SEEK_END);
+  size = ftell(f);
+  rewind(f);
+
+  data = malloc(size);
+  actual = fread(data, 1, size, f);
+  if (actual != size) {
+    fprintf(stderr, "didn't read all of %s\n", filename);
+    // exit(1);
+    free(data);
+    fclose(f);
+    return NULL;
+  }
+  fclose(f);
+
+  return MHD_create_response_from_buffer(size, data, MHD_RESPMEM_MUST_FREE);
 }
 
-#define ANSWER(name) int name(void *cls, struct MHD_Connection *conn, const char *url, const char *method, const char *version, const char *data, size_t *size, void **con_cls)
+#define ANSWER(name)                                                  \
+  int name(void *cls, struct MHD_Connection *conn, const char *url,   \
+           const char *method, const char *version, const char *data, \
+           size_t *size, void **con_cls)
 
 ANSWER(Index) {
-	struct MHD_Response *index_response;
-	int rc;
+  struct MHD_Response *index_response;
+  int rc;
 
-	index_response = MAB_create_response_from_file("static/index.html");
-	if(index_response == NULL){
-		printf("Could not read file static/index.html\n");
-		exit(1);
-	}
-	rc = MHD_queue_response(conn, MHD_HTTP_OK, index_response);
-	MHD_destroy_response(index_response);
-	return rc;
+  index_response = MAB_create_response_from_file("static/index.html");
+  if (index_response == NULL) {
+    printf("Could not read file static/index.html\n");
+    exit(1);
+  }
+  rc = MHD_queue_response(conn, MHD_HTTP_OK, index_response);
+  MHD_destroy_response(index_response);
+  return rc;
 }
 
 struct MHD_Response *error_response;
 ANSWER(Error) {
-	fprintf(stderr, "404: '%s' '%s'\n", method, url);
-	return MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);	
+  fprintf(stderr, "404: '%s' '%s'\n", method, url);
+  return MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);
 }
 
 ANSWER(Static) {
-	struct MHD_Response *response;
-	int rc;
+  struct MHD_Response *response;
+  int rc;
 
-	const char *URL = url+1;
+  const char *URL = url + 1;
 
-	response = MAB_create_response_from_file(URL);
-	if(response == NULL){
-		rc = Error(cls, conn, url, method, version, data, size, con_cls);
-	}else{
-		rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
-		MHD_destroy_response(response);
-	}
-	return rc;
+  response = MAB_create_response_from_file(URL);
+  if (response == NULL) {
+    rc = Error(cls, conn, url, method, version, data, size, con_cls);
+  } else {
+    rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
+    MHD_destroy_response(response);
+  }
+  return rc;
 }
 
-ANSWER(Tile) { 
-	int rc;
-	struct MHD_Response *response;
-	void *output;
-	size_t outputlen;
-	char *renderInfo;
+ANSWER(Tile) {
+  int rc;
+  struct MHD_Response *response;
+  void *output;
+  size_t outputlen;
+  char *renderInfo;
 
-	const char *info = MHD_lookup_connection_value(conn, MHD_HEADER_KIND, "X-MAB-Log-Info");
-	if (info != NULL) {
-		fprintf(stderr, "info = '%s'\n", info);
-		mabLogContinue(info);
-	}
+  const char *info =
+      MHD_lookup_connection_value(conn, MHD_HEADER_KIND, "X-MAB-Log-Info");
+  if (info != NULL) {
+    fprintf(stderr, "info = '%s'\n", info);
+    mabLogContinue(info);
+  }
 
-	MAB_WRAP("answer tile request") {
+  MAB_WRAP("answer tile request") {
     mabLogMessage("rxsize", "%zu", strlen(url));
-	float x, y, z;
+    float x, y, z;
     int max_depth;
-	char *dataset, *options;
-	if (5 != (rc = sscanf(url, "/tile/%m[^/]/%f/%f/%f/%ms", &dataset, &z, &x, &y, &options))) {
-		fprintf(stderr, "rc: %d\n", rc);
-		fprintf(stderr, "options: %s\n", options);
-		rc = MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);	
-		goto end;
-	}
-	mabLogMessage("x", "%f", x);
-	mabLogMessage("y", "%f", y);
-	mabLogMessage("z", "%f", z);
-	mabLogMessage("dataset", "%s", dataset);
-	mabLogMessage("options", "%s", options);
+    char *dataset, *options;
+    if (5 != (rc = sscanf(url, "/tile/%m[^/]/%f/%f/%f/%ms", &dataset, &z, &x,
+                          &y, &options))) {
+      fprintf(stderr, "rc: %d\n", rc);
+      fprintf(stderr, "options: %s\n", options);
+      rc = MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);
+      goto end;
+    }
+    mabLogMessage("x", "%f", x);
+    mabLogMessage("y", "%f", y);
+    mabLogMessage("z", "%f", z);
+    mabLogMessage("dataset", "%s", dataset);
+    mabLogMessage("options", "%s", options);
 
-	char *s;
+    char *s;
 
-	char *opt_vert = NULL;
-	char *opt_frag = NULL;
-	GLuint opt_dcIdent = 0;
-	GLuint *opt_dcIndex = NULL;
-	GLfloat *opt_dcMult = NULL;
-	GLfloat *opt_dcOffset = NULL;
-	GLfloat opt_dcMinMult = 0.0;
-	GLfloat opt_dcMaxMult = 0.0;
+    char *opt_vert = NULL;
+    char *opt_frag = NULL;
+    GLuint opt_dcIdent = 0;
+    GLuint *opt_dcIndex = NULL;
+    GLfloat *opt_dcMult = NULL;
+    GLfloat *opt_dcOffset = NULL;
+    GLfloat opt_dcMinMult = 0.0;
+    GLfloat opt_dcMaxMult = 0.0;
     int opt_logGLCalls = 0;
     int opt_doOcclusionCulling = 0;
 
-	//fprintf(stderr, "options: '''\n%s\n'''\n", options);
+    // fprintf(stderr, "options: '''\n%s\n'''\n", options);
 
-	char *it = options + 1;
-	for (;;) {
-		char *key = it;
+    char *it = options + 1;
+    for (;;) {
+      char *key = it;
 
-		it = strchrnul(it, ',');
-		if (!*it) break;
-		*it++ = '\0';
+      it = strchrnul(it, ',');
+      if (!*it) break;
+      *it++ = '\0';
 
-		void *value = it;
-		
-		it = strchrnul(it, ',');
-		int done = *it == '\0';
-		*it++ = '\0';
+      void *value = it;
 
-		if (strncmp(value, "base64:", strlen("base64:")) == 0) {
-			char *data = value + strlen("base64:");
-			size_t len = strlen(data);
+      it = strchrnul(it, ',');
+      int done = *it == '\0';
+      *it++ = '\0';
 
-			size_t outlen = len + 128;
-			char *out = malloc(outlen + 1);
-			if (base64decode(data, len, out, &outlen) != 0) {
-				fprintf(stderr, "ERROR: base64decode failed\n");
-				return MHD_NO;
-			}
+      if (strncmp(value, "base64:", strlen("base64:")) == 0) {
+        char *data = value + strlen("base64:");
+        size_t len = strlen(data);
 
-			out[outlen] = '\0';
-			value = out;
-		}
+        size_t outlen = len + 128;
+        char *out = malloc(outlen + 1);
+        if (base64decode(data, len, out, &outlen) != 0) {
+          fprintf(stderr, "ERROR: base64decode failed\n");
+          return MHD_NO;
+        }
 
-		if (strcmp(key, "vert") == 0) {
-			opt_vert = value;
-		} else if (strcmp(key, "frag") == 0) {
-			opt_frag = value;
-		} else if (strcmp(key, "pDepth") == 0){
-            max_depth = atoi(value);
-        } else if (strcmp(key, "dcIdent") == 0) {
-			opt_dcIdent = atoi(value);
-		} else if (strcmp(key, "dcIndex") == 0) {
-			opt_dcIndex = value;
-		} else if (strcmp(key, "dcMult") == 0) {
-			opt_dcMult = value;
-		} else if (strcmp(key, "dcOffset") == 0) {
-			opt_dcOffset = value;
-		} else if (strcmp(key, "dcMinMult") == 0) {
-			opt_dcMinMult = atof(value);
-		} else if (strcmp(key, "dcMaxMult") == 0) {
-			opt_dcMaxMult = atof(value);
-        } else if (strcmp(key, "logGLCalls") == 0) {
-            opt_logGLCalls = atoi(value);
-        } else if (strcmp(key, "doOcclusionCulling") == 0) {
-            opt_doOcclusionCulling = atoi(value);
-		} else {
-			fprintf(stderr, "WARNING: unhandled option '%s' = '%s'\n", key, (char *)value);
-		}
+        out[outlen] = '\0';
+        value = out;
+      }
 
-		if (done) break;
-	}
+      if (strcmp(key, "vert") == 0) {
+        opt_vert = value;
+      } else if (strcmp(key, "frag") == 0) {
+        opt_frag = value;
+      } else if (strcmp(key, "pDepth") == 0) {
+        max_depth = atoi(value);
+      } else if (strcmp(key, "dcIdent") == 0) {
+        opt_dcIdent = atoi(value);
+      } else if (strcmp(key, "dcIndex") == 0) {
+        opt_dcIndex = value;
+      } else if (strcmp(key, "dcMult") == 0) {
+        opt_dcMult = value;
+      } else if (strcmp(key, "dcOffset") == 0) {
+        opt_dcOffset = value;
+      } else if (strcmp(key, "dcMinMult") == 0) {
+        opt_dcMinMult = atof(value);
+      } else if (strcmp(key, "dcMaxMult") == 0) {
+        opt_dcMaxMult = atof(value);
+      } else if (strcmp(key, "logGLCalls") == 0) {
+        opt_logGLCalls = atoi(value);
+      } else if (strcmp(key, "doOcclusionCulling") == 0) {
+        opt_doOcclusionCulling = atoi(value);
+      } else {
+        fprintf(stderr, "WARNING: unhandled option '%s' = '%s'\n", key,
+                (char *)value);
+      }
 
-	mabLogMessage("opt_vert length", "%d", strlen(opt_vert));
-	mabLogMessage("opt_frag length", "%d", strlen(opt_frag));
-	mabLogMessage("opt_dcIdent", "%u", opt_dcIdent);
+      if (done) break;
+    }
 
-	MAB_WRAP("send to render thread") {
-		MAB_WRAP("lock")
-		pthread_mutex_lock(_lock);
-        
-        _max_depth = max_depth;
-		_x = x;
-		_y = y;
-		_z = z;
-		_dataset = dataset;
-		_vertexShaderSource = opt_vert;
-		_fragmentShaderSource = opt_frag;
-		_dcIdent = opt_dcIdent;
-		_dcIndex = opt_dcIndex;
-		_dcMult = opt_dcMult;
-		_dcOffset = opt_dcOffset;
-		_dcMinMult = opt_dcMinMult;
-		_dcMaxMult = opt_dcMaxMult;
-        _logGLCalls = opt_logGLCalls;
-        _doOcclusionCulling = opt_doOcclusionCulling;
-		_error = ERROR_NONE;
+    mabLogMessage("opt_vert length", "%d", strlen(opt_vert));
+    mabLogMessage("opt_frag length", "%d", strlen(opt_frag));
+    mabLogMessage("opt_dcIdent", "%u", opt_dcIdent);
 
-		mabLogForward(&renderInfo);
-		_info = renderInfo;
-		
-		// tell render thread to run
-		pthread_barrier_wait(_barrier);
+    MAB_WRAP("send to render thread") {
+      MAB_WRAP("lock")
+      pthread_mutex_lock(_lock);
 
-		// wait for render to be finished
-		pthread_barrier_wait(_barrier);
+      _max_depth = max_depth;
+      _x = x;
+      _y = y;
+      _z = z;
+      _dataset = dataset;
+      _vertexShaderSource = opt_vert;
+      _fragmentShaderSource = opt_frag;
+      _dcIdent = opt_dcIdent;
+      _dcIndex = opt_dcIndex;
+      _dcMult = opt_dcMult;
+      _dcOffset = opt_dcOffset;
+      _dcMinMult = opt_dcMinMult;
+      _dcMaxMult = opt_dcMaxMult;
+      _logGLCalls = opt_logGLCalls;
+      _doOcclusionCulling = opt_doOcclusionCulling;
+      _error = ERROR_NONE;
 
-		if (_error != ERROR_NONE) {
-			char *message;
-			message = errorMessages[_error];
+      mabLogForward(&renderInfo);
+      _info = renderInfo;
 
-            mabLogMessage("error", "%s", message);
+      // tell render thread to run
+      pthread_barrier_wait(_barrier);
 
-			response = MHD_create_response_from_buffer(strlen(message), message, MHD_RESPMEM_PERSISTENT);
-			rc = MHD_queue_response(conn, MHD_HTTP_NOT_ACCEPTABLE, response);
-			MHD_destroy_response(response);
-			
-			// tell render thread we're done
-			pthread_barrier_wait(_barrier);
+      // wait for render to be finished
+      pthread_barrier_wait(_barrier);
 
-			MAB_WRAP("unlock")
-			pthread_mutex_unlock(_lock);
+      if (_error != ERROR_NONE) {
+        char *message;
+        message = errorMessages[_error];
 
-			goto end;
+        mabLogMessage("error", "%s", message);
 
-		} else {
-			MAB_WRAP("jpeg") {
-				output = NULL;
-				outputlen = 0;
-				tojpeg(_image, _resolution, &output, &outputlen);
-			}
+        response = MHD_create_response_from_buffer(strlen(message), message,
+                                                   MHD_RESPMEM_PERSISTENT);
+        rc = MHD_queue_response(conn, MHD_HTTP_NOT_ACCEPTABLE, response);
+        MHD_destroy_response(response);
 
-			// tell render thread we're done
-			pthread_barrier_wait(_barrier);
+        // tell render thread we're done
+        pthread_barrier_wait(_barrier);
 
-			MAB_WRAP("unlock")
-			pthread_mutex_unlock(_lock);
-		}
-	}
+        MAB_WRAP("unlock")
+        pthread_mutex_unlock(_lock);
+
+        goto end;
+
+      } else {
+        MAB_WRAP("jpeg") {
+          output = NULL;
+          outputlen = 0;
+          eglSwapBuffers(eglDisplay, eglSurface);
+          glReadPixels(0, 0, _resolution, _resolution, GL_RGBA, GL_UNSIGNED_BYTE, _image);
+          GLenum possibleError = glGetError();
+          fprintf(stderr, "readPixels get error: %d\n", possibleError);
+          fprintf(stderr, "First RGBA: %d %d %d %d\n", _image[0], _image[1], _image[2], _image[3]);
+          fprintf(stderr, "Wrote %d into a jpeg!", tojpeg(_image, _resolution, &output, &outputlen));
+        }
+
+        // tell render thread we're done
+        pthread_barrier_wait(_barrier);
+
+        MAB_WRAP("unlock")
+        pthread_mutex_unlock(_lock);
+      }
+    }
 
     mabLogMessage("txsize", "%zu", outputlen);
-	
-	response = MHD_create_response_from_buffer(outputlen, output, MHD_RESPMEM_MUST_FREE);
-	
-	const char *origin = MHD_lookup_connection_value(conn, MHD_HEADER_KIND, "origin");
-	if (origin != NULL) {
-		MHD_add_response_header(response, "Access-Control-Allow-Origin", origin);
-	}
-	MHD_add_response_header(response, "Content-Type", "image/jpeg");
-	MHD_add_response_header(response, "Connection", "close");
-	
-	rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
-	MHD_destroy_response(response);
-	
-end: ;
-	}
-	return rc;
+
+    response = MHD_create_response_from_buffer(outputlen, output,
+                                               MHD_RESPMEM_MUST_FREE);
+
+    const char *origin =
+        MHD_lookup_connection_value(conn, MHD_HEADER_KIND, "origin");
+    if (origin != NULL) {
+      MHD_add_response_header(response, "Access-Control-Allow-Origin", origin);
+    }
+    MHD_add_response_header(response, "Content-Type", "image/jpeg");
+    MHD_add_response_header(response, "Connection", "close");
+
+    rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
+    MHD_destroy_response(response);
+
+  end:;
+  }
+  return rc;
 }
 
 ANSWER(Log) {
-	struct MHD_Response *response;
-	int rc;
+  struct MHD_Response *response;
+  int rc;
 
-	char *message = strdup(url + strlen("/log/"));
-	size_t len = MHD_http_unescape(message);
+  char *message = strdup(url + strlen("/log/"));
+  size_t len = MHD_http_unescape(message);
 
-	mabLogDirectly(message);
+  mabLogDirectly(message);
 
-	response = MHD_create_response_from_buffer(len, message, MHD_RESPMEM_MUST_COPY);
-	rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
-	MHD_destroy_response(response);
-	return rc;
+  response =
+      MHD_create_response_from_buffer(len, message, MHD_RESPMEM_MUST_COPY);
+  rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
+  MHD_destroy_response(response);
+  return rc;
 }
 
 struct {
-	const char *method;
-	const char *url;
-	int exact;
-	MHD_AccessHandlerCallback cb;
+  const char *method;
+  const char *url;
+  int exact;
+  MHD_AccessHandlerCallback cb;
 } routes[] = {
-	{ NULL, NULL, 0, Error },
-	{ "GET", "/", 1, Index },
-	{ "GET", "/static/", 0, Static },
-	{ "GET", "/tile/", 0, Tile },
-	{ "POST", "/log/", 0, Log },
+    {NULL, NULL, 0, Error},         {"GET", "/", 1, Index},
+    {"GET", "/static/", 0, Static}, {"GET", "/tile/", 0, Tile},
+    {"POST", "/log/", 0, Log},
 };
 
 ANSWER(answer) {
-	size_t i;
+  size_t i;
 
-	for (i=1; i<sizeof(routes)/sizeof(*routes); ++i) {
-		if (strcmp(method, routes[i].method) != 0) continue;
-		if (routes[i].exact && strcmp(url, routes[i].url) != 0) continue;
-		if (!routes[i].exact && strncmp(url, routes[i].url, strlen(routes[i].url)) != 0) continue;
-		
-		return routes[i].cb(cls, conn, url, method, version, data, size, con_cls);
-	}
-	
-	return routes[0].cb(cls, conn, url, method, version, data, size, con_cls);
+  for (i = 1; i < sizeof(routes) / sizeof(*routes); ++i) {
+    if (strcmp(method, routes[i].method) != 0) continue;
+    if (routes[i].exact && strcmp(url, routes[i].url) != 0) continue;
+    if (!routes[i].exact &&
+        strncmp(url, routes[i].url, strlen(routes[i].url)) != 0)
+      continue;
+
+    return routes[i].cb(cls, conn, url, method, version, data, size, con_cls);
+  }
+
+  return routes[0].cb(cls, conn, url, method, version, data, size, con_cls);
 }
 
-static void
-initialize(void) {
-	error_response = MAB_create_response_from_file("static/error.html");
-	if(error_response == NULL){
-		printf("Could not read file static/error.html");
-		exit(1);
-	}
+static void initialize(void) {
+  error_response = MAB_create_response_from_file("static/error.html");
+  if (error_response == NULL) {
+    printf("Could not read file static/error.html");
+    exit(1);
+  }
 }
 
-int
-main(int argc, char **argv) {
-	int opt_port, opt_service;
-	char *s, *opt_bind;
-	struct MHD_Daemon *daemon;
-	struct sockaddr_in addr;
-	pthread_t tid;
+int main(int argc, char **argv) {
+  int opt_port, opt_service;
+  char *s, *opt_bind;
+  struct MHD_Daemon *daemon;
+  struct sockaddr_in addr;
+  pthread_t tid;
 
-	for (int i=0; i<32; ++i) {
-		char temp[32];
-		snprintf(temp, sizeof(temp), "logs/%d.log", i);
+  for (int i = 0; i < 32; ++i) {
+    char temp[32];
+    snprintf(temp, sizeof(temp), "logs/%d.log", i);
 
-		if (!mabLogToFile(temp, "wx")) {
-			goto got_log;
-			break;
-		}
-	}
+    if (!mabLogToFile(temp, "wx")) {
+      goto got_log;
+      break;
+    }
+  }
 
-	fprintf(stderr, "could not open log\n");
-	return 1;
+  fprintf(stderr, "could not open log\n");
+  return 1;
 
 got_log:
-	_lock = malloc(sizeof(*_lock));
-	pthread_mutex_init(_lock, NULL);
+  _lock = malloc(sizeof(*_lock));
+  pthread_mutex_init(_lock, NULL);
 
-	_barrier = malloc(sizeof(*_barrier));
-	pthread_barrier_init(_barrier, NULL, 2);
+  _barrier = malloc(sizeof(*_barrier));
+  pthread_barrier_init(_barrier, NULL, 2);
 
-	pthread_create(&tid, NULL, render, NULL);
+  pthread_create(&tid, NULL, render, NULL);
 
-	pthread_barrier_wait(_barrier);
+  pthread_barrier_wait(_barrier);
 
-	MAB_WRAP("server main loop") {
+  MAB_WRAP("server main loop") {
+    opt_port = (s = getenv("FG_PORT")) ? atoi(s) : 8889;
+    opt_bind = (s = getenv("FG_BIND")) ? s : "0.0.0.0";
+    opt_service = (s = getenv("FG_SERVICE")) ? atoi(s) : 0;
 
-	opt_port = (s = getenv("FG_PORT")) ? atoi(s) : 8889;
-	opt_bind = (s = getenv("FG_BIND")) ? s : "0.0.0.0";
-	opt_service = (s = getenv("FG_SERVICE")) ? atoi(s) : 0;
+    mabLogMessage("port", "%d", opt_port);
+    mabLogMessage("bind", "%s", opt_bind);
 
-	mabLogMessage("port", "%d", opt_port);
-	mabLogMessage("bind", "%s", opt_bind);
-	
-	fprintf(stderr, "Listening on %s:%d\n", opt_bind, opt_port);
-	
-	mabLogAction("initialize");
-	initialize();
-	mabLogEnd(NULL);
+    fprintf(stderr, "Listening on %s:%d\n", opt_bind, opt_port);
 
-	memset(&addr, sizeof(addr), 0);
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(opt_port);
-	inet_aton(opt_bind, &addr.sin_addr);
-	
-	daemon = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION, 0, NULL, NULL, &answer, NULL, MHD_OPTION_SOCK_ADDR, &addr, MHD_OPTION_END);
-	if (daemon == NULL) {
-		fprintf(stderr, "could not start daemon\n");
-		return 1;
-	}
-	
-	if (opt_service) {
-		while (sleep(60 * 60) == 0)
-			;
-	} else {
-		fprintf(stderr, "press enter to stop\n");
-		getchar();
-	}
-	fprintf(stderr, "stopping...\n");
-	
-	MHD_stop_daemon(daemon);
-	}
-	return 0;
+    mabLogAction("initialize");
+    initialize();
+    mabLogEnd(NULL);
+
+    memset(&addr, sizeof(addr), 0);
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(opt_port);
+    inet_aton(opt_bind, &addr.sin_addr);
+
+    daemon =
+        MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION, 0, NULL, NULL, &answer,
+                         NULL, MHD_OPTION_SOCK_ADDR, &addr, MHD_OPTION_END);
+    if (daemon == NULL) {
+      fprintf(stderr, "could not start daemon\n");
+      return 1;
+    }
+
+    if (opt_service) {
+      while (sleep(60 * 60) == 0)
+        ;
+    } else {
+      fprintf(stderr, "press enter to stop\n");
+      getchar();
+    }
+    fprintf(stderr, "stopping...\n");
+
+    MHD_stop_daemon(daemon);
+  }
+  return 0;
 }

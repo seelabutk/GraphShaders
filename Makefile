@@ -25,10 +25,10 @@ m_CFLAGS :=
 m_LDLIBS := -lm
 
 dl_CFLAGS :=
-dl_LDLIBS := -ldl -lOSMesa -lGL
+dl_LDLIBS := -ldl -lGL -lEGL
 
-INC:=-I/opt/mesa/include -Isrc
-LIB:=-L/opt/mesa/lib/x86_64-linux-gnu
+INC:=-I/usr/include -Isrc
+LIB:=-L/usr/lib/x86_64-linux-gnu
 
 .PHONY: all
 all: build/server
@@ -49,7 +49,7 @@ build/MAB/%.o: src/MAB/%.c | build/MAB
 	$(CC) $(CFLAGS) $(LIB) $(INC) -c -o $@ $<
 
 build/%: build/%.o | build
-	$(CC) $(CFLAGS) $(LIB) $(INC) -o $@ $^ $(LDLIBS) -Wl,-rpath=/opt/mesa/lib/x86_64-linux-gnu
+	$(CC) $(CFLAGS) $(LIB) $(INC) -o $@ $^ $(LDLIBS) -Wl,-rpath=/usr/lib/x86_64-linux-gnu
 
 src/shaders/%.h: src/shaders/%
 	f=$<; \
@@ -72,11 +72,15 @@ build/server.o: src/server.h src/voxel_traversal.h src/vec.h
 build/glad.o: CFLAGS += $(dl_CFLAGS)
 build/glad.o: src/glad/glad.h
 
+build/glad_egl.o: CFLAGS += $(dl_CFLAGS)
+build/glad_egl.o: src/glad/glad_egl.h
+
 build/MAB/log.o: src/MAB/log.h
 
 build/server: CFLAGS += $(libmicrohttpd_CFLAGS) $(zlib_CFLAGS)
 build/server: LDLIBS += $(libmicrohttpd_LDLIBS) $(zlib_LDLIBS) $(egl_LDLIBS) $(dl_LDLIBS) $(m_LDLIBS) $(zorder_LDLIBS) -pthread
 build/server: build/glad.o
+build/server: build/glad_egl.o
 build/server: build/base64.o build/voxel_traversal.o build/vec.o
 
 build/server: LDLIBS += -luuid
