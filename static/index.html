@@ -61,14 +61,13 @@ code[class*="language-"] {
 <script src="https://unpkg.com/leaflet@1.3.1/dist/leaflet.js"
    integrity="sha512-/Nsx9X4HebavoBvEBuyp3I7od5tA0UzAxs+j83KgC8PU0kgB4XiK4Lfe4y4cgBtaRJQEIFCW+oC506aPT2L1zw=="
    crossorigin=""></script>
-<script src="https://rawcdn.githack.com/mutsuyuki/Leaflet.SmoothWheelZoom/3da9393ddac798179916ebfb5390936136f5cace/SmoothWheelZoom.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet-easybutton@2/src/easy-button.js"></script>
 <script src="https://unpkg.com/dat.gui@0.6.5/build/dat.gui.min.js"></script>
 <script src="static/shaders.js"></script>
 <script src="https://unpkg.com/prismjs@1.20.0/prism.js"></script>
 <script src="https://unpkg.com/prismjs@1.20.0/plugins/autoloader/prism-autoloader.min.js"></script>
 <script src="https://unpkg.com/mathjs@7.0.0/dist/math.min.js"></script>
-<script type="x-shader/x-vertex" id="vert-header">#version 300 es
+<script type="x-shader/x-vertex" id="vert-header">#version 450
 precision mediump float;
 
 in float aNode1, aNode2, aNode3, aNode4, aNode5, aNode6, aNode7, aNode8;
@@ -79,23 +78,46 @@ uniform float uTranslateX, uTranslateY, uScale;
 
 out vec4 fg_FragCoord;
 out float fg_Attribute;
+out float fg_Attribute2;
 
 #define main() TheUserMain(out vec4 fg_Position, out float fg_Attribute)
 </script><!-- vert-header -->
+
+<!--
+fg({
+	params: guiParams, 
+	variables: 'X Y Date MaintainerCount CVE Source',
+	depth: 'mean(X)',
+	node: (config) => `
+		void main() {
+			float x = (aX - uXMin) / (uXMax - uXMin);
+			float y = (aY - uYMin) / (uYMax - uYMin);
+
+			float attrib = (Date - uMinDate) / (uMaxDate - uMinDate);
+
+			fg_Position = vec4(x, y, attrib, 1.0);
+			fg_Attribute = attrib;
+		}
+	`,
+	edge: (config) => `
+		void main() {
+			if (fg_Attribute < 0.01) discard;
+			fg_FragColor = mix(vec4(0.0), vec4(1.0, 0.0, 0.0, 1.0), fg_Attribute);
+		}
+	`,
+});
+-->
+
 <script type="x-shader/x-vertex" id="default-vert">
 		void main() {
 			float x = (aX - uXMin) / (uXMax - uXMin);
 			float y = (aY - uYMin) / (uYMax - uYMin);
-			float date = (aDate - uDateMin) / (uDateMax - uDateMin);
-			float numMaint = (aNumMaint - uNumMaintMin) / (uNumMaintMax - uNumMaintMin);
-			float cve = (aCVE - uCVEMin) / (uCVEMax - uCVEMin);
 
-			float attrib = 1.0 - abs(date - ${config.selector});
-			//float attrib = aNumMaint - 5;
-			//float attrib = 1.0 - (0.2 + 0.6 * cve);
+			float z = (aDate - uDateMin) / (uDateMax - uDateMin);
 
-			fg_Position = vec4(x, y, attrib, 1.0);
-			fg_Attribute = attrib;
+			fg_Position = vec4(x, y, z, 1.0);
+			fg_Attribute = 1.00 - z;
+			fg_Attribute2 = aCVE;
 		}
 </script><!-- #default-vert -->
 <script type="x-shader/x-vertex" id="vert-footer">
@@ -113,11 +135,13 @@ void main() {
 	gl_Position = vec4(2.0 * scaled - 1.0, pos.zw);
 }
 </script><!-- vert-footer -->
-<script type="x-shader/x-fragment" id="frag-header">#version 300 es
+<script type="x-shader/x-fragment" id="frag-header">#version 450
+layout(early_fragment_tests) in;
 precision mediump float;
 
 in vec4 fg_FragCoord;
 in float fg_Attribute;
+in float fg_Attribute2;
 
 out vec4 fg_FragColor;
 
@@ -125,7 +149,12 @@ out vec4 fg_FragColor;
 </script><!-- frag-header -->
 <script type="x-shader/x-fragment" id="default-frag">
 		void main() {
-			fg_FragColor = mix(vec4(1.0, 0.0, 0.0, 1.0), vec4(0.0), fg_Attribute);
+			vec3 red = vec3(.9866, 0.2933, 0.204);
+			vec3 green = vec3(0.32, 0.6355, 0.2177);
+			float vulnerability = fg_Attribute2;
+			float z = clamp(fg_Attribute, 0.1, 1.0);
+			vec3 c = mix(green, red, vulnerability);
+			fg_FragColor = vec4(c * z, 1.0);
 		}
 </script><!-- default-frag -->
 <script type="x-shader/x-fragment" id="frag-footer">
@@ -150,14 +179,17 @@ window.btoa = function(x) {
 	return oldbtoa(x);
 };
 
+const guiParams = {
+	'selector': { value: 0.5, min: 0.0, max: 1.0 },
+    'partitions': { value: 10, min: 0, max: 16 },
+};
+
 const jar = new CodeJar(document.querySelector('#editor'), Prism.highlightElement);
 jar.updateCode(
 `fg({
-	params: [
-		{ name: 'selector', initial: 0.5, min: 0.0, max: 1.0 },
-	],
-	variables: 'X Y Date NumMaint CVE IsSource',
-	depth: 'mean(1.23 * (Date - 4.56) / 7.89)',
+	params: guiParams, 
+	variables: 'X Y Date MaintainerCount CVE Source',
+	depth: 'min(-Date)',
 	node: (config) => \`
 		${document.querySelector('#default-vert').textContent.trim()}
 	\`,
@@ -172,11 +204,9 @@ let debounce = null;
 function fg({ params, variables, depth, node, edge }) {
 	if (gui === null) {
 		gui = new dat.GUI();
-		config = {};
-		for (const param of params) {
-			const { name, initial, min, max } = param;
-			config[name] = initial;
-			gui.add(config, name, min, max).onChange(update);
+		for (const [paramName, param] of Object.entries(params)) {
+			const { value, min, max } = param;
+			gui.add(param, 'value', min, max).name(paramName).onChange(update);
 		}
 	}
 
@@ -217,35 +247,6 @@ function uuidv4() {
 	);
 }
 
-/* ISC (c) 2018+ Jackens * https://github.com/jackens/uuidv1 */
-
-//(function (K, W) {
-(() => {
-  function P (str, length) {
-    return ('0000000000000000' + str).slice(-length)
-  }
-
-  function R () {
-    return P((~~(Math.random() * 0x1000)).toString(16), 3)
-  }
-
-  function $ () {
-    var now = new Date()
-    var time = P((10000 * (+new Date(now.getTime() - now.getTimezoneOffset() * 60000) + 12219292800000)).toString(16), 16)
-    return time.slice(8, 16) + '-' + time.slice(4, 8) + '-1' + time.slice(1, 4) + '-8' + R() + '-' + R() + R() + R() + R()
-  }
-
-  window.uuidv1 = $;
-})();
-//
-//  try {
-//    (W = window).require = function (I) { return W[K][I] };
-//    (W[K] = W[K] || {}).uuidv1 = $
-//  } catch (_) {
-//    module.exports = $
-//  }
-//})('module.exports')
-
 let _mabLogHost;
 function mabContext(task, levels, continued) {
 	this.task = task;
@@ -282,7 +283,7 @@ function mabNewContext() {
 function mabLogAction(message) {
 	const now = Date.now() / 1000.0;
 	if (this.levels.length === 0) {
-		this.task = uuidv1();
+		this.task = uuidv4();
 		this.levels = [1];
 	} else {
 		if (!this.continued) {
@@ -365,7 +366,7 @@ L.TileLayer.LoggingTileLayer = L.TileLayer.extend({
 		var ctx = mabNewContext();
 		ctx.action('requesting tile');
 		ctx.message('coords', '' + coords);
-		fetch(this.getTileUrl(coords), {
+		fetch(window.location.origin + '/' + this.getTileUrl(coords), {
 			headers: {
 				'X-MAB-Log-Info': ctx.forward(),
 			},
@@ -373,8 +374,6 @@ L.TileLayer.LoggingTileLayer = L.TileLayer.extend({
 			return r.blob();
 		}).then((blob) => {
 			ctx.end('' + blob.size);
-			//tile.style.width = '257px';
-			//tile.style.height = '257px';
 			tile.src = URL.createObjectURL(blob);
 		});
 
@@ -397,17 +396,12 @@ L.TileLayer.LoggingTileLayer = L.TileLayer.extend({
 });
 
 
-window.L_DISABLE_3D = true;
-
 const map = L.map('map', {
         crs: L.CRS.Simple,
         center: [-128, 128],
         zoom: 6,
         tms: true,
-        fadeAnimation: false,
-	scrollWheelZoom: false, // disable original zoom
-	smoothScrollWheel: true, // enable smooth scroll
-	smoothSensitivity: 1, // zoom speed
+        fadeAnimation: false
 });
 window.map = map;
 map.zoomControl.setPosition('bottomright');
@@ -416,11 +410,11 @@ let tiles = null;
 
 let newTiles = null, newTilesNextCB = null;
 function update() {
+	console.log('update');
 	if (newTiles) { newTilesNextCB = update; return; }
 	newTiles = new L.TileLayer.LoggingTileLayer(makeUrlTemplate(), {
 		tileSize: 256,
 	}).addTo(map).bringToFront();
-	console.log('update', Object.keys(newTiles._tiles).length);
 	if (!tiles) return tiles = newTiles, newTiles = null, newTilesNextCB = null;
 
 	tiles.setUrl(L.Util.emptyImageUrl, true);
@@ -506,7 +500,7 @@ function makeDC() {
 }
 
 function makeUrlTemplate() {
-	const dataset = 'knit-graph';
+	const dataset = /*window.location.hash.substring(1) || */ 'knit-graph';
 	const defines = thevariables.split(' ').map((d, i) => {
 		return `
 			#define a${d} aNode${i+1}
@@ -523,8 +517,8 @@ function makeUrlTemplate() {
 	const dcMinMult = 1.0 - thedc.combine;
 	const dcMaxMult = thedc.combine;
 
-    const pDepth = 10;
+    const pDepth = guiParams.partitions.value;
 
-	return `/tile/${dataset}/{z}/{x}/{y}/,vert,base64:${vert},frag,base64:${frag},pDepth,${pDepth},dcIdent,${dcIdent},dcIndex,base64:${dcIndex},dcMult,base64:${dcMult},dcOffset,base64:${dcOffset},dcMinMult,${dcMinMult},dcMaxMult,${dcMaxMult}`;
+    return `tile/${dataset}/{z}/{x}/{y}/,vert,base64:${vert},frag,base64:${frag},pDepth,${pDepth},dcIdent,${dcIdent},dcIndex,base64:${dcIndex},dcMult,base64:${dcMult},dcOffset,base64:${dcOffset},dcMinMult,${dcMinMult},dcMaxMult,${dcMaxMult}`;
 }
 </script>
