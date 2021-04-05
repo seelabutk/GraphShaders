@@ -25,7 +25,7 @@ m_CFLAGS :=
 m_LDLIBS := -lm
 
 dl_CFLAGS :=
-dl_LDLIBS := -ldl -lGL -lEGL
+dl_LDLIBS := -ldl -lEGL
 
 INC:=-I/usr/include -Isrc
 LIB:=-L/usr/lib/x86_64-linux-gnu
