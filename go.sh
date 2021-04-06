@@ -18,7 +18,7 @@ constraint=
 runtime=
 network=fg_$USER
 cap_add=SYS_PTRACE
-replicas=1
+replicas=8
 
 [ -f env.sh ] && . env.sh
 
