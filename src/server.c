@@ -101,9 +101,10 @@ static PartitionData *_partition_cache;
 // EGL STATICS
 static volatile EGLDisplay eglDisplay = EGL_NO_DISPLAY;
 static volatile EGLSurface eglSurface = EGL_NO_SURFACE;
-static GLuint eglFrameBuffer = 0;
-static GLuint eglFrameBufferColorAttachmentTexture = 0;
-static GLuint eglFrameBufferDepthAttachmentTexture = 0;
+static volatile EGLContext eglContext = NULL;
+static volatile GLuint eglFrameBuffer = 0;
+static volatile GLuint eglFrameBufferColorAttachmentTexture = 0;
+static volatile GLuint eglFrameBufferDepthAttachmentTexture = 0;
 
 /** EGL SPECIFIC SETUP **/
 static const EGLint configAttribs[] = {
@@ -116,17 +117,11 @@ static const EGLint configAttribs[] = {
         EGL_DEPTH_SIZE, 24,
         EGL_STENCIL_SIZE, 8,
         EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+        EGL_CONFORMANT, EGL_OPENGL_BIT,
+        EGL_CONFIG_CAVEAT, EGL_NONE,
+        EGL_LEVEL, 0,
         EGL_NONE
 };    
-
-static const int pbufferWidth = _g_resolution;
-static const int pbufferHeight = _g_resolution;
-
-static const EGLint pbufferAttribs[] = {
-      EGL_WIDTH, pbufferWidth,
-      EGL_HEIGHT, pbufferHeight,
-      EGL_NONE,
-};
 
 void GLAPIENTRY
 eglMessageCallback(GLenum source,
@@ -160,8 +155,6 @@ void log_partition_cache(PartitionData *pdc) {
 }
 
 void *render(void *v) {
-  EGLContext context;
-
   GLuint vertexShader, fragmentShader, program,
       /*indexBuffer,*/ aNodeBuffers[16];
   unsigned long i, j;
@@ -195,7 +188,7 @@ void *render(void *v) {
 
   _partition_cache = NULL;
 
-  context = NULL;
+  volatile int contextCheck = 0;
   vertexShader = fragmentShader = program = 0;
   nattribs[0] = (struct attrib){0};
   eattribs[0] = (struct attrib){0};
@@ -217,7 +210,8 @@ void *render(void *v) {
   pthread_barrier_wait(_barrier);
   goto wait_for_request;
 
-  for (;;) switch (where) {
+  for (;;) {
+    switch (where) {
       case INIT_OSMESA:
         MAB_WRAP("create osmesa context") {
 
@@ -225,34 +219,31 @@ void *render(void *v) {
             fprintf(stderr, "Could not load EGL!");
           }
 
-          // 1. Initialize EGL
+          // 0. Get EGL Display (offscreen in case of headless)
           eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
           if (EGL_NO_DISPLAY == eglDisplay) {
             fprintf(stderr,"Could not create the EGL Display!");
           }
 
+          // 1. Inititialize EGL
           EGLint major, minor;
-          EGLBoolean initSuccess = eglInitialize(eglDisplay, &major, &minor);
-          if(EGL_FALSE == initSuccess) {
+          if(EGL_FALSE == eglInitialize(eglDisplay, &major, &minor)) {
             fprintf(stderr, "Could not initialize EGL!");
           }
 
-          // 2. Select an appropriate configuration
+          // 2. Choose Configuration, give them the minimum requirements (specified by configAttribs)
           EGLint numConfigs;
           EGLConfig eglCfg;
           // Ideally, iterate eglCfg and make sure numConfigs matches configAttribs but I digress
           eglChooseConfig(eglDisplay, configAttribs, &eglCfg, 1, &numConfigs);
 
-           // 3. Create a surface
-          // eglSurface = eglCreatePbufferSurface(eglDisplay, eglCfg, 
-          //                                             pbufferAttribs);
-          // if (EGL_NO_SURFACE == eglSurface) {
-          //   fprintf(stderr, "Could not load an EGL PBuffer!");
-          // }
+          // 3. Bind the API, we are Using OPENGL not ES!
+          if(EGL_FALSE == eglBindAPI(EGL_OPENGL_API)) {
+            fprintf(stderr, "OpenGL is not support for this EGL context!\n");
+            exit(1);
+          }
 
-          // 4. Bind the API
-          eglBindAPI(EGL_OPENGL_API);
-
+          // Try to snag a Context with OpenGL4.6 + Debug Features.
           const EGLint contextAttribs[] = {
             EGL_CONTEXT_MAJOR_VERSION, 4,
             EGL_CONTEXT_MINOR_VERSION, 6,
@@ -260,57 +251,80 @@ void *render(void *v) {
             EGL_CONTEXT_OPENGL_DEBUG, EGL_TRUE,
             EGL_NONE
           };
-          context = eglCreateContext(eglDisplay, eglCfg, EGL_NO_CONTEXT, 
-                                       &contextAttribs[0]);
-          if (!context) {
+          eglContext = eglCreateContext(eglDisplay, eglCfg, EGL_NO_CONTEXT, 
+                                      contextAttribs);
+          if (!eglContext) {
             fprintf(stderr, "could not init EGL context\n");
             exit(1);
           }
 
-          EGLBoolean currentSuccess = eglMakeCurrent(eglDisplay, eglSurface, eglSurface, context);
+          // Establish context as current and ensure NO_SURFACE is specified.
+          EGLBoolean currentSuccess = eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, eglContext);
           if (!currentSuccess) {
             fprintf(stderr, "could not bind to image buffer\n");
             exit(1);
           }
 
-          if (!gladLoadGL()){//!gladLoadGLLoader((GLADloadproc)eglGetProcAddress)) {
+          // Load GL+Extensions
+          if (!gladLoadGL()){
             fprintf(stderr, "Could not load GL!\n");
           }
 
+          // Enable Debugging
           glEnable(GL_DEBUG_OUTPUT);
           glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION, 0, 0, GL_FALSE);
           glDebugMessageCallback(eglMessageCallback, 0);
+
+          // Generate a FrameBuffer Object
           glGenFramebuffers(1, &eglFrameBuffer); 
           glBindFramebuffer(GL_FRAMEBUFFER, eglFrameBuffer);
 
+          // Bind a Texture to the Color Attachment
           glGenTextures(1, &eglFrameBufferColorAttachmentTexture);
           glBindTexture(GL_TEXTURE_2D, eglFrameBufferColorAttachmentTexture);
-          // glTexParameteri(GL_TEXTURE_2D, 
-          //                 GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-          // glTexParameteri(GL_TEXTURE_2D, 
-          //                 GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-          // glTexParameteri(GL_TEXTURE_2D, 
-          //                 GL_TEXTURE_WRAP_S, GL_CLAMP);
-          // glTexParameteri(GL_TEXTURE_2D, 
-          //                 GL_TEXTURE_WRAP_T, GL_CLAMP);
           glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                          _resolution, _resolution, 0, GL_RGBA,
-                          GL_UNSIGNED_BYTE, 0);
+                  _resolution, _resolution, 0, GL_RGBA,
+                  GL_UNSIGNED_BYTE, 0);
+          glTexParameteri(GL_TEXTURE_2D, 
+                          GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+          glTexParameteri(GL_TEXTURE_2D, 
+                          GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+          glTexParameteri(GL_TEXTURE_2D, 
+                          GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+          glTexParameteri(GL_TEXTURE_2D, 
+                          GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
           glFramebufferTexture2D(GL_FRAMEBUFFER, 
                               GL_COLOR_ATTACHMENT0, 
                               GL_TEXTURE_2D, eglFrameBufferColorAttachmentTexture, 0);
 
+          // Create a texture for the Depth + Stencil attachment
           glGenTextures(1, &eglFrameBufferDepthAttachmentTexture);
           glBindTexture(GL_TEXTURE_2D, eglFrameBufferDepthAttachmentTexture);
           glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, _resolution, _resolution, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, 0);
           glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, eglFrameBufferDepthAttachmentTexture, 0);
-
-          glViewport(0, 0, _resolution, _resolution);
-
+          
+          // Make sure the Framebuffer is complete!
           if(!(GL_FRAMEBUFFER_COMPLETE == glCheckFramebufferStatus(GL_FRAMEBUFFER))) {
             fprintf(stderr, "Could not complete the framebuffer!");
             exit(1);
           }
+
+          // Set Viewport to specified resolution
+          glViewport(0, 0, _resolution, _resolution);
+          GLint viewport[4];
+          glGetIntegerv(GL_VIEWPORT, viewport);
+          // Ensure resolution and viewport match 1:1, EGL can "fake" this call
+          // and one symptom is viewport mismatch
+          if((_resolution + _resolution) != (viewport[2] + viewport[3])) {
+            fprintf(stderr, "Viewport does not meet the resolution requirement!\n");
+            exit(1);
+          }
+          fprintf(stderr, "EGL+OpenGL Setup complete.\n");
+
+          // Clear color to white as well as empty depth buffer
+          glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+          glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+          glFlush();
 
           _image = malloc(_depth * _resolution * _resolution);
           if (!_image) {
@@ -641,11 +655,11 @@ void *render(void *v) {
               aNodeLocations[i] = glGetAttribLocation(program, temp);
               if(aNodeLocations[i] != -1) {
                 fprintf(stderr, "\n\n\nHere is the Attribute Location boss: %d, filling with buff: %d\n", aNodeLocations[i], aNodeBuffers[i]);
-                // glBindBuffer(GL_ARRAY_BUFFER, aNodeBuffers[i]);
-                // glEnableVertexAttribArray(aNodeLocations[i]);
-                // glVertexAttribPointer(aNodeLocations[i], 1, nattribs[i].type,
-                //                       GL_FALSE, 0, 0);
-                //glBindBuffer(GL_ARRAY_BUFFER, 0);
+                glBindBuffer(GL_ARRAY_BUFFER, aNodeBuffers[i]);
+                glEnableVertexAttribArray(aNodeLocations[i]);
+                glVertexAttribPointer(aNodeLocations[i], 1, nattribs[i].type,
+                                      GL_FALSE, 0, 0);
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
               }
             }
         }
@@ -717,15 +731,15 @@ void *render(void *v) {
           }
 
           // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-          glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+          glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
 
-          // glEnable(GL_BLEND);
-          // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+          glEnable(GL_BLEND);
+          glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-          // glEnable(GL_DEPTH_TEST);
-          // glDepthFunc(GL_LEQUAL);
+          glEnable(GL_DEPTH_TEST);
+          glDepthFunc(GL_LEQUAL);
 
-          glClear(GL_COLOR_BUFFER_BIT);// | GL_DEPTH_BUFFER_BIT);
+          glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
           /*
           glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
@@ -762,7 +776,6 @@ void *render(void *v) {
               mabLogMessage("numTilesX", "%d", numTilesX);
               mabLogMessage("numTilesY", "%d", numTilesY);
               mabLogMessage("zoom", "%d", (int)_z);
-              /*
               for (i = 0; i < numTilesX; ++i) {
                 for (j = 0; j < numTilesY; ++j) {
                   unsigned long idx = (ry + j) * _max_res + (rx + i);
@@ -819,11 +832,12 @@ void *render(void *v) {
                     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
                   }
                 }
-              }*/
+              }
             }
           }
-
-          glFlush();
+          glReadBuffer(GL_COLOR_ATTACHMENT0);
+          glReadPixels(0, 0, _resolution, _resolution, GL_RGBA, GL_UNSIGNED_BYTE, _image); 
+          glFinish();
         }
         __attribute__((fallthrough));
 
@@ -896,6 +910,7 @@ void *render(void *v) {
 
         break;
     } /* switch */
+  }
 } /* render */
 
 size_t tojpeg(void *rgba, int resolution, void **jpg, size_t *jpgsize) {
@@ -1158,10 +1173,7 @@ ANSWER(Tile) {
       } else {
         MAB_WRAP("jpeg") {
           output = NULL;
-          outputlen = 0;
-          //eglSwapBuffers(eglDisplay, eglSurface);
-          glReadBuffer(GL_COLOR_ATTACHMENT0);
-          glReadPixels(0, 0, _resolution, _resolution, GL_RGBA, GL_UNSIGNED_BYTE, _image); 
+          outputlen = 0;        
           fprintf(stderr, "First RGBA: %d %d %d %d\n", _image[0], _image[1], _image[2], _image[3]);
           fprintf(stderr, "Wrote %ld into a jpeg!\n", tojpeg(_image, _resolution, &output, &outputlen));
         }
