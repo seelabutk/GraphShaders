@@ -417,7 +417,7 @@ let tiles = null;
 let newTiles = null, newTilesNextCB = null;
 function update() {
 	if (newTiles) { newTilesNextCB = update; return; }
-	newTiles = new L.TileLayer.LoggingTileLayer(makeUrlTemplate(), {
+	newTiles = new L.TileLayer(makeUrlTemplate(), {
 		tileSize: 256,
 	}).addTo(map).bringToFront();
 	console.log('update', Object.keys(newTiles._tiles).length);
@@ -514,8 +514,10 @@ function makeUrlTemplate() {
 			#define u${d}Max uNodeMax${i+1}
 		`;
 	}).join('\n');
-	const vert = btoa(document.querySelector('#vert-header').textContent + defines + thevert(config) + document.querySelector('#vert-footer').textContent);
-	const frag = btoa(document.querySelector('#frag-header').textContent + thefrag(config) + document.querySelector('#frag-footer').textContent);
+	//const vert = btoa(document.querySelector('#vert-header').textContent + defines + thevert(config) + document.querySelector('#vert-footer').textContent);
+	//const frag = btoa(document.querySelector('#frag-header').textContent + thefrag(config) + document.querySelector('#frag-footer').textContent);
+    const vert = btoa(thevert(config));
+    const frag = btoa(thefrag(config));
 	console.log(atob(vert))
 	const dcIndex = btoa(new Uint32Array(thedc.index));
 	const dcMult = btoa(new Float32Array(thedc.mult));

@@ -184,7 +184,7 @@ window.btoa = function(x) {
 
 const guiParams = {
 	'selector': { value: 0.5, min: 0.0, max: 1.0 },
-    'partitions': { value: 10, min: 0, max: 16 },
+    'partitions': { value: 0, min: 0, max: 16 },
 };
 
 const jar = new CodeJar(document.querySelector('#editor'), Prism.highlightElement);
@@ -402,7 +402,7 @@ L.TileLayer.LoggingTileLayer = L.TileLayer.extend({
 const map = L.map('map', {
         crs: L.CRS.Simple,
         center: [-128, 128],
-        zoom: 6,
+        zoom: 2,
         tms: true,
         fadeAnimation: false
 });
@@ -415,7 +415,7 @@ let newTiles = null, newTilesNextCB = null;
 function update() {
 	console.log('update');
 	if (newTiles) { newTilesNextCB = update; return; }
-	newTiles = new L.TileLayer.LoggingTileLayer(makeUrlTemplate(), {
+	newTiles = new L.TileLayer(makeUrlTemplate(), {
 		tileSize: 256,
 	}).addTo(map).bringToFront();
 	if (!tiles) return tiles = newTiles, newTiles = null, newTilesNextCB = null;
@@ -522,6 +522,6 @@ function makeUrlTemplate() {
 
     const pDepth = guiParams.partitions.value;
 
-    return `tile/${dataset}/{z}/{x}/{y}/,vert,base64:${vert},frag,base64:${frag},pDepth,${pDepth},dcIdent,${dcIdent},dcIndex,base64:${dcIndex},dcMult,base64:${dcMult},dcOffset,base64:${dcOffset},dcMinMult,${dcMinMult},dcMaxMult,${dcMaxMult}`;
+    return `/tile/${dataset}/{z}/{x}/{y}/,vert,base64:${vert},frag,base64:${frag},pDepth,${pDepth},dcIdent,${dcIdent},dcIndex,base64:${dcIndex},dcMult,base64:${dcMult},dcOffset,base64:${dcOffset},dcMinMult,${dcMinMult},dcMaxMult,${dcMaxMult}`;
 }
 </script>

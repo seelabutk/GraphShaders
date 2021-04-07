@@ -68,6 +68,26 @@ RUN apt-get update && \
         texinfo \
     && rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && \
+    apt-get install -y \
+        git \
+        python3.8 \
+        python3-pip \
+        python3.8-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/pyglsl_parser
+RUN git clone --recurse-submodules https://github.com/player1537-forks/pyglsl_parser.git .
+
+WORKDIR /
+RUN python3.8 -m pip --no-cache-dir install \
+        cython \
+    && \
+    python3.8 -m pip --no-cache-dir install \
+        /opt/pyglsl_parser \
+        pcpp \
+        jinja2
+
 WORKDIR /opt/libmicrohttpd
 COPY libmicrohttpd-0.9.70 /opt/libmicrohttpd
 RUN autoreconf --install && \
@@ -102,5 +122,10 @@ COPY Makefile /app
 COPY src /app/src
 ENV PKG_CONFIG_PATH=/app/contrib/lib/pkgconfig
 RUN ls -lahR /app/ && make
+
+WORKDIR /opt/fgl
+COPY fgl ./
+
+WORKDIR /app
 
 CMD ["/app/build/server"]

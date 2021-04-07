@@ -3,6 +3,7 @@
 #include "voxel_traversal.h"
 #include "vec.h"
 
+#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -97,6 +98,11 @@ static volatile int _doOcclusionCulling;
 static volatile GLuint _max_depth = 0;
 static unsigned volatile  _max_res;
 static PartitionData *_partition_cache;
+
+static pthread_mutex_t *_fgl_lock;
+static pthread_barrier_t *_fgl_barrier;
+static volatile char *_fgl_in_url; // request thread frees
+static volatile char *_fgl_out_url; // transformer thread frees
 
 void log_partition_cache(PartitionData *pdc){
     printf("tot: %u\n", _max_res*_max_res);
@@ -797,6 +803,7 @@ ANSWER(Tile) {
 	void *output;
 	size_t outputlen;
 	char *renderInfo;
+    char *transformed_url;
 
 	const char *info = MHD_lookup_connection_value(conn, MHD_HEADER_KIND, "X-MAB-Log-Info");
 	if (info != NULL) {
@@ -804,12 +811,30 @@ ANSWER(Tile) {
 		mabLogContinue(info);
 	}
 
+    MAB_WRAP("transform url") {
+    pthread_mutex_lock(_fgl_lock);
+    _fgl_in_url = (char *)url;
+
+    // signal we're ready for fgl to transform this url
+    pthread_barrier_wait(_fgl_barrier);
+
+    // wait for url to be ready
+    pthread_barrier_wait(_fgl_barrier);
+
+    transformed_url = strdup((char *)_fgl_out_url);
+
+    // signal we're done with the url
+    pthread_barrier_wait(_fgl_barrier);
+
+    pthread_mutex_unlock(_fgl_lock);
+    }
+
 	MAB_WRAP("answer tile request") {
     mabLogMessage("rxsize", "%zu", strlen(url));
 	float x, y, z;
     int max_depth;
 	char *dataset, *options;
-	if (5 != (rc = sscanf(url, "/tile/%m[^/]/%f/%f/%f/%ms", &dataset, &z, &x, &y, &options))) {
+	if (5 != (rc = sscanf(transformed_url, "/tile/%m[^/]/%f/%f/%f/%ms", &dataset, &z, &x, &y, &options))) {
 		fprintf(stderr, "rc: %d\n", rc);
 		fprintf(stderr, "options: %s\n", options);
 		rc = MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);	
@@ -963,6 +988,8 @@ ANSWER(Tile) {
 
     mabLogMessage("txsize", "%zu", outputlen);
 	
+    free(transformed_url);
+
 	response = MHD_create_response_from_buffer(outputlen, output, MHD_RESPMEM_MUST_FREE);
 	
 	const char *origin = MHD_lookup_connection_value(conn, MHD_HEADER_KIND, "origin");
@@ -1031,6 +1058,67 @@ initialize(void) {
 	}
 }
 
+static void *
+fgl_transformer_thread(void *v) {
+    int proc_in[2], proc_out[2];
+    FILE *proc_stdin, *proc_stdout;
+    ssize_t len;
+    size_t size;
+    char *line;
+
+    (void)v;
+
+    pipe2(proc_in, O_CLOEXEC);
+    pipe2(proc_out, O_CLOEXEC);
+
+    if (fork() == 0) {
+        close(proc_in[1]);
+        close(proc_out[0]);
+
+        dup2(proc_in[0], 0);
+        dup2(proc_out[1], 1);
+
+        execlp("python3.8", "python3.8", "/opt/fgl/fgl.py", "makeurl_repl", (char *)NULL);
+        perror("execlp");
+        exit(1);
+    } else {
+        close(proc_in[0]);
+        close(proc_out[1]);
+
+        proc_stdin = fdopen(proc_in[1], "w");
+        proc_stdout = fdopen(proc_out[0], "r");
+    }
+
+    // tell main we're ready
+    pthread_barrier_wait(_fgl_barrier);
+
+    line = NULL;
+    size = 0;
+    for (;;) {
+        // wait for url from request thread
+        pthread_barrier_wait(_fgl_barrier);
+
+        fprintf(proc_stdin, "%s\n", _fgl_in_url);
+        fflush(proc_stdin);
+
+        len = getline(&line, &size, proc_stdout);
+        if (len < 0) {
+            perror("getline");
+            exit(1);
+        }
+
+        _fgl_out_url = line;
+
+        // signal request thread that url is ready
+        pthread_barrier_wait(_fgl_barrier);
+
+        // wait for request thread to be done
+        pthread_barrier_wait(_fgl_barrier);
+    }
+
+    printf("fgl done\n");
+}
+
 int
 main(int argc, char **argv) {
 	int opt_port, opt_service;
@@ -1039,7 +1127,7 @@ main(int argc, char **argv) {
 	struct sockaddr_in addr;
 	pthread_t tid;
 
-	for (int i=0; i<32; ++i) {
+	for (int i=0; i<64; ++i) {
 		char temp[32];
 		snprintf(temp, sizeof(temp), "logs/%d.log", i);
 
@@ -1060,8 +1148,20 @@ got_log:
 	pthread_barrier_init(_barrier, NULL, 2);
 
 	pthread_create(&tid, NULL, render, NULL);
+    pthread_setname_np(tid, "render");
 
 	pthread_barrier_wait(_barrier);
+
+    _fgl_lock = malloc(sizeof(*_fgl_lock));
+    pthread_mutex_init(_fgl_lock, NULL);
+
+    _fgl_barrier = malloc(sizeof(*_fgl_barrier));
+    pthread_barrier_init(_fgl_barrier, NULL, 2);
+
+    pthread_create(&tid, NULL, fgl_transformer_thread, NULL);
+    pthread_setname_np(tid, "transformer");
+
+    pthread_barrier_wait(_fgl_barrier);
 
 	MAB_WRAP("server main loop") {
 

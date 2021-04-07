@@ -15,7 +15,7 @@ def main(infile, outfile, z_inc, nthreads, mode):
     for url in infile:
         url = url.rstrip()
         scheme, netloc, path, params, query, fragment = urlparse(url)
-        empty, tile, dataset, z, x, y, options = path.split('/', 7)
+        empty, tile, dataset, z, x, y, options = path.split('/', 6)
         z, x, y = map(int, (z, x, y))
 
         z0 = z
@@ -54,6 +54,7 @@ def main(infile, outfile, z_inc, nthreads, mode):
             z, x, y = map(str, (z, x, y))
             path = '/'.join((empty, tile, dataset, z, x, y, options))
             url = urlunparse((scheme, netloc, path, params, query, fragment))
+            print(f'{url = !s}')
 
             with requests.get(url, headers={'Connection': 'close'}) as r:
                 if mode == 'stitch':
@@ -68,13 +69,15 @@ def main(infile, outfile, z_inc, nthreads, mode):
                 elif mode == 'noop':
                     pass
 
-        executor = ThreadPoolExecutor(max_workers=nthreads)
+        with ThreadPoolExecutor(max_workers=nthreads) as executor:
+            for i in range(y0, y1):
+                for j in range(x0, x1):
+                    executor.submit(worker, i, j)
 
-        for i in range(y0, y1):
-            for j in range(x0, x1):
-                executor.submit(worker, i, j)
-
-        canvas.save(outfile)
+        if mode == 'stitch':
+            canvas.save(outfile)
+        elif mode == 'noop':
+            pass
 
 def cli():
     import argparse

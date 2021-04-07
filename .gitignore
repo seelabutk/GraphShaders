@@ -8,3 +8,5 @@ temp_*
 /contrib
 *.swp
 logs/*.log
+/_stress
+/logs/*/
