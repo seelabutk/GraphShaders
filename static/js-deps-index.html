@@ -67,7 +67,7 @@ code[class*="language-"] {
 <script src="https://unpkg.com/prismjs@1.20.0/prism.js"></script>
 <script src="https://unpkg.com/prismjs@1.20.0/plugins/autoloader/prism-autoloader.min.js"></script>
 <script src="https://unpkg.com/mathjs@7.0.0/dist/math.min.js"></script>
-<script type="x-shader/x-vertex" id="vert-header">#version 450
+<script type="x-shader/x-vertex" id="vert-header">#version 300 es
 precision mediump float;
 
 in float aNode1, aNode2, aNode3, aNode4, aNode5, aNode6, aNode7, aNode8;
@@ -78,7 +78,7 @@ uniform float uTranslateX, uTranslateY, uScale;
 
 out vec4 fg_FragCoord;
 out float fg_Attribute;
-out vec3 fg_AttributeFV3;
+out float mine;
 
 #define main() TheUserMain(out vec4 fg_Position, out float fg_Attribute)
 </script><!-- vert-header -->
@@ -112,21 +112,12 @@ fg({
 		void main() {
 			float x = (aX - uXMin) / (uXMax - uXMin);
 			float y = (aY - uYMin) / (uYMax - uYMin);
+			mine = aCVE;
 
-			float attrib = (aGotDate - uGotDateMin) / (uGotDateMax - uGotDateMin);
-
-			vec3 colors[6] = vec3[6](
-				vec3(0.86, 0.3712, 0.33999),
-				vec3(0.82879, 0.86, 0.33999),
-				vec3(0.33999, 0.86, 0.3712),
-				vec3(0.33999, 0.82879, 0.86),
-				vec3(0.3712, 0.33999, 0.86),
-				vec3(0.86, 0.33999, 0.82879)
-			);
-			fg_AttributeFV3 = colors[int(aCClass - 1.0)];
+			float attrib = (aDate - uDateMin) / (uDateMax - uDateMin);
 
 			fg_Position = vec4(x, y, attrib, 1.0);
-			fg_Attribute = 1.0 - attrib;
+			fg_Attribute = attrib;
 		}
 </script><!-- #default-vert -->
 <script type="x-shader/x-vertex" id="vert-footer">
@@ -144,13 +135,12 @@ void main() {
 	gl_Position = vec4(2.0 * scaled - 1.0, pos.zw);
 }
 </script><!-- vert-footer -->
-<script type="x-shader/x-fragment" id="frag-header">#version 450
-layout(early_fragment_tests) in;
+<script type="x-shader/x-fragment" id="frag-header">#version 300 es
 precision mediump float;
 
 in vec4 fg_FragCoord;
 in float fg_Attribute;
-in vec3 fg_AttributeFV3;
+in float mine;
 
 out vec4 fg_FragColor;
 
@@ -158,7 +148,9 @@ out vec4 fg_FragColor;
 </script><!-- frag-header -->
 <script type="x-shader/x-fragment" id="default-frag">
 		void main() {
-			fg_FragColor = vec4(fg_Attribute * fg_AttributeFV3, 1.0);
+			if (fg_Attribute < 0.01) discard;
+      vec4 c = mix(vec4(0.8, 0.1, 0.1, 1.0), vec4(0.0, 1.0, 0.0, 1.0), mine);
+			fg_FragColor = (1.0 - fg_Attribute) * c;
 		}
 </script><!-- default-frag -->
 <script type="x-shader/x-fragment" id="frag-footer">
@@ -192,8 +184,8 @@ const jar = new CodeJar(document.querySelector('#editor'), Prism.highlightElemen
 jar.updateCode(
 `fg({
 	params: guiParams, 
-	variables: 'X Y AppDate GotDate NClass CClass',
-	depth: 'max(GotDate)',
+	variables: 'X Y Date MaintainerCount CVE Source',
+	depth: 'mean(-Date)',
 	node: (config) => \`
 		${document.querySelector('#default-vert').textContent.trim()}
 	\`,
@@ -504,7 +496,7 @@ function makeDC() {
 }
 
 function makeUrlTemplate() {
-	const dataset = /*window.location.hash.substring(1) || */ 'cit-Patents';
+	const dataset = /*window.location.hash.substring(1) || */ 'knit-graph';
 	const defines = thevariables.split(' ').map((d, i) => {
 		return `
 			#define a${d} aNode${i+1}
