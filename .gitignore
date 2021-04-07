@@ -10,3 +10,4 @@ temp_*
 logs/*.log
 /_stress
 /logs/*/
+/static/index.html
