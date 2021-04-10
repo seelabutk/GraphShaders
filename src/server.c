@@ -54,8 +54,10 @@ struct attrib {
 
 typedef struct partition_data {
 	Vec_GLuint partitions;
+	Vec_GLuint originIdx;
 	GLuint indexBuffer;
     GLuint count;
+	GLuint dcIdent;
 } PartitionData;
 
 enum {
@@ -122,6 +124,61 @@ void log_partition_cache(PartitionData *pdc){
 
 }
 
+void sortDepths(PartitionData *pd, GLuint *dcIndex, GLfloat *dcMult, GLfloat dcMinMult, GLfloat dcMaxMult, GLfloat *dcOffset, struct attrib *nattribs, struct attrib *eattribs){
+	printf("Sorting depth...\n");
+	pd->dcIdent = _dcIdent;
+
+	unsigned long count = pd->partitions.length / 2;
+	int i;
+	GLfloat *dcDepth;
+	dcDepth = malloc(count * sizeof(*dcDepth));
+	for (i=0; i<count; ++i) {
+		int idx = pd->originIdx.data[i];
+		int j = 0;
+		dcDepth[i] = 0.0;
+		
+		
+		for (j=0; j<16; ++j)	if (!dcIndex[j]) break;
+
+		float sourceDepth = dcMult[j] * nattribs[dcIndex[j]-1].floats[eattribs[0].uints[2*idx+0]] + dcOffset[j];
+		float targetDepth = dcMult[j] * nattribs[dcIndex[j]-1].floats[eattribs[0].uints[2*idx+1]] + dcOffset[j];
+
+		dcDepth[i] += sourceDepth < targetDepth
+			? dcMinMult * sourceDepth + dcMaxMult * targetDepth
+			: dcMinMult * targetDepth + dcMaxMult * sourceDepth;
+	}
+
+	GLuint64 *dcReorder;
+	dcReorder = malloc(count * sizeof(*dcReorder));
+	for (i=0; i<count; ++i) {
+		dcReorder[i] = i;
+	}
+
+	int compare(const void *av, const void *bv) {
+		const GLuint64 *a = av;
+		const GLuint64 *b = bv;
+
+		if (dcDepth[*a] < dcDepth[*b]) return -1;
+		if (dcDepth[*a] > dcDepth[*b]) return 1;
+		return 0;
+	}
+	qsort(dcReorder, count, sizeof(*dcReorder), compare);
+
+	GLuint *edges = malloc(count * 2 * sizeof(*edges));
+	for (i=0; i<count; ++i) {
+		edges[2*i+0] = pd->partitions.data[i+0];
+		edges[2*i+1] = pd->partitions.data[i+1];
+	}
+
+	vec_destroy(&pd->partitions);
+	pd->partitions.data = edges;
+	pd->partitions.capacity = pd->partitions.length = count * 2;
+
+	free(dcReorder);
+	free(dcDepth);
+
+}
+
 void *render(void *v) {
 	OSMesaContext context;
 	GLuint vertexShader, fragmentShader, program, /*indexBuffer,*/ aNodeBuffers[16];
@@ -131,7 +188,7 @@ void *render(void *v) {
 	GLchar log[512];
 	struct attrib nattribs[16], eattribs[16], *edges;
 	FILE *f;
-	enum { INIT_OSMESA, INIT_GRAPH, INIT_BUFFERS, INIT_PROGRAM, INIT_UNIFORMS, INIT_PARTITION, INIT_ATTRIBUTES, INIT_DC, INIT_INDEX_BUFFER, RENDER, WAIT } where;
+	enum { INIT_OSMESA, INIT_GRAPH, INIT_BUFFERS, INIT_PROGRAM, INIT_UNIFORMS, INIT_PARTITION, INIT_ATTRIBUTES, /* INIT_DC, */ INIT_INDEX_BUFFER, RENDER, WAIT } where;
 
 	GLfloat x, y, z;
     int max_depth;
@@ -269,56 +326,6 @@ void *render(void *v) {
 		}
 	}
 	__attribute__((fallthrough));
-	
-	case INIT_DC:
-	MAB_WRAP("init index data") {
-		GLfloat *dcDepth;
-		dcDepth = malloc(eattribs[0].count / 2 * sizeof(*dcDepth));
-		for (i=0; i<eattribs[0].count/2; ++i) {
-			dcDepth[i] = 0.0;
-			for (j=0; j<16; ++j) {
-				if (!dcIndex[j]) break;
-				float sourceDepth, targetDepth;
-
-				sourceDepth = dcMult[j] * nattribs[dcIndex[j]-1].floats[eattribs[0].uints[2*i+0]] + dcOffset[j];
-				targetDepth = dcMult[j] * nattribs[dcIndex[j]-1].floats[eattribs[0].uints[2*i+1]] + dcOffset[j];
-
-				dcDepth[i] += sourceDepth < targetDepth
-					? dcMinMult * sourceDepth + dcMaxMult * targetDepth
-					: dcMinMult * targetDepth + dcMaxMult * sourceDepth;
-			}
-		}
-
-		GLuint64 *dcReorder;
-		dcReorder = malloc(eattribs[0].count / 2 * sizeof(*dcReorder));
-		for (i=0; i<eattribs[0].count/2; ++i) {
-			dcReorder[i] = i;
-		}
-
-		int compare(const void *av, const void *bv) {
-			const GLuint64 *a = av;
-			const GLuint64 *b = bv;
-
-			if (dcDepth[*a] < dcDepth[*b]) return -1;
-			if (dcDepth[*a] > dcDepth[*b]) return 1;
-			return 0;
-		}
-
-		qsort(dcReorder, eattribs[0].count/2, sizeof(*dcReorder), compare);
-
-		if (edges->data) free(edges->data);
-
-		*edges = eattribs[0];
-		edges->data = malloc(edges->size);
-		for (i=0; i<eattribs[0].count/2; ++i) {
-			edges->uints[2*i+0] = eattribs[0].uints[2*dcReorder[i]+0];
-			edges->uints[2*i+1] = eattribs[0].uints[2*dcReorder[i]+1];
-		}
-
-		free(dcReorder);
-		free(dcDepth);
-	}
-	__attribute__((fallthrough));	
 
 	case INIT_PARTITION:
 	MAB_WRAP("init partition") {
@@ -326,24 +333,28 @@ void *render(void *v) {
 
 		//clear previous partitions
 		if(_partition_cache){
-			for(i=0; i<_max_res*_max_res; ++i)
+			for(i=0; i<_max_res*_max_res; ++i){
 				vec_destroy(&_partition_cache[i].partitions);
+				vec_destroy(&_partition_cache[i].originIdx);
+			}
 			free(_partition_cache);
 			_partition_cache = NULL;
 		}
         
         //create new partitions
         _max_res = pow(2, _max_depth);
-		printf("partition res: (%ux%u)\n", _max_res, _max_res);
+		//printf("partition res: (%ux%u)\n", _max_res, _max_res);
         unsigned long blkSize = _max_res*_max_res*sizeof(PartitionData);
-        printf("Attempting to allocate %lu bytes for patition table\n", blkSize);
+        //printf("Attempting to allocate %lu bytes for patition table\n", blkSize);
 		_partition_cache = (PartitionData *)calloc(blkSize, sizeof(char));
         if(!_partition_cache){
             printf("Could not create partition cache of size %lu bytes!\n", blkSize);
             exit(1);
         }
-			for(i=0; i<_max_res*_max_res; ++i)
+			for(i=0; i<_max_res*_max_res; ++i){
 				vec_init(&_partition_cache[i].partitions);
+				vec_init(&_partition_cache[i].originIdx);
+			}
 	
 		GLfloat *vertsX = nattribs[0].floats;		
 		GLfloat *vertsY = nattribs[1].floats;		
@@ -375,6 +386,9 @@ void *render(void *v) {
                 //printf("pushing edge (%d,%d) to partition %d\n", e0, e1, partitions.data[j]);
 				assert(vec_push(&_partition_cache[partitions.data[j]].partitions, e0) != -1);
 				assert(vec_push(&_partition_cache[partitions.data[j]].partitions, e1) != -1);
+
+				assert(vec_push(&_partition_cache[partitions.data[j]].originIdx, i+0) != -1);
+				assert(vec_push(&_partition_cache[partitions.data[j]].originIdx, i+1) != -1);
 			}
 			vec_destroy(&partitions);
 		}
@@ -595,6 +609,10 @@ void *render(void *v) {
                         PartitionData *pd = &_partition_cache[idx];
                         pd->count++;
 
+						if(pd->dcIdent != _dcIdent){
+							sortDepths(pd, dcIndex, dcMult, dcMinMult, dcMaxMult, dcOffset, nattribs, eattribs);
+						}
+
                         if(pd->partitions.length == 0) continue;
 
                         if (doOcclusionCulling) {
@@ -687,7 +705,7 @@ wait_for_request:
 		dcOffset = _dcOffset;
 		dcMinMult = _dcMinMult;
 		dcMaxMult = _dcMaxMult;
-		where = INIT_DC;
+		//where = INIT_DC;
 	}
 	if (dataset == NULL || strcmp(dataset, _dataset) != 0) {
 		if (dataset) free(dataset);
