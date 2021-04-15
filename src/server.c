@@ -54,7 +54,7 @@ struct attrib {
 
 typedef struct partition_data {
 	Vec_GLuint partitions;
-	Vec_GLuint originIdx;
+	//Vec_GLuint originIdx;
 	GLuint indexBuffer;
     GLuint count;
 	GLuint dcIdent;
@@ -100,6 +100,7 @@ static volatile int _doOcclusionCulling;
 static volatile GLuint _max_depth = 0;
 static unsigned volatile  _max_res;
 static PartitionData *_partition_cache;
+static volatile struct attrib *edges;
 
 static pthread_mutex_t *_fgl_lock;
 static pthread_barrier_t *_fgl_barrier;
@@ -124,62 +125,8 @@ void log_partition_cache(PartitionData *pdc){
 
 }
 
-void sortDepths(PartitionData *pd, GLuint *dcIndex, GLfloat *dcMult, GLfloat dcMinMult, GLfloat dcMaxMult, GLfloat *dcOffset, struct attrib *nattribs, struct attrib *eattribs){
-	printf("Sorting depth...\n");
-	pd->dcIdent = _dcIdent;
-
-	unsigned long count = pd->partitions.length / 2;
-	int i;
-	GLfloat *dcDepth;
-	dcDepth = malloc(count * sizeof(*dcDepth));
-	for (i=0; i<count; ++i) {
-		int idx = pd->originIdx.data[i];
-		int j = 0;
-		dcDepth[i] = 0.0;
-		
-		
-		for (j=0; j<16; ++j)	if (!dcIndex[j]) break;
-
-		float sourceDepth = dcMult[j] * nattribs[dcIndex[j]-1].floats[eattribs[0].uints[2*idx+0]] + dcOffset[j];
-		float targetDepth = dcMult[j] * nattribs[dcIndex[j]-1].floats[eattribs[0].uints[2*idx+1]] + dcOffset[j];
-
-		dcDepth[i] += sourceDepth < targetDepth
-			? dcMinMult * sourceDepth + dcMaxMult * targetDepth
-			: dcMinMult * targetDepth + dcMaxMult * sourceDepth;
-	}
-
-	GLuint64 *dcReorder;
-	dcReorder = malloc(count * sizeof(*dcReorder));
-	for (i=0; i<count; ++i) {
-		dcReorder[i] = i;
-	}
-
-	int compare(const void *av, const void *bv) {
-		const GLuint64 *a = av;
-		const GLuint64 *b = bv;
-
-		if (dcDepth[*a] < dcDepth[*b]) return -1;
-		if (dcDepth[*a] > dcDepth[*b]) return 1;
-		return 0;
-	}
-	qsort(dcReorder, count, sizeof(*dcReorder), compare);
-
-	GLuint *edges = malloc(count * 2 * sizeof(*edges));
-	for (i=0; i<count; ++i) {
-		edges[2*i+0] = pd->partitions.data[i+0];
-		edges[2*i+1] = pd->partitions.data[i+1];
-	}
-
-	vec_destroy(&pd->partitions);
-	pd->partitions.data = edges;
-	pd->partitions.capacity = pd->partitions.length = count * 2;
-
-	free(dcReorder);
-	free(dcDepth);
-
-}
-
 void *render(void *v) {
+	printf("render function!\n");
 	OSMesaContext context;
 	GLuint vertexShader, fragmentShader, program, /*indexBuffer,*/ aNodeBuffers[16];
     unsigned long i, j;
@@ -188,7 +135,7 @@ void *render(void *v) {
 	GLchar log[512];
 	struct attrib nattribs[16], eattribs[16], *edges;
 	FILE *f;
-	enum { INIT_OSMESA, INIT_GRAPH, INIT_BUFFERS, INIT_PROGRAM, INIT_UNIFORMS, INIT_PARTITION, INIT_ATTRIBUTES, /* INIT_DC, */ INIT_INDEX_BUFFER, RENDER, WAIT } where;
+	enum { INIT_OSMESA, INIT_GRAPH, INIT_BUFFERS, INIT_PROGRAM, INIT_UNIFORMS, INIT_PARTITION, INIT_ATTRIBUTES, INIT_SORT, INIT_INDEX_BUFFER, RENDER, WAIT } where;
 
 	GLfloat x, y, z;
     int max_depth;
@@ -329,13 +276,14 @@ void *render(void *v) {
 
 	case INIT_PARTITION:
 	MAB_WRAP("init partition") {
+		printf("partitioning data...\n");
         unsigned j;
 
 		//clear previous partitions
 		if(_partition_cache){
 			for(i=0; i<_max_res*_max_res; ++i){
 				vec_destroy(&_partition_cache[i].partitions);
-				vec_destroy(&_partition_cache[i].originIdx);
+				//vec_destroy(&_partition_cache[i].originIdx);
 			}
 			free(_partition_cache);
 			_partition_cache = NULL;
@@ -353,7 +301,7 @@ void *render(void *v) {
         }
 			for(i=0; i<_max_res*_max_res; ++i){
 				vec_init(&_partition_cache[i].partitions);
-				vec_init(&_partition_cache[i].originIdx);
+				//vec_init(&_partition_cache[i].originIdx);
 			}
 	
 		GLfloat *vertsX = nattribs[0].floats;		
@@ -364,7 +312,7 @@ void *render(void *v) {
 		GLfloat minY = nattribs[1].frange[0] - 1.0;
 		GLfloat maxY = nattribs[1].frange[1] + 1.0;
         
-        printf("partitioning data...\n");
+		*edges = eattribs[0];
         long sz = edges->count;
         long tenth = sz/10;
         if(tenth == 0) ++tenth;
@@ -387,8 +335,8 @@ void *render(void *v) {
 				assert(vec_push(&_partition_cache[partitions.data[j]].partitions, e0) != -1);
 				assert(vec_push(&_partition_cache[partitions.data[j]].partitions, e1) != -1);
 
-				assert(vec_push(&_partition_cache[partitions.data[j]].originIdx, i+0) != -1);
-				assert(vec_push(&_partition_cache[partitions.data[j]].originIdx, i+1) != -1);
+				//assert(vec_push(&_partition_cache[partitions.data[j]].originIdx, i+0) != -1);
+				//assert(vec_push(&_partition_cache[partitions.data[j]].originIdx, i+1) != -1);
 			}
 			vec_destroy(&partitions);
 		}
@@ -396,6 +344,74 @@ void *render(void *v) {
 
         //log_partition_cache(_partition_cache);
 	}
+	__attribute__((fallthrough));
+
+	case INIT_SORT:
+		printf("Sorting depth...\n");
+
+		int i;
+		GLuint sz = _max_res*_max_res;
+		long tenth = sz/10;
+        if(tenth == 0) ++tenth;
+
+		for(i = 0; i < sz; ++i){
+			
+			if(i%tenth < 1) printf("%d%% done...\n", (int)(100*(double)i/(double)sz));
+
+			PartitionData *pd = &_partition_cache[i];
+			unsigned long count = pd->partitions.length / 2;
+			int i;
+			GLfloat *dcDepth;
+			dcDepth = malloc(count * sizeof(*dcDepth));
+			for (i=0; i<count; ++i) {
+				GLuint e0 = pd->partitions.data[2*i+0];
+				GLuint e1 = pd->partitions.data[2*i+1];
+				
+				dcDepth[i] = 0.0;
+
+				int j = 0;
+				for (j=0; j<16; ++j)	if (!dcIndex[j]) break;
+				--j;
+
+				float sourceDepth = dcMult[j] * nattribs[dcIndex[j]-1].floats[eattribs[0].uints[e0]] + dcOffset[j];
+				float targetDepth = dcMult[j] * nattribs[dcIndex[j]-1].floats[eattribs[0].uints[e1]] + dcOffset[j];
+
+				dcDepth[i] += sourceDepth < targetDepth
+					? dcMinMult * sourceDepth + dcMaxMult * targetDepth
+					: dcMinMult * targetDepth + dcMaxMult * sourceDepth;
+			}
+
+			GLuint64 *dcReorder;
+			dcReorder = malloc(count * sizeof(*dcReorder));
+			for (i=0; i<count; ++i) {
+				dcReorder[i] = i;
+			}
+
+			int compare(const void *av, const void *bv) {
+				const GLuint64 *a = av;
+				const GLuint64 *b = bv;
+
+				if (dcDepth[*a] < dcDepth[*b]) return -1;
+				if (dcDepth[*a] > dcDepth[*b]) return 1;
+				return 0;
+			}
+			qsort(dcReorder, count, sizeof(*dcReorder), compare);
+
+			GLuint *edges = malloc(count * 2 * sizeof(*edges));
+			for (i=0; i<count; ++i) {
+				edges[2*i+0] = pd->partitions.data[i+0];
+				edges[2*i+1] = pd->partitions.data[i+1];
+			}
+
+			vec_destroy(&pd->partitions);
+			pd->partitions.data = edges;
+			pd->partitions.capacity = pd->partitions.length = count * 2;
+
+			free(dcReorder);
+			free(dcDepth);
+		}
+		printf("100%% done\n");
+
 	__attribute__((fallthrough));
 
 	case INIT_BUFFERS:
@@ -413,6 +429,7 @@ void *render(void *v) {
             glBindBuffer(GL_ARRAY_BUFFER, 0);
 		}
 	}
+	__attribute__((fallthrough));
 
 	case INIT_PROGRAM:
 	MAB_WRAP("create program") {
@@ -487,7 +504,7 @@ void *render(void *v) {
 		for (i=0; i<ncount; ++i)
 		MAB_WRAP("init attribute i=%d", i) {
 			char temp[32];
-			snprintf(temp, sizeof(temp), "aNode%lu", i + 1);
+			snprintf(temp, sizeof(temp), "aNode%lu", (unsigned long)(i + 1));
 
             aNodeLocations[i] = glGetAttribLocation(program, temp);
             glBindBuffer(GL_ARRAY_BUFFER, aNodeBuffers[i]);
@@ -506,13 +523,13 @@ void *render(void *v) {
 
 		for (i=0; i<ncount; ++i) {
 			char temp[32];
-			snprintf(temp, sizeof(temp), "uNodeMin%lu", i + 1);
+			snprintf(temp, sizeof(temp), "uNodeMin%lu", (unsigned long)(i + 1));
             uNodeMins[i] = glGetUniformLocation(program, temp);
 		}
 
 		for (i=0; i<ncount; ++i) {
 			char temp[32];
-			snprintf(temp, sizeof(temp), "uNodeMax%lu", i + 1);
+			snprintf(temp, sizeof(temp), "uNodeMax%lu", (unsigned long)(i + 1));
             uNodeMaxs[i] = glGetUniformLocation(program, temp);
 		}
 	}
@@ -520,17 +537,7 @@ void *render(void *v) {
 
 	case INIT_INDEX_BUFFER:
 	MAB_WRAP("init index buffer") {
-		/*
-		unsigned i, j, k, curr;
-		if (indexBuffer)
-			glDeleteBuffers(1, &indexBuffer);
-
-		glGenBuffers(1, &indexBuffer);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, edges->size, edges->data, GL_STATIC_DRAW);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-		*/
-
+		
 		//partition cache index buffers
 		for(i=0; i<_max_res*_max_res; ++i){
 			if (_partition_cache[i].indexBuffer)
@@ -538,9 +545,10 @@ void *render(void *v) {
 		
             glGenBuffers(1, &_partition_cache[i].indexBuffer);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[i].indexBuffer);
-            if (logGLCalls)
-            if (_partition_cache[i].partitions.length*sizeof(GLuint) > 0)
-            mabLogMessage("glBufferData", "%lu", _partition_cache[i].partitions.length*sizeof(GLuint));
+
+            if (logGLCalls && _partition_cache[i].partitions.length*sizeof(GLuint) > 0)
+            	mabLogMessage("glBufferData", "%lu", _partition_cache[i].partitions.length*sizeof(GLuint));
+
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[i].partitions.length*sizeof(GLuint), _partition_cache[i].partitions.data, GL_STATIC_DRAW);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 		}
@@ -608,13 +616,8 @@ void *render(void *v) {
 		    		    unsigned long idx = (ry+j)*_max_res+(rx+i);
                         PartitionData *pd = &_partition_cache[idx];
                         pd->count++;
-
-						if(pd->dcIdent != _dcIdent){
-							sortDepths(pd, dcIndex, dcMult, dcMinMult, dcMaxMult, dcOffset, nattribs, eattribs);
-						}
-
-                        if(pd->partitions.length == 0) continue;
-
+						
+						if(pd->partitions.length == 0) continue;
                         if (doOcclusionCulling) {
 
                             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _partition_cache[idx].indexBuffer);
@@ -705,7 +708,7 @@ wait_for_request:
 		dcOffset = _dcOffset;
 		dcMinMult = _dcMinMult;
 		dcMaxMult = _dcMaxMult;
-		//where = INIT_DC;
+		where = INIT_SORT;
 	}
 	if (dataset == NULL || strcmp(dataset, _dataset) != 0) {
 		if (dataset) free(dataset);
