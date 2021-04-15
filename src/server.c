@@ -349,16 +349,16 @@ void *render(void *v) {
 	case INIT_SORT:
 		printf("Sorting depth...\n");
 
-		int i;
+		unsigned j;
 		GLuint sz = _max_res*_max_res;
 		long tenth = sz/10;
         if(tenth == 0) ++tenth;
 
-		for(i = 0; i < sz; ++i){
+		for(j = 0; j < sz; ++j){
 			
-			if(i%tenth < 1) printf("%d%% done...\n", (int)(100*(double)i/(double)sz));
+			if(j%tenth < 1) printf("%d%% done...\n", (int)(100*(double)j/(double)sz));
 
-			PartitionData *pd = &_partition_cache[i];
+			PartitionData *pd = &_partition_cache[j];
 			unsigned long count = pd->partitions.length / 2;
 			int i;
 			GLfloat *dcDepth;
@@ -369,12 +369,12 @@ void *render(void *v) {
 				
 				dcDepth[i] = 0.0;
 
-				int j = 0;
-				for (j=0; j<16; ++j)	if (!dcIndex[j]) break;
-				--j;
+				int k = 0;
+				for (k=0; k<16; ++k)	if (!dcIndex[k]) break;
+				--k;
 
-				float sourceDepth = dcMult[j] * nattribs[dcIndex[j]-1].floats[eattribs[0].uints[e0]] + dcOffset[j];
-				float targetDepth = dcMult[j] * nattribs[dcIndex[j]-1].floats[eattribs[0].uints[e1]] + dcOffset[j];
+				float sourceDepth = dcMult[k] * nattribs[dcIndex[k]-1].floats[eattribs[0].uints[e0]] + dcOffset[k];
+				float targetDepth = dcMult[k] * nattribs[dcIndex[k]-1].floats[eattribs[0].uints[e1]] + dcOffset[k];
 
 				dcDepth[i] += sourceDepth < targetDepth
 					? dcMinMult * sourceDepth + dcMaxMult * targetDepth
@@ -399,8 +399,8 @@ void *render(void *v) {
 
 			GLuint *edges = malloc(count * 2 * sizeof(*edges));
 			for (i=0; i<count; ++i) {
-				edges[2*i+0] = pd->partitions.data[i+0];
-				edges[2*i+1] = pd->partitions.data[i+1];
+				edges[2*i+0] = pd->partitions.data[2*dcReorder[i]+0];
+				edges[2*i+1] = pd->partitions.data[2*dcReorder[i]+1];
 			}
 
 			vec_destroy(&pd->partitions);
