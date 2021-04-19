@@ -67,7 +67,7 @@ code[class*="language-"] {
 <script src="https://unpkg.com/prismjs@1.20.0/prism.js"></script>
 <script src="https://unpkg.com/prismjs@1.20.0/plugins/autoloader/prism-autoloader.min.js"></script>
 <script src="https://unpkg.com/mathjs@7.0.0/dist/math.min.js"></script>
-<script type="x-shader/x-vertex" id="vert-header">#version 450
+<script type="x-shader/x-vertex" id="vert-header">#version 300 es
 precision mediump float;
 
 in float aNode1, aNode2, aNode3, aNode4, aNode5, aNode6, aNode7, aNode8;
@@ -78,7 +78,7 @@ uniform float uTranslateX, uTranslateY, uScale;
 
 out vec4 fg_FragCoord;
 out float fg_Attribute;
-out float fg_Attribute2;
+out vec3 fg_AttributeFV3;
 
 #define main() TheUserMain(out vec4 fg_Position, out float fg_Attribute)
 </script><!-- vert-header -->
@@ -113,11 +113,20 @@ fg({
 			float x = (aX - uXMin) / (uXMax - uXMin);
 			float y = (aY - uYMin) / (uYMax - uYMin);
 
-			float z = (aDate - uDateMin) / (uDateMax - uDateMin);
+			float attrib = (aAppDate - uAppDateMin) / (uAppDateMax - uAppDateMin);
 
-			fg_Position = vec4(x, y, z, 1.0);
-			fg_Attribute = 1.00 - z;
-			fg_Attribute2 = aCVE;
+			vec3 colors[6] = vec3[6](
+				vec3(0.86, 0.3712, 0.33999),
+				vec3(0.82879, 0.86, 0.33999),
+				vec3(0.33999, 0.86, 0.3712),
+				vec3(0.33999, 0.82879, 0.86),
+				vec3(0.3712, 0.33999, 0.86),
+				vec3(0.86, 0.33999, 0.82879)
+			);
+			fg_AttributeFV3 = colors[int(aCClass - 1.0)];
+
+			fg_Position = vec4(x, y, attrib, 1.0);
+			fg_Attribute = 1.0 - attrib;
 		}
 </script><!-- #default-vert -->
 <script type="x-shader/x-vertex" id="vert-footer">
@@ -135,13 +144,12 @@ void main() {
 	gl_Position = vec4(2.0 * scaled - 1.0, pos.zw);
 }
 </script><!-- vert-footer -->
-<script type="x-shader/x-fragment" id="frag-header">#version 450
-layout(early_fragment_tests) in;
+<script type="x-shader/x-fragment" id="frag-header">#version 300 es
 precision mediump float;
 
 in vec4 fg_FragCoord;
 in float fg_Attribute;
-in float fg_Attribute2;
+in vec3 fg_AttributeFV3;
 
 out vec4 fg_FragColor;
 
@@ -149,12 +157,7 @@ out vec4 fg_FragColor;
 </script><!-- frag-header -->
 <script type="x-shader/x-fragment" id="default-frag">
 		void main() {
-			vec3 red = vec3(.9866, 0.2933, 0.204);
-			vec3 green = vec3(0.32, 0.6355, 0.2177);
-			float vulnerability = fg_Attribute2;
-			float z = clamp(fg_Attribute, 0.1, 1.0);
-			vec3 c = mix(green, red, vulnerability);
-			fg_FragColor = vec4(c * z, 1.0);
+			fg_FragColor = vec4(fg_Attribute * fg_AttributeFV3, 1.0);
 		}
 </script><!-- default-frag -->
 <script type="x-shader/x-fragment" id="frag-footer">
@@ -181,15 +184,15 @@ window.btoa = function(x) {
 
 const guiParams = {
 	'selector': { value: 0.5, min: 0.0, max: 1.0 },
-    'partitions': { value: 10, min: 0, max: 16 },
+    'partitions': { value: 0, min: 0, max: 16 },
 };
 
 const jar = new CodeJar(document.querySelector('#editor'), Prism.highlightElement);
 jar.updateCode(
 `fg({
 	params: guiParams, 
-	variables: 'X Y Date MaintainerCount CVE Source',
-	depth: 'min(-Date)',
+	variables: 'X Y AppDate GotDate NClass CClass',
+	depth: 'max(AppDate)',
 	node: (config) => \`
 		${document.querySelector('#default-vert').textContent.trim()}
 	\`,
@@ -399,7 +402,7 @@ L.TileLayer.LoggingTileLayer = L.TileLayer.extend({
 const map = L.map('map', {
         crs: L.CRS.Simple,
         center: [-128, 128],
-        zoom: 6,
+        zoom: 2,
         tms: true,
         fadeAnimation: false
 });
@@ -412,7 +415,7 @@ let newTiles = null, newTilesNextCB = null;
 function update() {
 	console.log('update');
 	if (newTiles) { newTilesNextCB = update; return; }
-	newTiles = new L.TileLayer.LoggingTileLayer(makeUrlTemplate(), {
+	newTiles = new L.TileLayer(makeUrlTemplate(), {
 		tileSize: 256,
 	}).addTo(map).bringToFront();
 	if (!tiles) return tiles = newTiles, newTiles = null, newTilesNextCB = null;
@@ -500,7 +503,7 @@ function makeDC() {
 }
 
 function makeUrlTemplate() {
-	const dataset = /*window.location.hash.substring(1) || */ 'knit-graph';
+	const dataset = /*window.location.hash.substring(1) || */ 'cit-Patents';
 	const defines = thevariables.split(' ').map((d, i) => {
 		return `
 			#define a${d} aNode${i+1}
@@ -519,6 +522,6 @@ function makeUrlTemplate() {
 
     const pDepth = guiParams.partitions.value;
 
-    return `tile/${dataset}/{z}/{x}/{y}/,vert,base64:${vert},frag,base64:${frag},pDepth,${pDepth},dcIdent,${dcIdent},dcIndex,base64:${dcIndex},dcMult,base64:${dcMult},dcOffset,base64:${dcOffset},dcMinMult,${dcMinMult},dcMaxMult,${dcMaxMult}`;
+    return `/tile/${dataset}/{z}/{x}/{y}/,vert,base64:${vert},frag,base64:${frag},pDepth,${pDepth},dcIdent,${dcIdent},dcIndex,base64:${dcIndex},dcMult,base64:${dcMult},dcOffset,base64:${dcOffset},dcMinMult,${dcMinMult},dcMaxMult,${dcMaxMult}`;
 }
 </script>

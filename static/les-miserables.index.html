@@ -67,73 +67,17 @@ code[class*="language-"] {
 <script src="https://unpkg.com/prismjs@1.20.0/prism.js"></script>
 <script src="https://unpkg.com/prismjs@1.20.0/plugins/autoloader/prism-autoloader.min.js"></script>
 <script src="https://unpkg.com/mathjs@7.0.0/dist/math.min.js"></script>
-<script type="x-shader/x-vertex" id="vert-header">#version 300 es
-precision mediump float;
-
-in float aNode1, aNode2, aNode3, aNode4, aNode5, aNode6, aNode7, aNode8;
-uniform float uNodeMin1, uNodeMin2, uNodeMin3, uNodeMin4, uNodeMin5, uNodeMin6, uNodeMin7, uNodeMin8;
-uniform float uNodeMax1, uNodeMax2, uNodeMax3, uNodeMax4, uNodeMax5, uNodeMax6, uNodeMax7, uNodeMax8;
-
-uniform float uTranslateX, uTranslateY, uScale;
-
-out vec4 fg_FragCoord;
-out float fg_Attribute;
-
-#define main() TheUserMain(out vec4 fg_Position, out float fg_Attribute)
-</script><!-- vert-header -->
 <script type="x-shader/x-vertex" id="default-vert">
-		void main() {
-			float x = (aX - uXMin) / (uXMax - uXMin);
-			float y = (aY - uYMin) / (uYMax - uYMin);
-
-			float attrib = x;
-
-			fg_Position = vec4(x, y, attrib, 1.0);
-			fg_Attribute = attrib;
+		void node(in float x, in float y, out float tmp) {
+            tmp = 1.0;
+			fg_NodePosition = vec3(x, y, 0.5);
 		}
 </script><!-- #default-vert -->
-<script type="x-shader/x-vertex" id="vert-footer">
-#undef main
-
-void main() {
-	vec4 pos;
-	float attrib;
-
-	TheUserMain(pos, attrib);
-	vec2 scaled = uScale * pos.xy + vec2(uTranslateX, uTranslateY);
-
-	fg_FragCoord = pos;
-	fg_Attribute = attrib;
-	gl_Position = vec4(2.0 * scaled - 1.0, pos.zw);
-}
-</script><!-- vert-footer -->
-<script type="x-shader/x-fragment" id="frag-header">#version 300 es
-precision mediump float;
-
-in vec4 fg_FragCoord;
-in float fg_Attribute;
-
-out vec4 fg_FragColor;
-
-#define main() TheUserMain(out vec4 fg_FragColor)
-</script><!-- frag-header -->
 <script type="x-shader/x-fragment" id="default-frag">
-		void main() {
-			if (fg_Attribute < 0.01) discard;
-			fg_FragColor = mix(vec4(0.0), vec4(1.0, 0.0, 0.0, 1.0), fg_Attribute);
-		}
+		void edge(in float tmp) {
+			fg_FragColor = vec4(0.8, 0.1, 0.1, 1.0);
+		} 
 </script><!-- default-frag -->
-<script type="x-shader/x-fragment" id="frag-footer">
-#undef main
-
-void main() {
-	vec4 color;
-
-	TheUserMain(color);
-
-	fg_FragColor = color;
-}
-</script><!-- #frag-footer-->
 <script type="module">
 import {CodeJar} from 'https://unpkg.com/codejar@2.0.0/codejar.js';
 
@@ -145,14 +89,17 @@ window.btoa = function(x) {
 	return oldbtoa(x);
 };
 
+const guiParams = {
+	'selector': { value: 0.5, min: 0.0, max: 1.0 },
+    'partitions': { value: 10, min: 0, max: 16 },
+};
+
 const jar = new CodeJar(document.querySelector('#editor'), Prism.highlightElement);
 jar.updateCode(
 `fg({
-	params: [
-		{ name: 'selector', initial: 0.5, min: 0.0, max: 1.0 },
-	],
-	variables: 'X Y',
-	depth: 'mean(X)',
+	params: guiParams, 
+	variables: 'X Y Date MaintainerCount CVE Source',
+	depth: 'mean(-Date)',
 	node: (config) => \`
 		${document.querySelector('#default-vert').textContent.trim()}
 	\`,
@@ -167,11 +114,9 @@ let debounce = null;
 function fg({ params, variables, depth, node, edge }) {
 	if (gui === null) {
 		gui = new dat.GUI();
-		config = {};
-		for (const param of params) {
-			const { name, initial, min, max } = param;
-			config[name] = initial;
-			gui.add(config, name, min, max).onChange(update);
+		for (const [paramName, param] of Object.entries(params)) {
+			const { value, min, max } = param;
+			gui.add(param, 'value', min, max).name(paramName).onChange(update);
 		}
 	}
 
@@ -364,7 +309,7 @@ L.TileLayer.LoggingTileLayer = L.TileLayer.extend({
 const map = L.map('map', {
         crs: L.CRS.Simple,
         center: [-128, 128],
-        zoom: 3,
+        zoom: 6,
         tms: true,
         fadeAnimation: false
 });
@@ -377,7 +322,7 @@ let newTiles = null, newTilesNextCB = null;
 function update() {
 	console.log('update');
 	if (newTiles) { newTilesNextCB = update; return; }
-	newTiles = new L.TileLayer.LoggingTileLayer(makeUrlTemplate(), {
+	newTiles = new L.TileLayer(makeUrlTemplate(), {
 		tileSize: 256,
 	}).addTo(map).bringToFront();
 	if (!tiles) return tiles = newTiles, newTiles = null, newTilesNextCB = null;
@@ -465,16 +410,9 @@ function makeDC() {
 }
 
 function makeUrlTemplate() {
-	const dataset = /*window.location.hash.substring(1) || */ 'les-miserables';
-	const defines = thevariables.split(' ').map((d, i) => {
-		return `
-			#define a${d} aNode${i+1}
-			#define u${d}Min uNodeMin${i+1}
-			#define u${d}Max uNodeMax${i+1}
-		`;
-	}).join('\n');
-	const vert = btoa(document.querySelector('#vert-header').textContent + defines + thevert(config) + document.querySelector('#vert-footer').textContent);
-	const frag = btoa(document.querySelector('#frag-header').textContent + thefrag(config) + document.querySelector('#frag-footer').textContent);
+	const dataset = 'knit-graph';
+	const vert = btoa(thevert(config));
+	const frag = btoa(thefrag(config));
 	console.log(atob(vert))
 	const dcIndex = btoa(new Uint32Array(thedc.index));
 	const dcMult = btoa(new Float32Array(thedc.mult));
@@ -482,6 +420,8 @@ function makeUrlTemplate() {
 	const dcMinMult = 1.0 - thedc.combine;
 	const dcMaxMult = thedc.combine;
 
-	return `tile/${dataset}/{z}/{x}/{y}/,vert,base64:${vert},frag,base64:${frag},dcIdent,${dcIdent},dcIndex,base64:${dcIndex},dcMult,base64:${dcMult},dcOffset,base64:${dcOffset},dcMinMult,${dcMinMult},dcMaxMult,${dcMaxMult}`;
+    const pDepth = guiParams.partitions.value;
+
+    return `tile/${dataset}/{z}/{x}/{y}/,vert,base64:${vert},frag,base64:${frag},pDepth,${pDepth},dcIdent,${dcIdent},dcIndex,base64:${dcIndex},dcMult,base64:${dcMult},dcOffset,base64:${dcOffset},dcMinMult,${dcMinMult},dcMaxMult,${dcMaxMult}`;
 }
 </script>

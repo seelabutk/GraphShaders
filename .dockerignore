@@ -2,3 +2,5 @@ build
 data
 logs
 logs.bak
+_stress
+workArea

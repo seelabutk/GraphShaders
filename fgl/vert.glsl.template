@@ -1,0 +1,38 @@
+{% if not preprocessed %}
+#define node(...) node(__VA_ARGS__, out vec3 fg_NodePosition)
+{% else %}
+#version 300 es
+precision mediump float;
+{% endif %}
+
+{{ source|safe }}
+
+{% if preprocessed %}
+in float aNode1, aNode2, aNode3, aNode4, aNode5, aNode6, aNode7, aNode8;
+uniform float uNodeMin1, uNodeMin2, uNodeMin3, uNodeMin4, uNodeMin5, uNodeMin6, uNodeMin7, uNodeMin8;
+uniform float uNodeMax1, uNodeMax2, uNodeMax3, uNodeMax4, uNodeMax5, uNodeMax6, uNodeMax7, uNodeMax8;
+
+uniform float uTranslateX, uTranslateY, uScale;
+
+{% for param in out_params -%}
+{{ StorageQualifier(param.storage).name|lower }} {{ param.base_type.name }} {{ param.name }};
+{% endfor %}
+out vec3 fg_FragCoord;
+
+void main() {
+    node(
+        {%- for param in in_params -%}
+        {%- if not loop.first %}, {% endif %}
+        (aNode{{ loop.index }} - uNodeMin{{ loop.index }}) / (uNodeMax{{ loop.index }} - uNodeMin{{ loop.index }})
+        {%- endfor -%}
+        {% for param in out_params -%},
+        {{ param.name -}}
+        {% endfor %}
+    );
+
+    fg_NodePosition = vec3(uScale * fg_NodePosition.xy + vec2(uTranslateX, uTranslateY), fg_NodePosition.z);
+
+    gl_Position = vec4(2.0 * fg_NodePosition.xy - 1.0, fg_NodePosition.z, 1.0);
+    fg_FragCoord = fg_NodePosition;
+}
+{% endif %}

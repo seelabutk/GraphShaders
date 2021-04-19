@@ -51,6 +51,7 @@ def main(nodesf, edgesf, root, ncols, ecols, missing):
 		for row in reader:
 			for c in ecols[0]:
 				int(row[c])
+                                if row[c] >= len(nodes): continue
 			for c in ecols[1:]:
 				float(row[c])
 			edges.append(row)
