@@ -104,9 +104,9 @@ static volatile struct attrib *edges;
 // EGL STATICS
 static volatile EGLDisplay eglDisplay = EGL_NO_DISPLAY;
 static volatile EGLContext eglContext = NULL;
-static volatile GLuint eglFrameBuffer = 0;
-static volatile GLuint eglFrameBufferColorAttachmentTexture = 0;
-static volatile GLuint eglFrameBufferDepthAttachmentTexture = 0;
+static GLuint eglFrameBuffer = 0;
+static GLuint eglFrameBufferColorAttachmentTexture = 0;
+static GLuint eglFrameBufferDepthAttachmentTexture = 0;
 
 /** EGL SPECIFIC SETUP **/
 /// A surface that is RGBA8
@@ -114,33 +114,38 @@ static volatile GLuint eglFrameBufferDepthAttachmentTexture = 0;
 /// A surface that is OpenGL _NOT ES_ conformant
 /// A surface that is renderable
 /// A surface that will not take caveats (must meet all demands!)
-static const EGLint configAttribs[] = {
-        EGL_COLOR_BUFFER_TYPE, EGL_RGB_BUFFER,
-        EGL_BLUE_SIZE, 8,
-        EGL_GREEN_SIZE, 8,
-        EGL_RED_SIZE, 8,
-        EGL_ALPHA_SIZE, 8,
-        EGL_DEPTH_SIZE, 24,
-        EGL_STENCIL_SIZE, 8,
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
-        EGL_CONFORMANT, EGL_OPENGL_BIT,
-        EGL_CONFIG_CAVEAT, EGL_NONE,
-        EGL_LEVEL, 0,
-        EGL_NONE
-};    
+static const EGLint configAttribs[] = {EGL_COLOR_BUFFER_TYPE,
+                                       EGL_RGB_BUFFER,
+                                       EGL_BLUE_SIZE,
+                                       8,
+                                       EGL_GREEN_SIZE,
+                                       8,
+                                       EGL_RED_SIZE,
+                                       8,
+                                       EGL_ALPHA_SIZE,
+                                       8,
+                                       EGL_DEPTH_SIZE,
+                                       24,
+                                       EGL_STENCIL_SIZE,
+                                       8,
+                                       EGL_RENDERABLE_TYPE,
+                                       EGL_OPENGL_BIT,
+                                       EGL_CONFORMANT,
+                                       EGL_OPENGL_BIT,
+                                       EGL_CONFIG_CAVEAT,
+                                       EGL_NONE,
+                                       EGL_LEVEL,
+                                       0,
+                                       EGL_NONE};
 
-void GLAPIENTRY
-eglMessageCallback(GLenum source,
-                 GLenum type,
-                 GLuint id,
-                 GLenum severity,
-                 GLsizei length,
-                 const GLchar* message,
-                 const void* userParam )
-{
-  fprintf( stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
-           ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : "" ),
-            type, severity, message );
+void GLAPIENTRY eglMessageCallback(GLenum source, GLenum type, GLuint id,
+                                   GLenum severity, GLsizei length,
+                                   const GLchar *message,
+                                   const void *userParam) {
+  fprintf(stderr,
+          "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
+          (type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : ""), type, severity,
+          message);
 }
 static pthread_mutex_t *_fgl_lock;
 static pthread_barrier_t *_fgl_barrier;
@@ -223,7 +228,6 @@ void *render(void *v) {
     switch (where) {
       case INIT_OSMESA:
         MAB_WRAP("create osmesa context") {
-
           if (!gladLoadEGL()) {
             fprintf(stderr, "Could not load EGL!");
           }
@@ -231,23 +235,25 @@ void *render(void *v) {
           // 0. Get EGL Display (offscreen in case of headless)
           eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
           if (EGL_NO_DISPLAY == eglDisplay) {
-            fprintf(stderr,"Could not create the EGL Display!");
+            fprintf(stderr, "Could not create the EGL Display!");
           }
 
           // 1. Inititialize EGL
           EGLint major, minor;
-          if(EGL_FALSE == eglInitialize(eglDisplay, &major, &minor)) {
+          if (EGL_FALSE == eglInitialize(eglDisplay, &major, &minor)) {
             fprintf(stderr, "Could not initialize EGL!");
           }
 
-          // 2. Choose Configuration, give them the minimum requirements (specified by configAttribs)
+          // 2. Choose Configuration, give them the minimum requirements
+          // (specified by configAttribs)
           EGLint numConfigs;
           EGLConfig eglCfg;
-          // Ideally, iterate eglCfg and make sure numConfigs matches configAttribs but I digress
+          // Ideally, iterate eglCfg and make sure numConfigs matches
+          // configAttribs but I digress
           eglChooseConfig(eglDisplay, configAttribs, &eglCfg, 1, &numConfigs);
 
           // 3. Bind the API, we are Using OPENGL not ES!
-          if(EGL_FALSE == eglBindAPI(EGL_OPENGL_API)) {
+          if (EGL_FALSE == eglBindAPI(EGL_OPENGL_API)) {
             fprintf(stderr, "OpenGL is not support for this EGL context!\n");
             exit(1);
           }
@@ -255,66 +261,71 @@ void *render(void *v) {
           // Try to snag a Context with OpenGL4.6 + Debug Features.
           // Compatibility profile for Global VAO
           const EGLint contextAttribs[] = {
-            EGL_CONTEXT_MAJOR_VERSION, 4,
-            EGL_CONTEXT_MINOR_VERSION, 6,
-            EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT,
-            EGL_CONTEXT_OPENGL_DEBUG, EGL_TRUE,
-            EGL_NONE
-          };
-          eglContext = eglCreateContext(eglDisplay, eglCfg, EGL_NO_CONTEXT, 
-                                      contextAttribs);
+              EGL_CONTEXT_MAJOR_VERSION,
+              4,
+              EGL_CONTEXT_MINOR_VERSION,
+              6,
+              EGL_CONTEXT_OPENGL_PROFILE_MASK,
+              EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT,
+              EGL_CONTEXT_OPENGL_DEBUG,
+              EGL_TRUE,
+              EGL_NONE};
+          eglContext = eglCreateContext(eglDisplay, eglCfg, EGL_NO_CONTEXT,
+                                        contextAttribs);
           if (!eglContext) {
             fprintf(stderr, "could not init EGL context\n");
             exit(1);
           }
 
           // Establish context as current and ensure NO_SURFACE is specified.
-          EGLBoolean currentSuccess = eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, eglContext);
+          EGLBoolean currentSuccess = eglMakeCurrent(
+              eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, eglContext);
           if (!currentSuccess) {
             fprintf(stderr, "could not bind to image buffer\n");
             exit(1);
           }
 
           // Load GL+Extensions
-          if (!gladLoadGL()){
+          if (!gladLoadGL()) {
             fprintf(stderr, "Could not load GL!\n");
           }
 
           // Enable Debugging
           glEnable(GL_DEBUG_OUTPUT);
-          glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION, 0, 0, GL_FALSE);
+          glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE,
+                                GL_DEBUG_SEVERITY_NOTIFICATION, 0, 0, GL_FALSE);
           glDebugMessageCallback(eglMessageCallback, 0);
 
           // Generate a FrameBuffer Object
-          glGenFramebuffers(1, &eglFrameBuffer); 
+          glGenFramebuffers(1, &eglFrameBuffer);
           glBindFramebuffer(GL_FRAMEBUFFER, eglFrameBuffer);
 
           // Bind a Texture to the Color Attachment
           glGenTextures(1, &eglFrameBufferColorAttachmentTexture);
           glBindTexture(GL_TEXTURE_2D, eglFrameBufferColorAttachmentTexture);
-          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                  _resolution, _resolution, 0, GL_RGBA,
-                  GL_UNSIGNED_BYTE, 0);
-          glTexParameteri(GL_TEXTURE_2D, 
-                          GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-          glTexParameteri(GL_TEXTURE_2D, 
-                          GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-          glTexParameteri(GL_TEXTURE_2D, 
-                          GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-          glTexParameteri(GL_TEXTURE_2D, 
-                          GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-          glFramebufferTexture2D(GL_FRAMEBUFFER, 
-                              GL_COLOR_ATTACHMENT0, 
-                              GL_TEXTURE_2D, eglFrameBufferColorAttachmentTexture, 0);
+          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, _resolution, _resolution, 0,
+                       GL_RGBA, GL_UNSIGNED_BYTE, 0);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+          glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                 GL_TEXTURE_2D,
+                                 eglFrameBufferColorAttachmentTexture, 0);
 
           // Create a texture for the Depth + Stencil attachment
           glGenTextures(1, &eglFrameBufferDepthAttachmentTexture);
           glBindTexture(GL_TEXTURE_2D, eglFrameBufferDepthAttachmentTexture);
-          glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, _resolution, _resolution, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, 0);
-          glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, eglFrameBufferDepthAttachmentTexture, 0);
-          
+          glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, _resolution,
+                       _resolution, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8,
+                       0);
+          glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+                                 GL_TEXTURE_2D,
+                                 eglFrameBufferDepthAttachmentTexture, 0);
+
           // Make sure the Framebuffer is complete!
-          if(!(GL_FRAMEBUFFER_COMPLETE == glCheckFramebufferStatus(GL_FRAMEBUFFER))) {
+          if (!(GL_FRAMEBUFFER_COMPLETE ==
+                glCheckFramebufferStatus(GL_FRAMEBUFFER))) {
             fprintf(stderr, "Could not complete the framebuffer!");
             exit(1);
           }
@@ -325,8 +336,9 @@ void *render(void *v) {
           glGetIntegerv(GL_VIEWPORT, viewport);
           // Ensure resolution and viewport match 1:1, EGL can "fake" this call
           // and one symptom is viewport mismatch
-          if((_resolution + _resolution) != (viewport[2] + viewport[3])) {
-            fprintf(stderr, "Viewport does not meet the resolution requirement!\n");
+          if ((_resolution + _resolution) != (viewport[2] + viewport[3])) {
+            fprintf(stderr,
+                    "Viewport does not meet the resolution requirement!\n");
             exit(1);
           }
           fprintf(stderr, "EGL+OpenGL Setup complete.\n");
@@ -344,9 +356,13 @@ void *render(void *v) {
 
           const GLubyte *eglVendor = eglQueryString(eglDisplay, EGL_VENDOR);
           const GLubyte *eglVersion = eglQueryString(eglDisplay, EGL_VERSION);
-          const GLubyte *eglExtensions = eglQueryString(eglDisplay, EGL_EXTENSIONS);
+          const GLubyte *eglExtensions =
+              eglQueryString(eglDisplay, EGL_EXTENSIONS);
           const GLubyte *eglAPIs = eglQueryString(eglDisplay, EGL_CLIENT_APIS);
-          fprintf(stderr, "EGL Info\n\tVendor - %s\n\tVersion - %s\n\tExtensions - %s\n\tAPIs - %s\n", eglVendor, eglVersion, eglExtensions, eglAPIs);
+          fprintf(stderr,
+                  "EGL Info\n\tVendor - %s\n\tVersion - %s\n\tExtensions - "
+                  "%s\n\tAPIs - %s\n",
+                  eglVendor, eglVersion, eglExtensions, eglAPIs);
 
           const GLubyte *glVendor = glGetString(GL_VENDOR);
           fprintf(stderr, "GL_VENDOR=%s\n", glVendor);
@@ -691,7 +707,7 @@ void *render(void *v) {
               snprintf(temp, sizeof(temp), "aNode%lu", (unsigned long)(i + 1));
 
               aNodeLocations[i] = glGetAttribLocation(program, temp);
-              if(aNodeLocations[i] != -1) {
+              if (aNodeLocations[i] != -1) {
                 glBindBuffer(GL_ARRAY_BUFFER, aNodeBuffers[i]);
                 glVertexAttribPointer(aNodeLocations[i], 1, nattribs[i].type,
                                       GL_FALSE, 0, 0);
@@ -734,16 +750,17 @@ void *render(void *v) {
                          _partition_cache[i].indexBuffer);
             if (logGLCalls &&
                 _partition_cache[i].partitions.length * sizeof(GLuint) > 0)
-                mabLogMessage(
-                    "glBufferData", "%lu",
-                    _partition_cache[i].partitions.length * sizeof(GLuint));
+              mabLogMessage(
+                  "glBufferData", "%lu",
+                  _partition_cache[i].partitions.length * sizeof(GLuint));
             if (_partition_cache[i].partitions.length * sizeof(GLuint) > 0) {
               glGenBuffers(1, &_partition_cache[i].indexBuffer);
               glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
-                          _partition_cache[i].indexBuffer);
-              glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                          _partition_cache[i].partitions.length * sizeof(GLuint),
-                          _partition_cache[i].partitions.data, GL_STATIC_DRAW);
+                           _partition_cache[i].indexBuffer);
+              glBufferData(
+                  GL_ELEMENT_ARRAY_BUFFER,
+                  _partition_cache[i].partitions.length * sizeof(GLuint),
+                  _partition_cache[i].partitions.data, GL_STATIC_DRAW);
               glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
             }
           }
@@ -817,10 +834,10 @@ void *render(void *v) {
                       // GLuint q;
                       // glGenQueries(1, &q);
 
-                      //glBeginQuery(GL_SAMPLES_PASSED, q);
+                      // glBeginQuery(GL_SAMPLES_PASSED, q);
                       glDrawElements(GL_LINES, length * 2, GL_UNSIGNED_INT,
                                      (void *)(intptr_t)startIdx);
-                      //glEndQuery(GL_SAMPLES_PASSED);
+                      // glEndQuery(GL_SAMPLES_PASSED);
 
                       // GLint samples;
                       // glGetQueryObjectiv(q, GL_QUERY_RESULT, &samples);
@@ -839,88 +856,92 @@ void *render(void *v) {
                     glDrawElements(GL_LINES, pd->partitions.length,
                                    GL_UNSIGNED_INT, 0);
                     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-                    //printf(stderr, "\n\n\n", _partition_cache[idx].indexBuffer);
-                 // }
+                    // printf(stderr, "\n\n\n",
+                    // _partition_cache[idx].indexBuffer);
+                    // }
+                  }
                 }
               }
             }
+            glFlush();
+            glReadBuffer(GL_COLOR_ATTACHMENT0);
+            glReadPixels(0, 0, _resolution, _resolution, GL_RGBA,
+                         GL_UNSIGNED_BYTE, _image);
+            glFinish();
           }
-          glFlush();
-          glReadBuffer(GL_COLOR_ATTACHMENT0);
-          glReadPixels(0, 0, _resolution, _resolution, GL_RGBA, GL_UNSIGNED_BYTE, _image); 
-          glFinish();
-        }
-        __attribute__((fallthrough));
+          __attribute__((fallthrough));
 
-      case WAIT:
-      done_with_request:
-        // give control of buffer
-        pthread_barrier_wait(_barrier);
+          case WAIT:
+          done_with_request:
+            // give control of buffer
+            pthread_barrier_wait(_barrier);
 
-        // wait for them to be done
-        pthread_barrier_wait(_barrier);
-        mabLogEnd(NULL);
+            // wait for them to be done
+            pthread_barrier_wait(_barrier);
+            mabLogEnd(NULL);
 
-      wait_for_request:
-        // wait for request
-        pthread_barrier_wait(_barrier);
+          wait_for_request:
+            // wait for request
+            pthread_barrier_wait(_barrier);
 
-        mabLogContinue(_info);
-        mabLogAction("receive from request thread");
+            mabLogContinue(_info);
+            mabLogAction("receive from request thread");
 
-        where = RENDER;
+            where = RENDER;
 
-        logGLCalls = _logGLCalls;
-        doOcclusionCulling = _doOcclusionCulling;
+            logGLCalls = _logGLCalls;
+            doOcclusionCulling = _doOcclusionCulling;
 
-        if (fabsf(x - _x) > 0.1) {
-          x = _x;
-          where = RENDER;
-        }
-        if (fabsf(y - _y) > 0.1) {
-          y = _y;
-          where = RENDER;
-        }
-        if (vertexShaderSource == NULL ||
-            strcmp(vertexShaderSource, _vertexShaderSource) != 0) {
-          if (vertexShaderSource) free(vertexShaderSource);
-          vertexShaderSource = strdup(_vertexShaderSource);
-          where = INIT_PROGRAM;
-        }
-        if (fragmentShaderSource == NULL ||
-            strcmp(fragmentShaderSource, _fragmentShaderSource) != 0) {
-          if (fragmentShaderSource) free(fragmentShaderSource);
-          fragmentShaderSource = strdup(_fragmentShaderSource);
-          where = INIT_PROGRAM;
-        }
-        if (max_depth != _max_depth) {
-          max_depth = _max_depth;
-          where = INIT_PARTITION;
-        }
-        if (dcIdent != _dcIdent) {
-          dcIdent = _dcIdent;
-          if (dcIndex) free(dcIndex);
-          dcIndex = _dcIndex;
-          if (dcMult) free(dcMult);
-          dcMult = _dcMult;
-          if (dcOffset) free(dcOffset);
-          dcOffset = _dcOffset;
-          dcMinMult = _dcMinMult;
-          dcMaxMult = _dcMaxMult;
-          where = INIT_SORT;
-        }
-        if (dataset == NULL || strcmp(dataset, _dataset) != 0) {
-          if (dataset) free(dataset);
-          dataset = strdup(_dataset);
-          where = INIT_GRAPH;
-        }
-        if (first) {
-          first = GL_FALSE;
-          where = INIT_OSMESA;
-        }
+            if (fabsf(x - _x) > 0.1) {
+              x = _x;
+              where = RENDER;
+            }
+            if (fabsf(y - _y) > 0.1) {
+              y = _y;
+              where = RENDER;
+            }
+            if (vertexShaderSource == NULL ||
+                strcmp(vertexShaderSource, _vertexShaderSource) != 0) {
+              if (vertexShaderSource) free(vertexShaderSource);
+              vertexShaderSource = strdup(_vertexShaderSource);
+              where = INIT_PROGRAM;
+            }
+            if (fragmentShaderSource == NULL ||
+                strcmp(fragmentShaderSource, _fragmentShaderSource) != 0) {
+              if (fragmentShaderSource) free(fragmentShaderSource);
+              fragmentShaderSource = strdup(_fragmentShaderSource);
+              where = INIT_PROGRAM;
+            }
+            if (max_depth != _max_depth) {
+              max_depth = _max_depth;
+              where = INIT_PARTITION;
+            }
+            if (dcIdent != _dcIdent) {
+              dcIdent = _dcIdent;
+              if (dcIndex) free(dcIndex);
+              dcIndex = _dcIndex;
+              if (dcMult) free(dcMult);
+              dcMult = _dcMult;
+              if (dcOffset) free(dcOffset);
+              dcOffset = _dcOffset;
+              dcMinMult = _dcMinMult;
+              dcMaxMult = _dcMaxMult;
+              where = INIT_SORT;
+            }
+            if (dataset == NULL || strcmp(dataset, _dataset) != 0) {
+              if (dataset) free(dataset);
+              dataset = strdup(_dataset);
+              where = INIT_GRAPH;
+            }
+            if (first) {
+              first = GL_FALSE;
+              where = INIT_OSMESA;
+            }
 
-        break;
-    } /* switch */
+            break;
+        } /* switch */
+    }
+  }
 } /* render */
 
 size_t tojpeg(void *rgba, int resolution, void **jpg, size_t *jpgsize) {
@@ -1202,7 +1223,7 @@ ANSWER(Tile) {
       } else {
         MAB_WRAP("jpeg") {
           output = NULL;
-          outputlen = 0;        
+          outputlen = 0;
           tojpeg(_image, _resolution, &output, &outputlen);
         }
 
