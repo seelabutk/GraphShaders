@@ -103,15 +103,18 @@ static volatile struct attrib *edges;
 
 // EGL STATICS
 static volatile EGLDisplay eglDisplay = EGL_NO_DISPLAY;
-static volatile EGLSurface eglSurface = EGL_NO_SURFACE;
 static volatile EGLContext eglContext = NULL;
 static volatile GLuint eglFrameBuffer = 0;
 static volatile GLuint eglFrameBufferColorAttachmentTexture = 0;
 static volatile GLuint eglFrameBufferDepthAttachmentTexture = 0;
 
 /** EGL SPECIFIC SETUP **/
+/// A surface that is RGBA8
+/// A surface that has a depth + stencil 24bit/8bit UInt
+/// A surface that is OpenGL _NOT ES_ conformant
+/// A surface that is renderable
+/// A surface that will not take caveats (must meet all demands!)
 static const EGLint configAttribs[] = {
-        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
         EGL_COLOR_BUFFER_TYPE, EGL_RGB_BUFFER,
         EGL_BLUE_SIZE, 8,
         EGL_GREEN_SIZE, 8,
@@ -250,10 +253,11 @@ void *render(void *v) {
           }
 
           // Try to snag a Context with OpenGL4.6 + Debug Features.
+          // Compatibility profile for Global VAO
           const EGLint contextAttribs[] = {
             EGL_CONTEXT_MAJOR_VERSION, 4,
             EGL_CONTEXT_MINOR_VERSION, 6,
-            EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+            EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT,
             EGL_CONTEXT_OPENGL_DEBUG, EGL_TRUE,
             EGL_NONE
           };
@@ -728,17 +732,20 @@ void *render(void *v) {
             glGenBuffers(1, &_partition_cache[i].indexBuffer);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
                          _partition_cache[i].indexBuffer);
-
             if (logGLCalls &&
                 _partition_cache[i].partitions.length * sizeof(GLuint) > 0)
-              mabLogMessage(
-                  "glBufferData", "%lu",
-                  _partition_cache[i].partitions.length * sizeof(GLuint));
-
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                         _partition_cache[i].partitions.length * sizeof(GLuint),
-                         _partition_cache[i].partitions.data, GL_STATIC_DRAW);
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+                mabLogMessage(
+                    "glBufferData", "%lu",
+                    _partition_cache[i].partitions.length * sizeof(GLuint));
+            if (_partition_cache[i].partitions.length * sizeof(GLuint) > 0) {
+              glGenBuffers(1, &_partition_cache[i].indexBuffer);
+              glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
+                          _partition_cache[i].indexBuffer);
+              glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                          _partition_cache[i].partitions.length * sizeof(GLuint),
+                          _partition_cache[i].partitions.data, GL_STATIC_DRAW);
+              glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+            }
           }
         }
         __attribute__((fallthrough));
@@ -807,16 +814,16 @@ void *render(void *v) {
                                        ? batchRenderSize
                                        : numEdges - startIdx;
 
-                      GLuint q;
-                      glGenQueries(1, &q);
+                      // GLuint q;
+                      // glGenQueries(1, &q);
 
-                      glBeginQuery(GL_SAMPLES_PASSED, q);
+                      //glBeginQuery(GL_SAMPLES_PASSED, q);
                       glDrawElements(GL_LINES, length * 2, GL_UNSIGNED_INT,
                                      (void *)(intptr_t)startIdx);
-                      glEndQuery(GL_SAMPLES_PASSED);
+                      //glEndQuery(GL_SAMPLES_PASSED);
 
-                      GLint samples;
-                      glGetQueryObjectiv(q, GL_QUERY_RESULT, &samples);
+                      // GLint samples;
+                      // glGetQueryObjectiv(q, GL_QUERY_RESULT, &samples);
 
                       // if(samples == 0)    break;
                     }
@@ -827,17 +834,18 @@ void *render(void *v) {
                       if (pd->partitions.length > 0)
                         mabLogMessage("glDrawElements", "%lu",
                                       pd->partitions.length);
-
                     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
                                  _partition_cache[idx].indexBuffer);
                     glDrawElements(GL_LINES, pd->partitions.length,
                                    GL_UNSIGNED_INT, 0);
                     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-                  }
+                    //printf(stderr, "\n\n\n", _partition_cache[idx].indexBuffer);
+                 // }
                 }
               }
             }
           }
+          glFlush();
           glReadBuffer(GL_COLOR_ATTACHMENT0);
           glReadPixels(0, 0, _resolution, _resolution, GL_RGBA, GL_UNSIGNED_BYTE, _image); 
           glFinish();
@@ -1194,7 +1202,7 @@ ANSWER(Tile) {
       } else {
         MAB_WRAP("jpeg") {
           output = NULL;
-          outputlen = 0;
+          outputlen = 0;        
           tojpeg(_image, _resolution, &output, &outputlen);
         }
 
