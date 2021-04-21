@@ -391,7 +391,6 @@ void *render(void *v) {
               nattribs[i] = (struct attrib){0};
 
               fread(&nattribs[i].size, sizeof(nattribs[i].size), 1, f);
-
               fread(&nattribs[i].rawtype, sizeof(nattribs[i].rawtype), 1, f);
               switch (nattribs[i].rawtype) {
                 case 'f':
@@ -406,7 +405,6 @@ void *render(void *v) {
               }
 
               fread(&nattribs[i].count, sizeof(nattribs[i].count), 1, f);
-
               fread(nattribs[i].range, sizeof(nattribs[i].range), 1, f);
 
               nattribs[i].data = malloc(nattribs[i].size);
