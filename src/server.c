@@ -785,6 +785,7 @@ void *render(void *v) {
           glDepthFunc(GL_LEQUAL);
 
           glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+          glFinish();
 
           // get current partition resolution by zoom level
           unsigned long res = (unsigned long)pow(2, _z);
@@ -861,7 +862,7 @@ void *render(void *v) {
                 }
               }
             }
-            glFlush();
+            glFinish();
             glReadBuffer(GL_COLOR_ATTACHMENT0);
             glReadPixels(0, 0, _resolution, _resolution, GL_RGBA,
                          GL_UNSIGNED_BYTE, _image);
