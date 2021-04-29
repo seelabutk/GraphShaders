@@ -70,7 +70,8 @@ code[class*="language-"] {
 <script type="x-shader/x-vertex" id="default-vert">
 		void node(in float x, in float y, in float date, in float _numMaint, in float cve, out float vulnerable) {
 			vulnerable = cve;
-			fg_NodePosition = vec3(x, y, 0.5);
+			fg_NodePosition = vec2(x, y);
+            fg_NodeDepth = fg_mean(x);
 		}
 </script><!-- #default-vert -->
 <script type="x-shader/x-fragment" id="default-frag">
@@ -78,7 +79,7 @@ code[class*="language-"] {
 			vec4 red = vec4(0.8, 0.1, 0.1, 1.0);
 			vec4 green = vec4(0.0, 1.0, 0.0, 1.0);
 			vec4 color = mix(red, green, vulnerable);
-			fg_FragColor = (1.0 - fg_FragCoord.z) * color;
+			fg_FragColor = (1.0 - fg_FragDepth) * color;
 		} 
 </script><!-- default-frag -->
 <script type="module">
@@ -101,8 +102,6 @@ const jar = new CodeJar(document.querySelector('#editor'), Prism.highlightElemen
 jar.updateCode(
 `fg({
 	params: guiParams, 
-	variables: 'X Y Date MaintainerCount CVE Source',
-	depth: 'mean(-Date)',
 	node: (config) => \`
 		${document.querySelector('#default-vert').textContent.trim()}
 	\`,
@@ -112,7 +111,9 @@ jar.updateCode(
 });
 `);
 
-let gui = null, config = null, dcIdent = 1000*Math.random()|0, lastdepth = null, thevariables, thedc = null, thedepth = null, thevert = null, thefrag = null;
+const thevariables = ['x', 'y', 'date', 'maintainercount', 'cve', 'source'].join(' ');
+
+let gui = null, config = null, dcIdent = 1000*Math.random()|0, lastdepth = null, thedc = null, thedepth = null, thevert = null, thefrag = null;
 let debounce = null;
 function fg({ params, variables, depth, node, edge }) {
 	if (gui === null) {
@@ -131,7 +132,7 @@ function fg({ params, variables, depth, node, edge }) {
 	thedepth = depth;
 	thevert = node;
 	thefrag = edge;
-	thevariables = variables;
+	//thevariables = variables;
 	thedc = makeDC();
 	if (thedc === null) return;
 	if (debounce == null)
@@ -351,21 +352,26 @@ function makeDC() {
 		offset: [],
 		combine: 0.5,
 	};
+    const vert = thevert(config);
+    const match = vert.match(/fg_NodeDepth = (.*);/);
+    console.log({ match });
+    const thedepth = match[1];
+    console.log({ thedepth });
 	const code = math.compile(thedepth);
 	const variables = thevariables.split(' ');
 
 	const scope = {
-		min: (v) => v,
-		max: (v) => v,
-		mean: (v) => v,
+		fg_min: (v) => v,
+		fg_max: (v) => v,
+		fg_mean: (v) => v,
 	};
 	variables.forEach((v) => { scope[v] = 0.0; });
 
 	try {
 		const combine = code.evaluate({ ...scope,
-			min: () => 'min',
-			max: () => 'max',
-			mean: () => 'mean',
+			fg_min: () => 'min',
+			fg_max: () => 'max',
+			fg_mean: () => 'mean',
 		});
 		if (combine === 'min') dc.combine = 0.0;
 		else if (combine === 'max') dc.combine = 1.0;
@@ -417,6 +423,7 @@ function makeUrlTemplate() {
 	const vert = btoa(thevert(config));
 	const frag = btoa(thefrag(config));
 	console.log(atob(vert))
+    console.log({ thedc });
 	const dcIndex = btoa(new Uint32Array(thedc.index));
 	const dcMult = btoa(new Float32Array(thedc.mult));
 	const dcOffset = btoa(new Float32Array(thedc.offset));
