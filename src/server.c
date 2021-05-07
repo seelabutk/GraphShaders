@@ -767,14 +767,8 @@ void *render(void *v) {
 
       case RENDER:
         MAB_WRAP("render") {
-          glUniform1f(uTranslateX, -1.0f * _x);
-          glUniform1f(uTranslateY, -1.0f * _y);
-          glUniform1f(uScale, pow(2.0f, _z));
-
-          for (i = 0; i < ncount; ++i) {
-            glUniform1f(uNodeMins[i], nattribs[i].frange[0]);
-            glUniform1f(uNodeMaxs[i], nattribs[i].frange[1]);
-          }
+          // get current partition resolution by zoom level
+          unsigned long res = (unsigned long)pow(2, _z);
 
           glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
@@ -785,89 +779,94 @@ void *render(void *v) {
           glDepthFunc(GL_LEQUAL);
 
           glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-          glFinish();
 
-          // get current partition resolution by zoom level
-          unsigned long res = (unsigned long)pow(2, _z);
+          if (_x >= 0 && _y >= 0 && _x < res && _y < res) {
+            glUniform1f(uTranslateX, -1.0f * _x);
+            glUniform1f(uTranslateY, -1.0f * _y);
+            glUniform1f(uScale, pow(2.0f, _z));
 
-          // figure out which partition we're rendering in
-          unsigned long rx =
-              (unsigned long)interpolate(0, res, 0, _max_res, _x);
-          unsigned long ry =
-              (unsigned long)interpolate(0, res, 0, _max_res, _y);
+            for (i = 0; i < ncount; ++i) {
+              glUniform1f(uNodeMins[i], nattribs[i].frange[0]);
+              glUniform1f(uNodeMaxs[i], nattribs[i].frange[1]);
+            }
 
-          if (rx < _max_res && ry < _max_res) {
-            int numTilesX = (int)ceil((float)_max_res / (float)res);
-            int numTilesY =
-                numTilesX;  // seperated just in case if in the future we want
-                            // to have different x and y
+            // figure out which partition we're rendering in
+            unsigned long rx =
+                (unsigned long)interpolate(0, res, 0, _max_res, _x);
+            unsigned long ry =
+                (unsigned long)interpolate(0, res, 0, _max_res, _y);
 
-            MAB_WRAP("rendering tiles") {
-              for (i = 0; i < numTilesX; ++i) {
-                for (j = 0; j < numTilesY; ++j) {
-                  unsigned long idx = (ry + j) * _max_res + (rx + i);
-                  PartitionData *pd = &_partition_cache[idx];
-                  pd->count++;
+            if (rx < _max_res && ry < _max_res) {
+              int numTilesX = (int)ceil((float)_max_res / (float)res);
+              int numTilesY =
+                  numTilesX;  // seperated just in case if in the future we want
+                              // to have different x and y
 
-                  if (pd->partitions.length == 0) continue;
-                  if (doOcclusionCulling) {
-                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
-                                 _partition_cache[idx].indexBuffer);
-                    if (logGLCalls)
-                      if (pd->partitions.length > 0)
-                        mabLogMessage("glDrawElements", "%lu",
-                                      pd->partitions.length);
+              MAB_WRAP("rendering tiles") {
+                for (i = 0; i < numTilesX; ++i) {
+                  for (j = 0; j < numTilesY; ++j) {
+                    unsigned long idx = (ry + j) * _max_res + (rx + i);
+                    PartitionData *pd = &_partition_cache[idx];
+                    pd->count++;
 
-                    int batchRenderSize =
-                        10000;  // experiment with this, should be some function
-                                // of max_res
-                    int numEdges = pd->partitions.length / 2;
-                    for (int i = 0; i < (int)ceil((double)numEdges /
-                                                  (double)batchRenderSize);
-                         ++i) {
-                      int startIdx = i * batchRenderSize;
-                      int length = numEdges > (startIdx + batchRenderSize)
-                                       ? batchRenderSize
-                                       : numEdges - startIdx;
+                    if (pd->partitions.length == 0) continue;
+                    if (doOcclusionCulling) {
+                      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
+                                   _partition_cache[idx].indexBuffer);
+                      if (logGLCalls)
+                        if (pd->partitions.length > 0)
+                          mabLogMessage("glDrawElements", "%lu",
+                                        pd->partitions.length);
 
-                      // GLuint q;
-                      // glGenQueries(1, &q);
+                      int batchRenderSize =
+                          10000;  // experiment with this, should be some
+                                  // function of max_res
+                      int numEdges = pd->partitions.length / 2;
+                      for (int i = 0; i < (int)ceil((double)numEdges /
+                                                    (double)batchRenderSize);
+                           ++i) {
+                        int startIdx = i * batchRenderSize;
+                        int length = numEdges > (startIdx + batchRenderSize)
+                                         ? batchRenderSize
+                                         : numEdges - startIdx;
 
-                      // glBeginQuery(GL_SAMPLES_PASSED, q);
-                      glDrawElements(GL_LINES, length * 2, GL_UNSIGNED_INT,
-                                     (void *)(intptr_t)startIdx);
-                      // glEndQuery(GL_SAMPLES_PASSED);
+                        // GLuint q;
+                        // glGenQueries(1, &q);
 
-                      // GLint samples;
-                      // glGetQueryObjectiv(q, GL_QUERY_RESULT, &samples);
+                        // glBeginQuery(GL_SAMPLES_PASSED, q);
+                        glDrawElements(GL_LINES, length * 2, GL_UNSIGNED_INT,
+                                       (void *)(intptr_t)startIdx);
+                        // glEndQuery(GL_SAMPLES_PASSED);
 
-                      // if(samples == 0)    break;
+                        // GLint samples;
+                        // glGetQueryObjectiv(q, GL_QUERY_RESULT, &samples);
+
+                        // if(samples == 0)    break;
+                      }
+                      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+                    } else {
+                      if (logGLCalls)
+                        if (pd->partitions.length > 0)
+                          mabLogMessage("glDrawElements", "%lu",
+                                        pd->partitions.length);
+                      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
+                                   _partition_cache[idx].indexBuffer);
+                      glDrawElements(GL_LINES, pd->partitions.length,
+                                     GL_UNSIGNED_INT, 0);
+                      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+                      // printf(stderr, "\n\n\n",
+                      // _partition_cache[idx].indexBuffer);
+                      // }
                     }
-                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-                  } else {
-                    if (logGLCalls)
-                      if (pd->partitions.length > 0)
-                        mabLogMessage("glDrawElements", "%lu",
-                                      pd->partitions.length);
-                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
-                                 _partition_cache[idx].indexBuffer);
-                    glDrawElements(GL_LINES, pd->partitions.length,
-                                   GL_UNSIGNED_INT, 0);
-                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-                    // printf(stderr, "\n\n\n",
-                    // _partition_cache[idx].indexBuffer);
-                    // }
                   }
                 }
               }
             }
-            glFinish();
-            glReadBuffer(GL_COLOR_ATTACHMENT0);
-            glReadPixels(0, 0, _resolution, _resolution, GL_RGBA,
-                         GL_UNSIGNED_BYTE, _image);
-            glFinish();
           }
+          glReadBuffer(GL_COLOR_ATTACHMENT0);
+          glReadPixels(0, 0, _resolution, _resolution, GL_RGBA,
+                        GL_UNSIGNED_BYTE, _image);
           __attribute__((fallthrough));
 
           case WAIT:
