@@ -1,5 +1,5 @@
 {% if not preprocessed %}
-#define edge(...) edge(__VA_ARGS__, in vec3 fg_FragCoord, out vec4 fg_FragColor)
+#define edge(...) edge(__VA_ARGS__, in vec2 fg_FragCoord, in float fg_FragDepth, out vec4 fg_FragColor)
 {% else %}
 #version 300 es
 precision mediump float;

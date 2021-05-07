@@ -1,5 +1,8 @@
 {% if not preprocessed %}
-#define node(...) node(__VA_ARGS__, out vec3 fg_NodePosition)
+#define node(...) node(__VA_ARGS__, out vec2 fg_NodePosition, out float fg_NodeDepth)
+#define fg_mean(x) (x)
+#define fg_min(x) (x)
+#define fg_max(x) (x)
 {% else %}
 #version 300 es
 precision mediump float;
@@ -17,7 +20,8 @@ uniform float uTranslateX, uTranslateY, uScale;
 {% for param in out_params -%}
 {{ StorageQualifier(param.storage).name|lower }} {{ param.base_type.name }} {{ param.name }};
 {% endfor %}
-out vec3 fg_FragCoord;
+out vec2 fg_FragCoord;
+out float fg_FragDepth;
 
 void main() {
     node(
@@ -30,9 +34,10 @@ void main() {
         {% endfor %}
     );
 
-    fg_NodePosition = vec3(uScale * fg_NodePosition.xy + vec2(uTranslateX, uTranslateY), fg_NodePosition.z);
+    fg_NodePosition = uScale * fg_NodePosition.xy + vec2(uTranslateX, uTranslateY);
 
-    gl_Position = vec4(2.0 * fg_NodePosition.xy - 1.0, fg_NodePosition.z, 1.0);
+    gl_Position = vec4(2.0 * fg_NodePosition.xy - 1.0, fg_NodeDepth, 1.0);
     fg_FragCoord = fg_NodePosition;
+    fg_FragDepth = fg_NodeDepth;
 }
 {% endif %}

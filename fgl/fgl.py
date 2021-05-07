@@ -47,6 +47,7 @@ def b64decode(s, *, b64decode=b64decode):
 
 def preprocess(source):
     preprocessor = Preprocessor()
+    preprocessor.line_directive = None
     preprocessor.parse(source)
 
     stream = StringIO()
