@@ -200,8 +200,8 @@ def main_makeurl_repl(infile, outfile):
         nodeshader = StringIO()
         try:
             main_node(nodefile, nodeshader)
-        except:
-            pass
+        except Exception as e:
+            import traceback; traceback.print_exc(file=sys.stderr)
         nodeshader = nodeshader.getvalue()
 
         edgefile = StringIO(b64decode(options["frag"][len("base64:"):]))
@@ -215,6 +215,9 @@ def main_makeurl_repl(infile, outfile):
 
         options['vert'] = f'base64:{b64encode(nodeshader)}'
         options['frag'] = f'base64:{b64encode(edgeshader)}'
+
+        #print(f'{b64decode(options["vert"][len("base64:"):]) =!s}', file=sys.stderr)
+        #print(f'{b64decode(options["frag"][len("base64:"):]) =!s}', file=sys.stderr)
 
         options = ',' + ','.join(flatten(options.items()))
         z, x, y = map(str, (z, x, y))

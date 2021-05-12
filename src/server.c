@@ -175,7 +175,7 @@ void *render(void *v) {
   unsigned long i, j;
   GLuint64 ncount, ecount;
   GLint rc, uTranslateX, uTranslateY, uScale, uNodeMins[16], uNodeMaxs[16],
-      aNodeLocations[16];
+      aNodeLocations[16], uCat6[6];
   GLchar log[512];
   struct attrib nattribs[16], eattribs[16], *edges;
   FILE *f;
@@ -733,6 +733,12 @@ void *render(void *v) {
             snprintf(temp, sizeof(temp), "uNodeMax%lu", (unsigned long)(i + 1));
             uNodeMaxs[i] = glGetUniformLocation(program, temp);
           }
+
+          for (i = 0; i < 6; ++i) {
+            char temp[32];
+            snprintf(temp, sizeof(temp), "uCat6[%lu]", (unsigned long)i);
+            uCat6[i] = glGetUniformLocation(program, temp);
+          }
         }
         __attribute__((fallthrough));
 
@@ -784,6 +790,13 @@ void *render(void *v) {
             glUniform1f(uTranslateX, -1.0f * _x);
             glUniform1f(uTranslateY, -1.0f * _y);
             glUniform1f(uScale, pow(2.0f, _z));
+
+						glUniform3f(uCat6[0], 0.86, 0.3712, 0.33999);
+						glUniform3f(uCat6[1], 0.82879, 0.86, 0.33999);
+						glUniform3f(uCat6[2], 0.33999, 0.86, 0.3712);
+						glUniform3f(uCat6[3], 0.33999, 0.82879, 0.86);
+						glUniform3f(uCat6[4], 0.3712, 0.33999, 0.86);
+						glUniform3f(uCat6[5], 0.86, 0.33999, 0.82879);
 
             for (i = 0; i < ncount; ++i) {
               glUniform1f(uNodeMins[i], nattribs[i].frange[0]);

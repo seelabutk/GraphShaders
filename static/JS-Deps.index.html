@@ -71,15 +71,15 @@ code[class*="language-"] {
 		void node(in float x, in float y, in float date, in float _numMaint, in float cve, out float vulnerable) {
 			vulnerable = cve;
 			fg_NodePosition = vec2(x, y);
-            fg_NodeDepth = fg_mean(x);
+            fg_NodeDepth = fg_min(-cve);
 		}
 </script><!-- #default-vert -->
 <script type="x-shader/x-fragment" id="default-frag">
 		void edge(in float vulnerable) {
-			vec4 red = vec4(0.8, 0.1, 0.1, 1.0);
-			vec4 green = vec4(0.0, 1.0, 0.0, 1.0);
+			vec4 red = vec4(0.8, 0.1, 0.1, 0.1);
+			vec4 green = vec4(0.0, 1.0, 0.0, 0.1);
 			vec4 color = mix(red, green, vulnerable);
-			fg_FragColor = (1.0 - fg_FragDepth) * color;
+			fg_FragColor = color;
 		} 
 </script><!-- default-frag -->
 <script type="module">
@@ -113,7 +113,7 @@ jar.updateCode(
 
 const thevariables = ['x', 'y', 'date', 'maintainercount', 'cve', 'source'].join(' ');
 
-let gui = null, config = null, dcIdent = 1000*Math.random()|0, lastdepth = null, thedc = null, thedepth = null, thevert = null, thefrag = null;
+let gui = null, config = null, dcIdent = 0, lastdepth = null, thedc = null, thedepth = null, thevert = null, thefrag = null;
 let debounce = null;
 function fg({ params, variables, depth, node, edge }) {
 	if (gui === null) {
