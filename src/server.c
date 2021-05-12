@@ -52,7 +52,7 @@ struct attrib {
 
 typedef struct partition_data {
   Vec_GLuint partitions;
-  // Vec_GLuint originIdx;
+  Vec_GLuint edgeIdxs;
   GLuint indexBuffer;
   GLuint count;
   GLuint dcIdent;
@@ -303,7 +303,7 @@ void *render(void *v) {
           if (_partition_cache) {
             for (i = 0; i < _max_res * _max_res; ++i) {
               vec_destroy(&_partition_cache[i].partitions);
-              // vec_destroy(&_partition_cache[i].originIdx);
+              vec_destroy(&_partition_cache[i].edgeIdxs);
             }
             free(_partition_cache);
             _partition_cache = NULL;
@@ -323,7 +323,7 @@ void *render(void *v) {
           }
           for (i = 0; i < _max_res * _max_res; ++i) {
             vec_init(&_partition_cache[i].partitions);
-            // vec_init(&_partition_cache[i].originIdx);
+            vec_init(&_partition_cache[i].edgeIdxs);
           }
 
           GLfloat *vertsX = nattribs[0].floats;
@@ -350,26 +350,18 @@ void *render(void *v) {
             GLfloat x1 = vertsX[e1];
             GLfloat y1 = vertsY[e1];
 
-            Vec_GLuint partitions = voxel_traversal(
-                _max_res, _max_res, x0, y0, x1, y1, minX, minY, maxX, maxY);
+            Vec_GLuint partitions = voxel_traversal(_max_res, _max_res, x0, y0, x1, y1, minX, minY, maxX, maxY);
             // printf("edge lies in %lu voxels\n", partitions.length);
-            for (j = 0; j < partitions.length; ++j) {
-              // printf("pushing edge (%d,%d) to partition %d\n", e0, e1,
-              // partitions.data[j]);
-              assert(vec_push(&_partition_cache[partitions.data[j]].partitions,
-                              e0) != -1);
-              assert(vec_push(&_partition_cache[partitions.data[j]].partitions,
-                              e1) != -1);
 
-              // assert(vec_push(&_partition_cache[partitions.data[j]].originIdx,
-              // i+0) != -1);
-              // assert(vec_push(&_partition_cache[partitions.data[j]].originIdx,
-              // i+1) != -1);
+            for (j = 0; j < partitions.length; ++j) {
+              // printf("pushing edge (%d,%d) to partition %d\n", e0, e1, partitions.data[j]);
+			  assert(vec_push(&_partition_cache[partitions.data[j]].partitions, e0) != -1);
+              assert(vec_push(&_partition_cache[partitions.data[j]].partitions, e1) != -1);
+			  assert(vec_push(&_partition_cache[partitions.data[j]].edgeIdxs,  i/2) != -1);
             }
             vec_destroy(&partitions);
           }
           printf("100%% done\n");
-
           // log_partition_cache(_partition_cache);
         }
         __attribute__((fallthrough));
@@ -1189,7 +1181,7 @@ static void *fgl_transformer_thread(void *v) {
     dup2(proc_in[0], 0);
     dup2(proc_out[1], 1);
 
-    execlp("python3.8", "python3.8", "/opt/fgl/fgl.py", "makeurl_repl",
+    execlp("/usr/bin/python3.8", "/usr/bin/python3.8", "/opt/fgl/fgl.py", "makeurl_repl",
            (char *)NULL);
     perror("execlp");
     exit(1);
