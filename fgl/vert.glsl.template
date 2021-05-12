@@ -3,6 +3,8 @@
 #define fg_mean(x) (x)
 #define fg_min(x) (x)
 #define fg_max(x) (x)
+
+uniform vec3 uCat6[6];
 {% else %}
 #version 300 es
 precision mediump float;
@@ -16,8 +18,6 @@ uniform float uNodeMin1, uNodeMin2, uNodeMin3, uNodeMin4, uNodeMin5, uNodeMin6, 
 uniform float uNodeMax1, uNodeMax2, uNodeMax3, uNodeMax4, uNodeMax5, uNodeMax6, uNodeMax7, uNodeMax8;
 
 uniform float uTranslateX, uTranslateY, uScale;
-
-uniform vec3 uCat6[6];
 
 {% for param in out_params -%}
 {{ StorageQualifier(param.storage).name|lower }} {{ param.base_type.name }} {{ param.name }};
