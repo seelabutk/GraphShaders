@@ -151,17 +151,19 @@ def main_edge(infile, outfile):
 
 
 def main_makeurl(infile, nodefile, edgefile, outfile):
-    nodeshader = StringIO()
-    main_node(nodefile, nodeshader)
-    nodeshader = nodeshader.getvalue()
+    if nodefile is not None:
+        nodeshader = StringIO()
+        main_node(nodefile, nodeshader)
+        nodeshader = nodeshader.getvalue()
 
-    print(f'{nodeshader = !s}', file=sys.stderr)
+        print(f'{nodeshader = !s}', file=sys.stderr)
 
-    edgeshader = StringIO()
-    main_edge(edgefile, edgeshader)
-    edgeshader = edgeshader.getvalue()
+    if edgefile is not None:
+        edgeshader = StringIO()
+        main_edge(edgefile, edgeshader)
+        edgeshader = edgeshader.getvalue()
 
-    print(f'{edgeshader = !s}', file=sys.stderr)
+        print(f'{edgeshader = !s}', file=sys.stderr)
 
     for url in infile:
         url = url.rstrip()
@@ -245,8 +247,8 @@ def cli():
     makeurl = subparsers.add_parser('makeurl')
     makeurl.set_defaults(main=main_makeurl)
     makeurl.add_argument('--infile', '-i', default=sys.stdin, type=argparse.FileType('r'))
-    makeurl.add_argument('--nodefile', '-n', type=argparse.FileType('r'), required=True)
-    makeurl.add_argument('--edgefile', '-e', type=argparse.FileType('r'), required=True)
+    makeurl.add_argument('--nodefile', '-n', type=argparse.FileType('r'))
+    makeurl.add_argument('--edgefile', '-e', type=argparse.FileType('r'))
     makeurl.add_argument('--outfile', '-o', default=sys.stdout, type=argparse.FileType('w'))
 
     makeurl_repl = subparsers.add_parser('makeurl_repl')

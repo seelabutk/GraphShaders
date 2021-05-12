@@ -17,6 +17,8 @@ uniform float uNodeMax1, uNodeMax2, uNodeMax3, uNodeMax4, uNodeMax5, uNodeMax6, 
 
 uniform float uTranslateX, uTranslateY, uScale;
 
+uniform vec3 uCat6[6];
+
 {% for param in out_params -%}
 {{ StorageQualifier(param.storage).name|lower }} {{ param.base_type.name }} {{ param.name }};
 {% endfor %}
