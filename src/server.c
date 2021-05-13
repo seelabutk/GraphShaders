@@ -54,6 +54,7 @@ typedef struct partition_data {
   Vec_GLuint partitions;
   Vec_GLuint edgeIdxs;
   GLuint indexBuffer;
+  GLuint perPartitionSSBO;
   GLuint count;
   GLuint dcIdent;
 } PartitionData;
@@ -101,6 +102,9 @@ static volatile GLuint _max_depth = 0;
 static unsigned volatile _max_res;
 static PartitionData *_partition_cache;
 static volatile struct attrib *edges;
+
+// EDGE ATTRIBS
+static GLuint globalSSBO;
 
 // EGL STATICS
 static volatile EGLDisplay eglDisplay = EGL_NO_DISPLAY;
@@ -220,6 +224,8 @@ void *render(void *v) {
   x = y = z = INFINITY;
   dataset = vertexShaderSource = fragmentShaderSource = NULL;
   first = GL_TRUE;
+
+  globalSSBO = 0;
 
   // sync with main function
   pthread_barrier_wait(_barrier);
@@ -425,10 +431,20 @@ void *render(void *v) {
             f = fopen(temp, "r");
             fread(&ecount, sizeof(ecount), 1, f);
 
+            GLuint64 runningStride = 0;
+            GLuint64 runningSize = 0;
+            GLuint64 totalEdgeCount = 0;
+            // Edge count should be 1 more than the total count of edges.
+            fprintf(stderr, "edge count: %lu\n", ecount);
             for (i = 0; i < ecount; ++i) {
               eattribs[i] = (struct attrib){0};
 
               fread(&eattribs[i].size, sizeof(eattribs[i].size), 1, f);
+
+              if (!totalEdgeCount) {
+                // Why 8? The first column is twice the size of other! X+Y are combined!!
+                totalEdgeCount = eattribs[i].size / 8;
+              }
 
               fread(&eattribs[i].rawtype, sizeof(eattribs[i].rawtype), 1, f);
               switch (eattribs[i].rawtype) {
@@ -449,6 +465,54 @@ void *render(void *v) {
 
               eattribs[i].data = malloc(eattribs[i].size);
               fread(eattribs[i].data, 1, eattribs[i].size, f);
+              fprintf(stderr, "eattribs size is: %ld bytes \n", eattribs[i].size);
+              if (i > 0) {
+                runningStride += 4;
+                runningSize += eattribs[i].size;
+              }
+            }
+            fprintf(stderr, "Total bytes per edge: %lu, there are %lu edges \n", runningStride, totalEdgeCount);
+            fprintf(stderr, "Total size for edge attributes: %lu \n", runningSize);
+            // send me to jail
+            fprintf(stderr, "Next 16 byte alignment: %lu \n", ((GLint64)runningStride + 15) & -16);
+
+            if (globalSSBO) {
+              glDeleteBuffers(1, &globalSSBO);
+              globalSSBO = 0;
+            }
+
+            if (runningSize) {
+              glGenBuffers(1, &globalSSBO);
+              glBindBuffer(GL_SHADER_STORAGE_BUFFER, globalSSBO);
+
+              size_t amountPerEdge = ((GLint64)runningStride + 15) & -16;
+              // Add one more edge. Why? Edge IDs are zero indexed!
+              size_t ssboSize = (size_t)(totalEdgeCount + 1) * amountPerEdge;
+              void* edgeData = malloc(ssboSize);
+              memset(edgeData, 0, amountPerEdge);
+
+              int edgePad = ((int)(ecount - 1) + 3) & -4; 
+              fprintf(stderr, "edge pad: %d, edge count: %lu \n", edgePad, ecount);
+              fprintf(stderr, "Total size for edge attributes: %lu \n", runningSize);
+              for (int edgeNumber = 1; edgeNumber < totalEdgeCount + 1; ++edgeNumber) {
+                for (int i = 0; i < edgePad; ++i) {
+                  fprintf(stderr, "i: %d, ep: %d, ec: %d \n", i + 1, edgePad, ecount);
+                  if (i + 1 >= ecount) {
+                    ((float *)edgeData)[i * edgePad + i] = 0.0;
+                  } else {
+                    fprintf(stderr, "\tSet edge %d attribute %d to %f \n", edgeNumber, i + 1, eattribs[i + 1].floats[edgeNumber - 1]);
+                    ((float *)edgeData)[edgeNumber * edgePad + i] = eattribs[i + 1].floats[edgeNumber - 1];
+                  }
+                }
+              }
+
+              for (size_t i = 0; i < (size_t)(totalEdgeCount + 1) * edgePad; ++i) {
+                fprintf(stderr, "%d: %f ", i, ((float *)edgeData)[i]);
+              }
+              fprintf(stderr, "\n");
+
+              glBufferData(GL_SHADER_STORAGE_BUFFER, ssboSize, edgeData, GL_STATIC_DRAW);
+              glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
             }
 
             fclose(f);
@@ -515,8 +579,7 @@ void *render(void *v) {
             // printf("edge lies in %lu voxels\n", partitions.length);
 
             for (j = 0; j < partitions.length; ++j) {
-              // printf("pushing edge (%d,%d) to partition %d\n", e0, e1,
-              // partitions.data[j]);
+              fprintf(stderr, "pushing edge (%d,%d) to partition %d\n", e0, e1, partitions.data[j]);
               assert(vec_push(&_partition_cache[partitions.data[j]].partitions,
                               e0) != -1);
               assert(vec_push(&_partition_cache[partitions.data[j]].partitions,
@@ -696,6 +759,12 @@ void *render(void *v) {
 
       case INIT_ATTRIBUTES:
         MAB_WRAP("init node attributes") {
+          if (globalSSBO) {
+            fprintf(stderr, "Looks like we got a global buffer on our hands!\n");
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, globalSSBO);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, globalSSBO);
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+          }
           for (i = 0; i < ncount; ++i) MAB_WRAP("init attribute i=%d", i) {
               char temp[32];
               snprintf(temp, sizeof(temp), "aNode%lu", (unsigned long)(i + 1));
@@ -744,10 +813,12 @@ void *render(void *v) {
           for (i = 0; i < _max_res * _max_res; ++i) {
             if (_partition_cache[i].indexBuffer)
               glDeleteBuffers(1, &_partition_cache[i].indexBuffer);
-
-            glGenBuffers(1, &_partition_cache[i].indexBuffer);
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
-                         _partition_cache[i].indexBuffer);
+            if (_partition_cache[i].perPartitionSSBO)
+              glDeleteBuffers(1, &_partition_cache[i].perPartitionSSBO);
+            // This code was duped??????? See lines below.
+            // glGenBuffers(1, &_partition_cache[i].indexBuffer);
+            // glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
+            //              _partition_cache[i].indexBuffer);
             if (logGLCalls &&
                 _partition_cache[i].partitions.length * sizeof(GLuint) > 0)
               mabLogMessage(
@@ -762,6 +833,18 @@ void *render(void *v) {
                   _partition_cache[i].partitions.length * sizeof(GLuint),
                   _partition_cache[i].partitions.data, GL_STATIC_DRAW);
               glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+              glGenBuffers(1, &_partition_cache[i].perPartitionSSBO);
+              glBindBuffer(GL_SHADER_STORAGE_BUFFER,
+                           _partition_cache[i].perPartitionSSBO);
+              glBufferData(GL_SHADER_STORAGE_BUFFER,
+                           _partition_cache[i].edgeIdxs.length * sizeof(GLuint),
+                           _partition_cache[i].edgeIdxs.data, GL_STATIC_DRAW);
+              glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+              for (int i = 0; i < _partition_cache[i].edgeIdxs.length; ++i) {
+                fprintf(stderr, "At index: %d, found: %d \n", i, vec_at(&_partition_cache[i].edgeIdxs, i));
+              }
             }
           }
         }
@@ -787,12 +870,12 @@ void *render(void *v) {
             glUniform1f(uTranslateY, -1.0f * _y);
             glUniform1f(uScale, pow(2.0f, _z));
 
-						glUniform3f(uCat6[0], 0.86, 0.3712, 0.33999);
-						glUniform3f(uCat6[1], 0.82879, 0.86, 0.33999);
-						glUniform3f(uCat6[2], 0.33999, 0.86, 0.3712);
-						glUniform3f(uCat6[3], 0.33999, 0.82879, 0.86);
-						glUniform3f(uCat6[4], 0.3712, 0.33999, 0.86);
-						glUniform3f(uCat6[5], 0.86, 0.33999, 0.82879);
+            glUniform3f(uCat6[0], 0.86, 0.3712, 0.33999);
+            glUniform3f(uCat6[1], 0.82879, 0.86, 0.33999);
+            glUniform3f(uCat6[2], 0.33999, 0.86, 0.3712);
+            glUniform3f(uCat6[3], 0.33999, 0.82879, 0.86);
+            glUniform3f(uCat6[4], 0.3712, 0.33999, 0.86);
+            glUniform3f(uCat6[5], 0.86, 0.33999, 0.82879);
 
             for (i = 0; i < ncount; ++i) {
               glUniform1f(uNodeMins[i], nattribs[i].frange[0]);
@@ -861,9 +944,27 @@ void *render(void *v) {
                                         pd->partitions.length);
                       glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
                                    _partition_cache[idx].indexBuffer);
+
+                      // Some check to see if there are edge attributes...
+                      int thereAreEdgeAttributes = 1;
+                      if (thereAreEdgeAttributes) {
+                        glBindBuffer(GL_SHADER_STORAGE_BUFFER,
+                                     _partition_cache[idx].perPartitionSSBO);
+                        glBindBufferBase(
+                            GL_SHADER_STORAGE_BUFFER, 1,
+                            _partition_cache[idx].perPartitionSSBO);
+                      }  // end edge attribute setup
+
                       glDrawElements(GL_LINES, pd->partitions.length,
                                      GL_UNSIGNED_INT, 0);
                       glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+                      // Disable edge edge attribute buffer if there are edge
+                      // attributes...
+                      if (thereAreEdgeAttributes) {
+                        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+                      }  // end edge attributes
+
                       // printf(stderr, "\n\n\n",
                       // _partition_cache[idx].indexBuffer);
                       // }
