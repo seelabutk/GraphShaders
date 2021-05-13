@@ -3,6 +3,8 @@
 #define fg_mean(x) (x)
 #define fg_min(x) (x)
 #define fg_max(x) (x)
+
+uniform vec3 uCat6[6];
 {% else %}
 #version 300 es
 precision mediump float;
