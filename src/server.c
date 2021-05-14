@@ -513,6 +513,7 @@ void *render(void *v) {
 
               glBufferData(GL_SHADER_STORAGE_BUFFER, ssboSize, edgeData, GL_STATIC_DRAW);
               glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+              free(edgeData);
             }
 
             fclose(f);
@@ -586,6 +587,7 @@ void *render(void *v) {
                               e1) != -1);
               assert(vec_push(&_partition_cache[partitions.data[j]].edgeIdxs,
                               i / 2) != -1);
+              fprintf(stderr, "pushing %d to idx\n", i / 2);
             }
             vec_destroy(&partitions);
           }
@@ -842,8 +844,8 @@ void *render(void *v) {
                            _partition_cache[i].edgeIdxs.data, GL_STATIC_DRAW);
               glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-              for (int i = 0; i < _partition_cache[i].edgeIdxs.length; ++i) {
-                fprintf(stderr, "At index: %d, found: %d \n", i, vec_at(&_partition_cache[i].edgeIdxs, i));
+              for (int elemID = 0; elemID < _partition_cache[i].edgeIdxs.length; ++elemID) {
+                fprintf(stderr, "Partitio: %d - At index: %d, found: %d \n", i, elemID, vec_at(&_partition_cache[i].edgeIdxs, elemID));
               }
             }
           }
