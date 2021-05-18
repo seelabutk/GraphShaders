@@ -70,7 +70,7 @@ code[class*="language-"] {
 <script type="x-shader/x-vertex" id="default-vert">
 		void node(in float x, in float y, out float tt) {
 			fg_NodePosition = vec2(x, y);
-      fg_NodeDepth = fg_min(x);
+      		fg_NodeDepth = fg_min(x);
 			tt = 1.0;
 		}
 </script><!-- #default-vert -->
