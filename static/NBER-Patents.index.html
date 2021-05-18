@@ -110,7 +110,7 @@ jar.updateCode(
 
 const thevariables = ['x', 'y', 'appdate', 'gotdate', 'nclass', 'cclass'].join(' ');
 
-let gui = null, config = null, dcIdent = 1000*Math.random()|0, lastdepth = null, thedc = null, thedepth = null, thevert = null, thefrag = null;
+let gui = null, config = null, dcIdent = 0, lastdepth = null, thedc = null, thedepth = null, thevert = null, thefrag = null;
 let debounce = null;
 function fg({ params, variables, depth, node, edge }) {
 	if (gui === null) {

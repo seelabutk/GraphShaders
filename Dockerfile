@@ -1,4 +1,9 @@
-FROM ubuntu:bionic
+FROM nvidia/opengl:1.2-glvnd-runtime-ubuntu20.04
+
+ARG NVIDIA_VISIBLE_DEVICES=all
+ARG DEBIAN_FRONTEND=noninteractive
+ENV NVIDIA_DRIVER_CAPABILITIES all
+RUN echo "bb\b"
 
 RUN apt-get update && \
     apt-get install -y \
@@ -121,9 +126,6 @@ WORKDIR /app
 COPY Makefile /app
 COPY src /app/src
 ENV PKG_CONFIG_PATH=/app/contrib/lib/pkgconfig
-ENV MESA_GL_VERSION_OVERRIDE=4.5
-ENV MESA_GLSL_VERSION_OVERRIDE=450
-ENV GALLIUM_DRIVER=llvmpipe
 RUN ls -lahR /app/ && make
 
 WORKDIR /opt/fgl
@@ -132,3 +134,4 @@ COPY fgl ./
 WORKDIR /app
 
 CMD ["/app/build/server"]
+# CMD ["tail","-f", "/dev/null"]

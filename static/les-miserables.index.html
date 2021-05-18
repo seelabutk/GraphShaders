@@ -70,7 +70,7 @@ code[class*="language-"] {
 <script type="x-shader/x-vertex" id="default-vert">
 		void node(in float x, in float y, out float tmp) {
             tmp = 1.0;
-			fg_NodePosition = vec3(x, y, 0.5);
+			fg_NodePosition = vec2(x, y);
 		}
 </script><!-- #default-vert -->
 <script type="x-shader/x-fragment" id="default-frag">
@@ -410,7 +410,7 @@ function makeDC() {
 }
 
 function makeUrlTemplate() {
-	const dataset = 'knit-graph';
+	const dataset = 'les-miserables';
 	const vert = btoa(thevert(config));
 	const frag = btoa(thefrag(config));
 	console.log(atob(vert))

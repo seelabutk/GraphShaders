@@ -1,8 +1,25 @@
 {% if not preprocessed %}
-#define edge(...) edge(__VA_ARGS__, in vec2 fg_FragCoord, in float fg_FragDepth, out vec4 fg_FragColor)
+#define edge(...) edge(__VA_ARGS__, in vec2 fg_FragCoord, in float fg_FragDepth, in vec4 fg_EdgeData, out vec4 fg_FragColor)
 {% else %}
-#version 300 es
+#version 460 core
 precision mediump float;
+
+// DO NOT USE A VEC 3 IN THESE. CHECK: https://www.khronos.org/opengl/wiki/Interface_Block_(GLSL)
+// Memory Layout Section for more details! Specifically, std140 v std430 and how _VEC 3 IS STILL
+// TREATED THE SAME_.
+// This should be somewhat tolerant to the user program? I have no clue how to make this flexible...
+struct EdgeData {
+    vec4 color;
+};
+
+layout(std430, binding = 0) readonly buffer GlobalEdgeData {
+    EdgeData global_edge_data[];
+};
+
+layout(std430, binding = 1) readonly buffer PrimitiveLookasideBuffer {
+    int global_indices[];
+};
+
 {% endif %}
 
 {{ source|safe }}
@@ -22,6 +39,7 @@ uniform float uTranslateX, uTranslateY, uScale;
 {% endfor %}
 
 void main() {
+    vec4 fg_EdgeData = global_edge_data[global_indices[gl_PrimitiveID] + 1].color;
     edge(
         {%- for param in in_params -%}
         {%- if not loop.first %}, {% endif %}

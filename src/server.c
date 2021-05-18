@@ -24,10 +24,10 @@
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <glad/glad.h>
+#include <glad/glad_egl.h>
 
 #include "stb_image_write.h"
 #define GLAPIENTRY APIENTRY
-#include <GL/osmesa.h>
 
 struct attrib {
   GLuint64 size;
@@ -54,6 +54,7 @@ typedef struct partition_data {
   Vec_GLuint partitions;
   Vec_GLuint edgeIdxs;
   GLuint indexBuffer;
+  GLuint perPartitionSSBO;
   GLuint count;
   GLuint dcIdent;
 } PartitionData;
@@ -67,13 +68,15 @@ enum {
 };
 
 char *errorMessages[NUM_ERRORS] = {
-    [ERROR_NONE] = "Render Successful",
-    [ERROR_COMPILE_VERTEX_SHADER] = "Could not compile vertex shader",
-    [ERROR_COMPILE_FRAGMENT_SHADER] = "Could not compile fragment shader",
-    [ERROR_LINK_PROGRAM] = "Could not link program",
+        [ERROR_NONE] = "Render Successful",
+        [ERROR_COMPILE_VERTEX_SHADER] = "Could not compile vertex shader",
+        [ERROR_COMPILE_FRAGMENT_SHADER] = "Could not compile fragment shader",
+        [ERROR_LINK_PROGRAM] = "Could not link program",
 };
 
-static volatile GLsizei _resolution;
+static const int _g_resolution = 256;
+static volatile GLsizei _resolution = _g_resolution;
+static volatile GLsizei _depth = 4;
 static volatile GLfloat _x;
 static volatile GLfloat _y;
 static volatile GLfloat _z;
@@ -100,17 +103,67 @@ static unsigned volatile _max_res;
 static PartitionData *_partition_cache;
 static volatile struct attrib *edges;
 
+// EDGE ATTRIBS
+static GLuint globalSSBO;
+
+// EGL STATICS
+static volatile EGLDisplay eglDisplay = EGL_NO_DISPLAY;
+static volatile EGLContext eglContext = NULL;
+static GLuint eglFrameBuffer = 0;
+static GLuint eglFrameBufferColorAttachmentTexture = 0;
+static GLuint eglFrameBufferDepthAttachmentTexture = 0;
+
+/** EGL SPECIFIC SETUP **/
+/// A surface that is RGBA8
+/// A surface that has a depth + stencil 24bit/8bit UInt
+/// A surface that is OpenGL _NOT ES_ conformant
+/// A surface that is renderable
+/// A surface that will not take caveats (must meet all demands!)
+static const EGLint configAttribs[] = {EGL_COLOR_BUFFER_TYPE,
+                                       EGL_RGB_BUFFER,
+                                       EGL_BLUE_SIZE,
+                                       8,
+                                       EGL_GREEN_SIZE,
+                                       8,
+                                       EGL_RED_SIZE,
+                                       8,
+                                       EGL_ALPHA_SIZE,
+                                       8,
+                                       EGL_DEPTH_SIZE,
+                                       24,
+                                       EGL_STENCIL_SIZE,
+                                       8,
+                                       EGL_RENDERABLE_TYPE,
+                                       EGL_OPENGL_BIT,
+                                       EGL_CONFORMANT,
+                                       EGL_OPENGL_BIT,
+                                       EGL_CONFIG_CAVEAT,
+                                       EGL_NONE,
+                                       EGL_LEVEL,
+                                       0,
+                                       EGL_NONE};
+
+void GLAPIENTRY eglMessageCallback(GLenum source, GLenum type, GLuint id,
+                                   GLenum severity, GLsizei length,
+                                   const GLchar *message,
+                                   const void *userParam) {
+  fprintf(stderr,
+          "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
+          (type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : ""), type, severity,
+          message);
+}
 static pthread_mutex_t *_fgl_lock;
 static pthread_barrier_t *_fgl_barrier;
-static volatile char *_fgl_in_url;   // request thread frees
-static volatile char *_fgl_out_url;  // transformer thread frees
+static volatile char *_fgl_in_url;  // request thread frees
+static volatile char *_fgl_out_url; // transformer thread frees
 
 void log_partition_cache(PartitionData *pdc) {
   printf("tot: %u\n", _max_res * _max_res);
   for (int i = 0; i < _max_res * _max_res; ++i) {
     PartitionData *pd = &(pdc[i]);
 
-    if (pd->partitions.length == 0) continue;
+    if (pd->partitions.length == 0)
+      continue;
 
     printf("idx: %d\n", i);
     printf("edgeCount: %lu\n", pd->partitions.length / 2);
@@ -123,8 +176,6 @@ void log_partition_cache(PartitionData *pdc) {
 }
 
 void *render(void *v) {
-  printf("render function!\n");
-  OSMesaContext context;
   GLuint vertexShader, fragmentShader, program,
       /*indexBuffer,*/ aNodeBuffers[16];
   unsigned long i, j;
@@ -157,9 +208,7 @@ void *render(void *v) {
   int logGLCalls, doOcclusionCulling;
 
   _partition_cache = NULL;
-  _resolution = 256;
 
-  context = NULL;
   vertexShader = fragmentShader = program = 0;
   nattribs[0] = (struct attrib){0};
   eattribs[0] = (struct attrib){0};
@@ -177,427 +226,684 @@ void *render(void *v) {
   dataset = vertexShaderSource = fragmentShaderSource = NULL;
   first = GL_TRUE;
 
+  globalSSBO = 0;
+
   // sync with main function
   pthread_barrier_wait(_barrier);
   goto wait_for_request;
 
-  for (;;) switch (where) {
-      case INIT_OSMESA:
-        MAB_WRAP("create osmesa context") {
-          if (context) OSMesaDestroyContext(context);
-          context = OSMesaCreateContextExt(OSMESA_RGBA, 16, 0, 0, NULL);
-          if (!context) {
-            fprintf(stderr, "could not init OSMesa context\n");
-            exit(1);
-          }
-
-          _image = malloc(4 * _resolution * _resolution);
-          if (!_image) {
-            fprintf(stderr, "could not allocate image buffer\n");
-            exit(1);
-          }
-
-          rc = OSMesaMakeCurrent(context, _image, GL_UNSIGNED_BYTE, _resolution,
-                                 _resolution);
-          if (!rc) {
-            fprintf(stderr, "could not bind to image buffer\n");
-            exit(1);
-          }
-
-          if (!gladLoadGLLoader((GLADloadproc)OSMesaGetProcAddress)) {
-            printf("gladLoadGL failed\n");
-            exit(1);
-          }
-          printf("OpenGL %s\n", glGetString(GL_VERSION));
+  for (;;) {
+    switch (where) {
+    case INIT_OSMESA:
+      MAB_WRAP("create osmesa context") {
+        if (!gladLoadEGL()) {
+          fprintf(stderr, "Could not load EGL!");
         }
-        __attribute__((fallthrough));
 
-      case INIT_GRAPH:
-        MAB_WRAP("load graph") {
-          if (nattribs[0].data)
-            for (i = 0; i < ncount; ++i) free(nattribs[i].data);
-
-          MAB_WRAP("load node attributes") {
-            char temp[512];
-            snprintf(temp, sizeof(temp), "data/%s/nodes.dat", _dataset);
-
-            f = fopen(temp, "r");
-            fread(&ncount, sizeof(ncount), 1, f);
-
-            for (i = 0; i < ncount; ++i) {
-              nattribs[i] = (struct attrib){0};
-
-              fread(&nattribs[i].size, sizeof(nattribs[i].size), 1, f);
-
-              fread(&nattribs[i].rawtype, sizeof(nattribs[i].rawtype), 1, f);
-              switch (nattribs[i].rawtype) {
-                case 'f':
-                  nattribs[i].type = GL_FLOAT;
-                  break;
-                case 'i':
-                  nattribs[i].type = GL_INT;
-                  break;
-                case 'u':
-                  nattribs[i].type = GL_UNSIGNED_INT;
-                  break;
-              }
-
-              fread(&nattribs[i].count, sizeof(nattribs[i].count), 1, f);
-
-              fread(nattribs[i].range, sizeof(nattribs[i].range), 1, f);
-
-              nattribs[i].data = malloc(nattribs[i].size);
-              fread(nattribs[i].data, 1, nattribs[i].size, f);
-            }
-
-            fclose(f);
-          }
-
-          if (eattribs[0].data)
-            for (i = 0; i < ecount; ++i) free(eattribs[i].data);
-
-          MAB_WRAP("load edge data") {
-            char temp[512];
-            snprintf(temp, sizeof(temp), "data/%s/edges.dat", _dataset);
-
-            f = fopen(temp, "r");
-            fread(&ecount, sizeof(ecount), 1, f);
-
-            for (i = 0; i < ecount; ++i) {
-              eattribs[i] = (struct attrib){0};
-
-              fread(&eattribs[i].size, sizeof(eattribs[i].size), 1, f);
-
-              fread(&eattribs[i].rawtype, sizeof(eattribs[i].rawtype), 1, f);
-              switch (eattribs[i].rawtype) {
-                case 'f':
-                  eattribs[i].type = GL_FLOAT;
-                  break;
-                case 'i':
-                  eattribs[i].type = GL_INT;
-                  break;
-                case 'u':
-                  eattribs[i].type = GL_UNSIGNED_INT;
-                  break;
-              }
-
-              fread(&eattribs[i].count, sizeof(eattribs[i].count), 1, f);
-
-              fread(eattribs[i].range, sizeof(eattribs[i].range), 1, f);
-
-              eattribs[i].data = malloc(eattribs[i].size);
-              fread(eattribs[i].data, 1, eattribs[i].size, f);
-            }
-
-            fclose(f);
-          }
+        // 0. Get EGL Display (offscreen in case of headless)
+        eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+        if (EGL_NO_DISPLAY == eglDisplay) {
+          fprintf(stderr, "Could not create the EGL Display!");
         }
-        __attribute__((fallthrough));
 
-      case INIT_PARTITION:
-        MAB_WRAP("init partition") {
-          printf("partitioning data...\n");
-          unsigned j;
-
-          // clear previous partitions
-          if (_partition_cache) {
-            for (i = 0; i < _max_res * _max_res; ++i) {
-              vec_destroy(&_partition_cache[i].partitions);
-              vec_destroy(&_partition_cache[i].edgeIdxs);
-            }
-            free(_partition_cache);
-            _partition_cache = NULL;
-          }
-
-          // create new partitions
-          _max_res = pow(2, _max_depth);
-          // printf("partition res: (%ux%u)\n", _max_res, _max_res);
-          unsigned long blkSize = _max_res * _max_res * sizeof(PartitionData);
-          // printf("Attempting to allocate %lu bytes for patition table\n",
-          // blkSize);
-          _partition_cache = (PartitionData *)calloc(blkSize, sizeof(char));
-          if (!_partition_cache) {
-            printf("Could not create partition cache of size %lu bytes!\n",
-                   blkSize);
-            exit(1);
-          }
-          for (i = 0; i < _max_res * _max_res; ++i) {
-            vec_init(&_partition_cache[i].partitions);
-            vec_init(&_partition_cache[i].edgeIdxs);
-          }
-
-          GLfloat *vertsX = nattribs[0].floats;
-          GLfloat *vertsY = nattribs[1].floats;
-
-          GLfloat minX = nattribs[0].frange[0] - 1.0;
-          GLfloat maxX = nattribs[0].frange[1] + 1.0;
-          GLfloat minY = nattribs[1].frange[0] - 1.0;
-          GLfloat maxY = nattribs[1].frange[1] + 1.0;
-
-          *edges = eattribs[0];
-          long sz = edges->count;
-          long tenth = sz / 10;
-          if (tenth == 0) ++tenth;
-          for (i = 0; i < sz; i += 2) {
-            if (i % tenth < 2)
-              printf("%d%% done...\n", (int)(100 * (double)i / (double)sz));
-
-            GLuint e0 = edges->uints[i + 0];
-            GLuint e1 = edges->uints[i + 1];
-
-            GLfloat x0 = vertsX[e0];
-            GLfloat y0 = vertsY[e0];
-            GLfloat x1 = vertsX[e1];
-            GLfloat y1 = vertsY[e1];
-
-            Vec_GLuint partitions = voxel_traversal(_max_res, _max_res, x0, y0, x1, y1, minX, minY, maxX, maxY);
-            // printf("edge lies in %lu voxels\n", partitions.length);
-
-            for (j = 0; j < partitions.length; ++j) {
-              // printf("pushing edge (%d,%d) to partition %d\n", e0, e1, partitions.data[j]);
-			  assert(vec_push(&_partition_cache[partitions.data[j]].partitions, e0) != -1);
-              assert(vec_push(&_partition_cache[partitions.data[j]].partitions, e1) != -1);
-			  assert(vec_push(&_partition_cache[partitions.data[j]].edgeIdxs,  i/2) != -1);
-            }
-            vec_destroy(&partitions);
-          }
-          printf("100%% done\n");
-          // log_partition_cache(_partition_cache);
+        // 1. Inititialize EGL
+        EGLint major, minor;
+        if (EGL_FALSE == eglInitialize(eglDisplay, &major, &minor)) {
+          fprintf(stderr, "Could not initialize EGL!");
         }
-        __attribute__((fallthrough));
 
-      case INIT_SORT:
-        printf("Sorting depth...\n");
+        // 2. Choose Configuration, give them the minimum requirements
+        // (specified by configAttribs)
+        EGLint numConfigs;
+        EGLConfig eglCfg;
+        // Ideally, iterate eglCfg and make sure numConfigs matches
+        // configAttribs but I digress
+        eglChooseConfig(eglDisplay, configAttribs, &eglCfg, 1, &numConfigs);
 
-        unsigned j;
-        GLuint sz = _max_res * _max_res;
-        long tenth = sz / 10;
-        if (tenth == 0) ++tenth;
-
-        for (j = 0; j < sz; ++j) {
-          if (j % tenth < 1)
-            printf("%d%% done...\n", (int)(100 * (double)j / (double)sz));
-
-          PartitionData *pd = &_partition_cache[j];
-          unsigned long count = pd->partitions.length / 2;
-          int i;
-          GLfloat *dcDepth;
-          dcDepth = malloc(count * sizeof(*dcDepth));
-          for (i = 0; i < count; ++i) {
-            GLuint e0 = pd->partitions.data[2 * i + 0];
-            GLuint e1 = pd->partitions.data[2 * i + 1];
-
-            dcDepth[i] = 0.0;
-
-            int k = 0;
-            for (k = 0; k < 16; ++k)
-              if (!dcIndex[k]) break;
-            --k;
-
-            float sourceDepth =
-                dcMult[k] *
-                    nattribs[dcIndex[k] - 1].floats[eattribs[0].uints[e0]] +
-                dcOffset[k];
-            float targetDepth =
-                dcMult[k] *
-                    nattribs[dcIndex[k] - 1].floats[eattribs[0].uints[e1]] +
-                dcOffset[k];
-
-            dcDepth[i] +=
-                sourceDepth < targetDepth
-                    ? dcMinMult * sourceDepth + dcMaxMult * targetDepth
-                    : dcMinMult * targetDepth + dcMaxMult * sourceDepth;
-          }
-
-          GLuint64 *dcReorder;
-          dcReorder = malloc(count * sizeof(*dcReorder));
-          for (i = 0; i < count; ++i) {
-            dcReorder[i] = i;
-          }
-
-          int compare(const void *av, const void *bv) {
-            const GLuint64 *a = av;
-            const GLuint64 *b = bv;
-
-            if (dcDepth[*a] < dcDepth[*b]) return -1;
-            if (dcDepth[*a] > dcDepth[*b]) return 1;
-            return 0;
-          }
-          qsort(dcReorder, count, sizeof(*dcReorder), compare);
-
-          GLuint *edges = malloc(count * 2 * sizeof(*edges));
-          for (i = 0; i < count; ++i) {
-            edges[2 * i + 0] = pd->partitions.data[2 * dcReorder[i] + 0];
-            edges[2 * i + 1] = pd->partitions.data[2 * dcReorder[i] + 1];
-          }
-
-          vec_destroy(&pd->partitions);
-          pd->partitions.data = edges;
-          pd->partitions.capacity = pd->partitions.length = count * 2;
-
-          free(dcReorder);
-          free(dcDepth);
+        // 3. Bind the API, we are Using OPENGL not ES!
+        if (EGL_FALSE == eglBindAPI(EGL_OPENGL_API)) {
+          fprintf(stderr, "OpenGL is not support for this EGL context!\n");
+          exit(1);
         }
-        printf("100%% done\n");
 
-        __attribute__((fallthrough));
+        // Try to snag a Context with OpenGL4.6 + Debug Features.
+        // Compatibility profile for Global VAO
+        const EGLint contextAttribs[] = {
+            EGL_CONTEXT_MAJOR_VERSION,
+            4,
+            EGL_CONTEXT_MINOR_VERSION,
+            6,
+            EGL_CONTEXT_OPENGL_PROFILE_MASK,
+            EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT,
+            EGL_CONTEXT_OPENGL_DEBUG,
+            EGL_TRUE,
+            EGL_NONE};
+        eglContext = eglCreateContext(eglDisplay, eglCfg, EGL_NO_CONTEXT,
+                                      contextAttribs);
+        if (!eglContext) {
+          fprintf(stderr, "could not init EGL context\n");
+          exit(1);
+        }
 
-      case INIT_BUFFERS:
-        MAB_WRAP("init node buffers") {
-          if (aNodeBuffers[0])
-            for (i = 0; i < ncount; ++i) glDeleteBuffers(1, &aNodeBuffers[i]);
+        // Establish context as current and ensure NO_SURFACE is specified.
+        EGLBoolean currentSuccess = eglMakeCurrent(eglDisplay, EGL_NO_SURFACE,
+                                                   EGL_NO_SURFACE, eglContext);
+        if (!currentSuccess) {
+          fprintf(stderr, "could not bind to image buffer\n");
+          exit(1);
+        }
+
+        // Load GL+Extensions
+        if (!gladLoadGL()) {
+          fprintf(stderr, "Could not load GL!\n");
+        }
+
+        // Enable Debugging
+        glEnable(GL_DEBUG_OUTPUT);
+        glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE,
+                              GL_DEBUG_SEVERITY_NOTIFICATION, 0, 0, GL_FALSE);
+        glDebugMessageCallback(eglMessageCallback, 0);
+
+        // Generate a FrameBuffer Object
+        glGenFramebuffers(1, &eglFrameBuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, eglFrameBuffer);
+
+        // Bind a Texture to the Color Attachment
+        glGenTextures(1, &eglFrameBufferColorAttachmentTexture);
+        glBindTexture(GL_TEXTURE_2D, eglFrameBufferColorAttachmentTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, _resolution, _resolution, 0,
+                     GL_RGBA, GL_UNSIGNED_BYTE, 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                               GL_TEXTURE_2D,
+                               eglFrameBufferColorAttachmentTexture, 0);
+
+        // Create a texture for the Depth + Stencil attachment
+        glGenTextures(1, &eglFrameBufferDepthAttachmentTexture);
+        glBindTexture(GL_TEXTURE_2D, eglFrameBufferDepthAttachmentTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, _resolution,
+                     _resolution, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+                               GL_TEXTURE_2D,
+                               eglFrameBufferDepthAttachmentTexture, 0);
+
+        // Make sure the Framebuffer is complete!
+        if (!(GL_FRAMEBUFFER_COMPLETE ==
+              glCheckFramebufferStatus(GL_FRAMEBUFFER))) {
+          fprintf(stderr, "Could not complete the framebuffer!");
+          exit(1);
+        }
+
+        // Set Viewport to specified resolution
+        glViewport(0, 0, _resolution, _resolution);
+        GLint viewport[4];
+        glGetIntegerv(GL_VIEWPORT, viewport);
+        // Ensure resolution and viewport match 1:1, EGL can "fake" this call
+        // and one symptom is viewport mismatch
+        if ((_resolution + _resolution) != (viewport[2] + viewport[3])) {
+          fprintf(stderr,
+                  "Viewport does not meet the resolution requirement!\n");
+          exit(1);
+        }
+        fprintf(stderr, "EGL+OpenGL Setup complete.\n");
+
+        // Clear color to white as well as empty depth buffer
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glFlush();
+
+        _image = malloc(_depth * _resolution * _resolution);
+        if (!_image) {
+          fprintf(stderr, "could not allocate image buffer\n");
+          exit(1);
+        }
+
+        const GLubyte *eglVendor = eglQueryString(eglDisplay, EGL_VENDOR);
+        const GLubyte *eglVersion = eglQueryString(eglDisplay, EGL_VERSION);
+        const GLubyte *eglExtensions =
+            eglQueryString(eglDisplay, EGL_EXTENSIONS);
+        const GLubyte *eglAPIs = eglQueryString(eglDisplay, EGL_CLIENT_APIS);
+        fprintf(stderr,
+                "EGL Info\n\tVendor - %s\n\tVersion - %s\n\tExtensions - "
+                "%s\n\tAPIs - %s\n",
+                eglVendor, eglVersion, eglExtensions, eglAPIs);
+
+        const GLubyte *glVendor = glGetString(GL_VENDOR);
+        fprintf(stderr, "GL_VENDOR=%s\n", glVendor);
+        const GLubyte *glRenderer = glGetString(GL_RENDERER);
+        fprintf(stderr, "GL_RENDERER=%s\n", glRenderer);
+        const GLubyte *glVersion = glGetString(GL_VERSION);
+        fprintf(stderr, "GL_VERSION=%s\n", glVersion);
+
+        const GLubyte *glslVersion = glGetString(GL_SHADING_LANGUAGE_VERSION);
+        fprintf(stderr, "GL_SHADING_LANGUAGE_VERSION=%s\n", glslVersion);
+      }
+      __attribute__((fallthrough));
+    case INIT_GRAPH:
+      MAB_WRAP("load graph") {
+        if (nattribs[0].data)
+          for (i = 0; i < ncount; ++i)
+            free(nattribs[i].data);
+
+        MAB_WRAP("load node attributes") {
+          char temp[512];
+          snprintf(temp, sizeof(temp), "data/%s/nodes.dat", _dataset);
+
+          f = fopen(temp, "r");
+          fread(&ncount, sizeof(ncount), 1, f);
 
           for (i = 0; i < ncount; ++i) {
-            glGenBuffers(1, &aNodeBuffers[i]);
-            glBindBuffer(GL_ARRAY_BUFFER, aNodeBuffers[i]);
-            if (logGLCalls)
-              mabLogMessage("glBufferData", "%lu", nattribs[i].size);
-            glBufferData(GL_ARRAY_BUFFER, nattribs[i].size, nattribs[i].data,
+            nattribs[i] = (struct attrib){0};
+
+            fread(&nattribs[i].size, sizeof(nattribs[i].size), 1, f);
+            fread(&nattribs[i].rawtype, sizeof(nattribs[i].rawtype), 1, f);
+            switch (nattribs[i].rawtype) {
+            case 'f':
+              nattribs[i].type = GL_FLOAT;
+              break;
+            case 'i':
+              nattribs[i].type = GL_INT;
+              break;
+            case 'u':
+              nattribs[i].type = GL_UNSIGNED_INT;
+              break;
+            }
+
+            fread(&nattribs[i].count, sizeof(nattribs[i].count), 1, f);
+            fread(nattribs[i].range, sizeof(nattribs[i].range), 1, f);
+
+            nattribs[i].data = malloc(nattribs[i].size);
+            fread(nattribs[i].data, 1, nattribs[i].size, f);
+          }
+
+          fclose(f);
+        }
+
+        if (eattribs[0].data)
+          for (i = 0; i < ecount; ++i)
+            free(eattribs[i].data);
+
+        MAB_WRAP("load edge data") {
+          char temp[512];
+          snprintf(temp, sizeof(temp), "data/%s/edges.dat", _dataset);
+
+          f = fopen(temp, "r");
+          fread(&ecount, sizeof(ecount), 1, f);
+
+          GLuint64 runningStride = 0;
+          GLuint64 runningSize = 0;
+          GLuint64 totalEdgeCount = 0;
+          // Edge count should be 1 more than the total count of edges.
+          fprintf(stderr, "edge count: %lu\n", ecount);
+          for (i = 0; i < ecount; ++i) {
+            eattribs[i] = (struct attrib){0};
+
+            fread(&eattribs[i].size, sizeof(eattribs[i].size), 1, f);
+
+            if (!totalEdgeCount) {
+              // Why 8? The first column is twice the size of other! X+Y are
+              // combined!!
+              totalEdgeCount = eattribs[i].size / 8;
+            }
+
+            fread(&eattribs[i].rawtype, sizeof(eattribs[i].rawtype), 1, f);
+            switch (eattribs[i].rawtype) {
+            case 'f':
+              eattribs[i].type = GL_FLOAT;
+              break;
+            case 'i':
+              eattribs[i].type = GL_INT;
+              break;
+            case 'u':
+              eattribs[i].type = GL_UNSIGNED_INT;
+              break;
+            }
+
+            fread(&eattribs[i].count, sizeof(eattribs[i].count), 1, f);
+
+            fread(eattribs[i].range, sizeof(eattribs[i].range), 1, f);
+
+            eattribs[i].data = malloc(eattribs[i].size);
+            fread(eattribs[i].data, 1, eattribs[i].size, f);
+            fprintf(stderr, "eattribs size is: %ld bytes \n", eattribs[i].size);
+            if (i > 0) {
+              runningStride += 4;
+              runningSize += eattribs[i].size;
+            }
+          }
+          fprintf(stderr, "Total bytes per edge: %lu, there are %lu edges \n",
+                  runningStride, totalEdgeCount);
+          fprintf(stderr, "Total size for edge attributes: %lu \n",
+                  runningSize);
+          // send me to jail
+          fprintf(stderr, "Next 16 byte alignment: %lu \n",
+                  ((GLint64)runningStride + 15) & -16);
+
+          if (globalSSBO) {
+            glDeleteBuffers(1, &globalSSBO);
+            globalSSBO = 0;
+          }
+
+          if (runningSize) {
+            glGenBuffers(1, &globalSSBO);
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, globalSSBO);
+
+            size_t amountPerEdge = ((GLint64)runningStride + 15) & -16;
+            // Add one more edge. Why? Edge IDs are zero indexed!
+            size_t ssboSize = (size_t)(totalEdgeCount + 1) * amountPerEdge;
+            void *edgeData = malloc(ssboSize);
+            memset(edgeData, 0, amountPerEdge);
+
+            int edgePad = ((int)(ecount - 1) + 3) & -4;
+            // fprintf(stderr, "edge pad: %d, edge count: %lu \n", edgePad,
+            // ecount);
+            // fprintf(stderr, "Total size for edge attributes: %lu \n",
+            // runningSize);
+            for (int edgeNumber = 1; edgeNumber < totalEdgeCount + 1;
+                 ++edgeNumber) {
+              for (int i = 0; i < edgePad; ++i) {
+                // fprintf(stderr, "i: %d, ep: %d, ec: %ld \n", i + 1, edgePad,
+                // ecount);
+                if (i + 1 >= ecount) {
+                  ((float *)edgeData)[edgeNumber * edgePad + i] = 0.0;
+                } else {
+                  fprintf(stderr, "\tSet edge %d attribute %d to %f \n",
+                          edgeNumber, i + 1,
+                          eattribs[i + 1].floats[edgeNumber - 1]);
+                  ((float *)edgeData)[edgeNumber * edgePad + i] =
+                      eattribs[i + 1].floats[edgeNumber - 1];
+                }
+              }
+            }
+
+            /* for (size_t i = 0; i < (size_t)(totalEdgeCount + 1) * edgePad;
+            ++i) {
+              fprintf(stderr, "%ld: %f ", i, ((float *)edgeData)[i]);
+            }
+            fprintf(stderr, "\n"); */
+
+            glBufferData(GL_SHADER_STORAGE_BUFFER, ssboSize, edgeData,
                          GL_STATIC_DRAW);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+            free(edgeData);
+          }
+
+          fclose(f);
+        }
+      }
+      __attribute__((fallthrough));
+
+    case INIT_PARTITION:
+      MAB_WRAP("init partition") {
+        printf("partitioning data...\n");
+        unsigned j;
+
+        // clear previous partitions
+        if (_partition_cache) {
+          for (i = 0; i < _max_res * _max_res; ++i) {
+            vec_destroy(&_partition_cache[i].partitions);
+            vec_destroy(&_partition_cache[i].edgeIdxs);
+          }
+          free(_partition_cache);
+          _partition_cache = NULL;
+        }
+
+        // create new partitions
+        _max_res = pow(2, _max_depth);
+        // printf("partition res: (%ux%u)\n", _max_res, _max_res);
+        unsigned long blkSize = _max_res * _max_res * sizeof(PartitionData);
+        _partition_cache = (PartitionData *)calloc(blkSize, sizeof(char));
+        if (!_partition_cache) {
+          printf("Could not create partition cache of size %lu bytes!\n",
+                 blkSize);
+          exit(1);
+        }
+        for (i = 0; i < _max_res * _max_res; ++i) {
+          vec_init(&_partition_cache[i].partitions);
+          vec_init(&_partition_cache[i].edgeIdxs);
+        }
+
+        GLfloat *vertsX = nattribs[0].floats;
+        GLfloat *vertsY = nattribs[1].floats;
+
+        GLfloat minX = nattribs[0].frange[0];
+        GLfloat maxX = nattribs[0].frange[1];
+        GLfloat minY = nattribs[1].frange[0];
+        GLfloat maxY = nattribs[1].frange[1];
+
+        GLfloat gx = (maxX - minX) / 1024;
+        GLfloat gy = (maxY - minY) / 1024;
+        minX -= gx;
+        maxX += gx;
+        minY -= gy;
+        maxY += gy;
+
+        *edges = eattribs[0];
+        long sz = edges->count;
+        long tenth = sz / 10;
+        if (tenth == 0)
+          ++tenth;
+        for (i = 0; i < sz; i += 2) {
+          if (i % tenth < 2)
+            printf("%d%% done...\n", (int)(100 * (double)i / (double)sz));
+
+          GLuint e0 = edges->uints[i + 0];
+          GLuint e1 = edges->uints[i + 1];
+
+          GLfloat x0 = vertsX[e0];
+          GLfloat y0 = vertsY[e0];
+          GLfloat x1 = vertsX[e1];
+          GLfloat y1 = vertsY[e1];
+
+          Vec_GLuint partitions = voxel_traversal(
+              _max_res, _max_res, x0, y0, x1, y1, minX, minY, maxX, maxY);
+          // printf("edge lies in %lu voxels\n", partitions.length);
+
+          for (j = 0; j < partitions.length; ++j) {
+            // fprintf(stderr, "pushing edge (%d,%d) (%ld) to partition %d\n",
+            // e0, e1, i/2, partitions.data[j]);
+            assert(vec_push(&_partition_cache[partitions.data[j]].partitions,
+                            e0) != -1);
+            assert(vec_push(&_partition_cache[partitions.data[j]].partitions,
+                            e1) != -1);
+            assert(vec_push(&_partition_cache[partitions.data[j]].edgeIdxs,
+                            i / 2) != -1);
+          }
+          vec_destroy(&partitions);
+        }
+        printf("100%% done\n");
+        // log_partition_cache(_partition_cache);
+      }
+      __attribute__((fallthrough));
+
+    case INIT_SORT:
+      printf("Sorting depth...\n");
+
+      unsigned j;
+      GLuint sz = _max_res * _max_res;
+      long tenth = sz / 10;
+      if (tenth == 0)
+        ++tenth;
+
+      for (j = 0; j < sz; ++j) {
+        if (j % tenth < 1)
+          printf("%d%% done...\n", (int)(100 * (double)j / (double)sz));
+
+        PartitionData *pd = &_partition_cache[j];
+        unsigned long count = pd->partitions.length / 2;
+        int i;
+        GLfloat *dcDepth;
+        dcDepth = malloc(count * sizeof(*dcDepth));
+        for (i = 0; i < count; ++i) {
+          GLuint e0 = pd->partitions.data[2 * i + 0];
+          GLuint e1 = pd->partitions.data[2 * i + 1];
+
+          dcDepth[i] = 0.0;
+
+          int k = 0;
+          for (k = 0; k < 16; ++k)
+            if (!dcIndex[k])
+              break;
+          --k;
+
+          float sourceDepth =
+              dcMult[k] *
+                  nattribs[dcIndex[k] - 1].floats[eattribs[0].uints[e0]] +
+              dcOffset[k];
+          float targetDepth =
+              dcMult[k] *
+                  nattribs[dcIndex[k] - 1].floats[eattribs[0].uints[e1]] +
+              dcOffset[k];
+
+          dcDepth[i] += sourceDepth < targetDepth
+                            ? dcMinMult * sourceDepth + dcMaxMult * targetDepth
+                            : dcMinMult * targetDepth + dcMaxMult * sourceDepth;
+        }
+
+        GLuint64 *dcReorder;
+        dcReorder = malloc(count * sizeof(*dcReorder));
+        for (i = 0; i < count; ++i) {
+          dcReorder[i] = i;
+        }
+
+        int compare(const void *av, const void *bv) {
+          const GLuint64 *a = av;
+          const GLuint64 *b = bv;
+
+          if (dcDepth[*a] < dcDepth[*b])
+            return -1;
+          if (dcDepth[*a] > dcDepth[*b])
+            return 1;
+          return 0;
+        }
+        qsort(dcReorder, count, sizeof(*dcReorder), compare);
+
+        GLuint *edges = malloc(count * 2 * sizeof(*edges));
+        GLuint *edgeIdxs = malloc(count * sizeof(*edgeIdxs));
+        for (i = 0; i < count; ++i) {
+          edges[2 * i + 0] = pd->partitions.data[2 * dcReorder[i] + 0];
+          edges[2 * i + 1] = pd->partitions.data[2 * dcReorder[i] + 1];
+          edgeIdxs[i] = pd->partitions.data[2 * dcReorder[i]];
+        }
+
+        vec_destroy(&pd->partitions);
+        pd->partitions.data = edges;
+        pd->partitions.capacity = pd->partitions.length = count * 2;
+
+        vec_destroy(&pd->edgeIdxs);
+        pd->edgeIdxs.data = edgeIdxs;
+        pd->edgeIdxs.capacity = pd->edgeIdxs.length = count;
+
+        free(dcReorder);
+        free(dcDepth);
+      }
+      printf("100%% done\n");
+
+      __attribute__((fallthrough));
+
+    case INIT_BUFFERS:
+      MAB_WRAP("init node buffers") {
+        if (aNodeBuffers[0])
+          for (i = 0; i < ncount; ++i)
+            glDeleteBuffers(1, &aNodeBuffers[i]);
+
+        for (i = 0; i < ncount; ++i) {
+          glGenBuffers(1, &aNodeBuffers[i]);
+          glBindBuffer(GL_ARRAY_BUFFER, aNodeBuffers[i]);
+          if (logGLCalls)
+            mabLogMessage("glBufferData", "%lu", nattribs[i].size);
+          glBufferData(GL_ARRAY_BUFFER, nattribs[i].size, nattribs[i].data,
+                       GL_STATIC_DRAW);
+          glBindBuffer(GL_ARRAY_BUFFER, 0);
+        }
+      }
+      __attribute__((fallthrough));
+
+    case INIT_PROGRAM:
+      MAB_WRAP("create program") {
+        MAB_WRAP("create vertex shader") {
+          if (vertexShader) {
+            glDeleteShader(vertexShader);
+          }
+          vertexShader = glCreateShader(GL_VERTEX_SHADER);
+
+          glShaderSource(vertexShader, 1,
+                         (const GLchar *const *)&_vertexShaderSource, NULL);
+
+          glCompileShader(vertexShader);
+
+          glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &rc);
+          if (!rc) {
+            glGetShaderInfoLog(vertexShader, sizeof(log), NULL, log);
+            printf("ERROR: Vertex Shader Compilation Failed\n%s\n", log);
+            mabLogEnd("ERROR: Vertex Shader Compilation Failed");
+            mabLogEnd("ERROR: Vertex Shader Compilation Failed");
+            _error = ERROR_COMPILE_VERTEX_SHADER;
+            goto done_with_request;
           }
         }
-        __attribute__((fallthrough));
 
-      case INIT_PROGRAM:
-        MAB_WRAP("create program") {
-          MAB_WRAP("create vertex shader") {
-            if (vertexShader) {
-              glDeleteShader(vertexShader);
-            }
-            vertexShader = glCreateShader(GL_VERTEX_SHADER);
-
-            glShaderSource(vertexShader, 1,
-                           (const GLchar *const *)&_vertexShaderSource, NULL);
-
-            glCompileShader(vertexShader);
-
-            glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &rc);
-            if (!rc) {
-              glGetShaderInfoLog(vertexShader, sizeof(log), NULL, log);
-              printf("ERROR: Vertex Shader Compilation Failed\n%s\n", log);
-              mabLogEnd("ERROR: Vertex Shader Compilation Failed");
-              mabLogEnd("ERROR: Vertex Shader Compilation Failed");
-              _error = ERROR_COMPILE_VERTEX_SHADER;
-              goto done_with_request;
-            }
+        MAB_WRAP("create fragment shader") {
+          if (fragmentShader) {
+            glDeleteShader(fragmentShader);
           }
 
-          MAB_WRAP("create fragment shader") {
-            if (fragmentShader) {
-              glDeleteShader(fragmentShader);
-            }
+          fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+          glShaderSource(fragmentShader, 1,
+                         (const GLchar *const *)&_fragmentShaderSource, NULL);
+          glCompileShader(fragmentShader);
 
-            fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-            glShaderSource(fragmentShader, 1,
-                           (const GLchar *const *)&_fragmentShaderSource, NULL);
-            glCompileShader(fragmentShader);
-
-            glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &rc);
-            if (!rc) {
-              glGetShaderInfoLog(fragmentShader, sizeof(log), NULL, log);
-              printf("ERROR: Fragment Shader Compilation Failed\n%s\n", log);
-              mabLogEnd("ERROR: Fragment Shader Compilation Failed");
-              mabLogEnd("ERROR: Fragment Shader Compilation Failed");
-              _error = ERROR_COMPILE_FRAGMENT_SHADER;
-              goto done_with_request;
-            }
-          }
-
-          MAB_WRAP("link program") {
-            if (program) {
-              glDeleteProgram(program);
-            }
-
-            program = glCreateProgram();
-            glAttachShader(program, vertexShader);
-            glAttachShader(program, fragmentShader);
-            glLinkProgram(program);
-
-            glGetProgramiv(program, GL_LINK_STATUS, &rc);
-            if (!rc) {
-              glGetProgramInfoLog(program, sizeof(log), NULL, log);
-              printf("ERROR: Shader Program Linking Failed\n%s\n", log);
-              mabLogEnd("ERROR: Shader Program Linking Failed");
-              mabLogEnd("ERROR: Shader Program Linking Failed");
-              _error = ERROR_LINK_PROGRAM;
-              goto done_with_request;
-            }
-
-            glUseProgram(program);
+          glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &rc);
+          if (!rc) {
+            glGetShaderInfoLog(fragmentShader, sizeof(log), NULL, log);
+            printf("ERROR: Fragment Shader Compilation Failed\n%s\n", log);
+            mabLogEnd("ERROR: Fragment Shader Compilation Failed");
+            mabLogEnd("ERROR: Fragment Shader Compilation Failed");
+            _error = ERROR_COMPILE_FRAGMENT_SHADER;
+            goto done_with_request;
           }
         }
-        __attribute__((fallthrough));
 
-      case INIT_ATTRIBUTES:
-        MAB_WRAP("init node attributes") {
-          for (i = 0; i < ncount; ++i) MAB_WRAP("init attribute i=%d", i) {
-              char temp[32];
-              snprintf(temp, sizeof(temp), "aNode%lu", (unsigned long)(i + 1));
+        MAB_WRAP("link program") {
+          if (program) {
+            glDeleteProgram(program);
+          }
 
-              aNodeLocations[i] = glGetAttribLocation(program, temp);
+          program = glCreateProgram();
+          glAttachShader(program, vertexShader);
+          glAttachShader(program, fragmentShader);
+          glLinkProgram(program);
+
+          glGetProgramiv(program, GL_LINK_STATUS, &rc);
+          if (!rc) {
+            glGetProgramInfoLog(program, sizeof(log), NULL, log);
+            printf("ERROR: Shader Program Linking Failed\n%s\n", log);
+            mabLogEnd("ERROR: Shader Program Linking Failed");
+            mabLogEnd("ERROR: Shader Program Linking Failed");
+            _error = ERROR_LINK_PROGRAM;
+            goto done_with_request;
+          }
+
+          glUseProgram(program);
+        }
+      }
+      __attribute__((fallthrough));
+
+    case INIT_ATTRIBUTES:
+      MAB_WRAP("init node attributes") {
+        if (globalSSBO) {
+          // fprintf(stderr, "Looks like we got a global buffer on our
+          // hands!\n");
+          glBindBuffer(GL_SHADER_STORAGE_BUFFER, globalSSBO);
+          glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, globalSSBO);
+          glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+        }
+        for (i = 0; i < ncount; ++i)
+          MAB_WRAP("init attribute i=%d", i) {
+            char temp[32];
+            snprintf(temp, sizeof(temp), "aNode%lu", (unsigned long)(i + 1));
+
+            aNodeLocations[i] = glGetAttribLocation(program, temp);
+            if (aNodeLocations[i] != -1) {
               glBindBuffer(GL_ARRAY_BUFFER, aNodeBuffers[i]);
               glVertexAttribPointer(aNodeLocations[i], 1, nattribs[i].type,
                                     GL_FALSE, 0, 0);
               glEnableVertexAttribArray(aNodeLocations[i]);
               glBindBuffer(GL_ARRAY_BUFFER, 0);
             }
+          }
+      }
+      __attribute__((fallthrough));
+
+    case INIT_UNIFORMS:
+      MAB_WRAP("init uniforms") {
+        uTranslateX = glGetUniformLocation(program, "uTranslateX");
+        uTranslateY = glGetUniformLocation(program, "uTranslateY");
+        uScale = glGetUniformLocation(program, "uScale");
+
+        for (i = 0; i < ncount; ++i) {
+          char temp[32];
+          snprintf(temp, sizeof(temp), "uNodeMin%lu", (unsigned long)(i + 1));
+          uNodeMins[i] = glGetUniformLocation(program, temp);
         }
-        __attribute__((fallthrough));
-
-      case INIT_UNIFORMS:
-        MAB_WRAP("init uniforms") {
-          uTranslateX = glGetUniformLocation(program, "uTranslateX");
-          uTranslateY = glGetUniformLocation(program, "uTranslateY");
-          uScale = glGetUniformLocation(program, "uScale");
-
-          for (i = 0; i < ncount; ++i) {
-            char temp[32];
-            snprintf(temp, sizeof(temp), "uNodeMin%lu", (unsigned long)(i + 1));
-            uNodeMins[i] = glGetUniformLocation(program, temp);
-          }
-
-          for (i = 0; i < ncount; ++i) {
-            char temp[32];
-            snprintf(temp, sizeof(temp), "uNodeMax%lu", (unsigned long)(i + 1));
-            uNodeMaxs[i] = glGetUniformLocation(program, temp);
-          }
-
-          for (i = 0; i < 6; ++i) {
-            char temp[32];
-            snprintf(temp, sizeof(temp), "uCat6[%lu]", (unsigned long)i);
-            uCat6[i] = glGetUniformLocation(program, temp);
-          }
+        
+        for (i = 0; i < ncount; ++i) {
+          char temp[32];
+          snprintf(temp, sizeof(temp), "uNodeMax%lu", (unsigned long)(i + 1));
+          uNodeMaxs[i] = glGetUniformLocation(program, temp);
         }
-        __attribute__((fallthrough));
 
-      case INIT_INDEX_BUFFER:
-        MAB_WRAP("init index buffer") {
-          // partition cache index buffers
-          for (i = 0; i < _max_res * _max_res; ++i) {
-            if (_partition_cache[i].indexBuffer)
-              glDeleteBuffers(1, &_partition_cache[i].indexBuffer);
+        for (i = 0; i < 6; ++i) {
+          char temp[32];
+          snprintf(temp, sizeof(temp), "uCat6[%lu]", (unsigned long)i);
+          uCat6[i] = glGetUniformLocation(program, temp);
+        }
+      }
+      __attribute__((fallthrough));
 
+    case INIT_INDEX_BUFFER:
+      MAB_WRAP("init index buffer") {
+        // partition cache index buffers
+        for (i = 0; i < _max_res * _max_res; ++i) {
+          if (_partition_cache[i].indexBuffer)
+            glDeleteBuffers(1, &_partition_cache[i].indexBuffer);
+
+          if (_partition_cache[i].perPartitionSSBO)
+            glDeleteBuffers(1, &_partition_cache[i].perPartitionSSBO);
+
+          if (logGLCalls &&
+              _partition_cache[i].partitions.length * sizeof(GLuint) > 0) {
+            mabLogMessage("glBufferData", "%lu",
+                          _partition_cache[i].partitions.length *
+                              sizeof(GLuint));
+          }
+
+          if (_partition_cache[i].partitions.length * sizeof(GLuint) > 0) {
             glGenBuffers(1, &_partition_cache[i].indexBuffer);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
                          _partition_cache[i].indexBuffer);
-
-            if (logGLCalls &&
-                _partition_cache[i].partitions.length * sizeof(GLuint) > 0)
-              mabLogMessage(
-                  "glBufferData", "%lu",
-                  _partition_cache[i].partitions.length * sizeof(GLuint));
-
             glBufferData(GL_ELEMENT_ARRAY_BUFFER,
                          _partition_cache[i].partitions.length * sizeof(GLuint),
                          _partition_cache[i].partitions.data, GL_STATIC_DRAW);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+            glGenBuffers(1, &_partition_cache[i].perPartitionSSBO);
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER,
+                         _partition_cache[i].perPartitionSSBO);
+            glBufferData(GL_SHADER_STORAGE_BUFFER,
+                         _partition_cache[i].edgeIdxs.length * sizeof(GLuint),
+                         _partition_cache[i].edgeIdxs.data, GL_STATIC_DRAW);
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+            /* for (int elemID = 0; elemID <
+            _partition_cache[i].edgeIdxs.length; ++elemID) {
+              fprintf(stderr, "Partition: %ld - At index: %d, found: %d \n", i,
+            elemID, vec_at(&_partition_cache[i].edgeIdxs, elemID));
+            } */
           }
         }
-        __attribute__((fallthrough));
+      }
+      __attribute__((fallthrough));
 
-      case RENDER:
-        MAB_WRAP("render") {
+    case RENDER:
+      MAB_WRAP("render") {
+        // get current partition resolution by zoom level
+        unsigned long res = (unsigned long)pow(2, _z);
+
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        if (_x >= 0 && _y >= 0 && _x < res && _y < res) {
           glUniform1f(uTranslateX, -1.0f * _x);
           glUniform1f(uTranslateY, -1.0f * _y);
           glUniform1f(uScale, pow(2.0f, _z));
@@ -614,26 +920,6 @@ void *render(void *v) {
             glUniform1f(uNodeMaxs[i], nattribs[i].frange[1]);
           }
 
-          // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-          glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-
-          glEnable(GL_BLEND);
-          glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-          glEnable(GL_DEPTH_TEST);
-          glDepthFunc(GL_LEQUAL);
-
-          glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-          /*
-          glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
-          glDrawElements(GL_LINES, edges->count, GL_UNSIGNED_INT, 0);
-          glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-          */
-
-          // get current partition resolution by zoom level
-          unsigned long res = (unsigned long)pow(2, _z);
-
           // figure out which partition we're rendering in
           unsigned long rx =
               (unsigned long)interpolate(0, res, 0, _max_res, _x);
@@ -643,33 +929,18 @@ void *render(void *v) {
           if (rx < _max_res && ry < _max_res) {
             int numTilesX = (int)ceil((float)_max_res / (float)res);
             int numTilesY =
-                numTilesX;  // seperated just in case if in the future we want
-                            // to have different x and y
-
-            /*
-            printf("res: (%lux%lu)/(%lux%lu)\n", res, res, _max_res, _max_res);
-            printf("_x: %f, _y: %f\n", _x, _y);
-            printf("rx: %lu, ry: %lu\n", rx, ry);
-                    printf("------------- numTilesX: %d, numTilesY: %d
-            -----------------\n", numTilesX, numTilesY);
-            */
+                numTilesX; // seperated just in case if in the future we want
+                           // to have different x and y
 
             MAB_WRAP("rendering tiles") {
-              /*
-              mabLogMessage("left", "%d", (int)rx);
-              mabLogMessage("top", "%d", (int)ry);
-              mabLogMessage("numTilesX", "%d", numTilesX);
-              mabLogMessage("numTilesY", "%d", numTilesY);
-              mabLogMessage("zoom", "%d", (int)_z);
-              */
-
               for (i = 0; i < numTilesX; ++i) {
                 for (j = 0; j < numTilesY; ++j) {
                   unsigned long idx = (ry + j) * _max_res + (rx + i);
                   PartitionData *pd = &_partition_cache[idx];
                   pd->count++;
 
-                  if (pd->partitions.length == 0) continue;
+                  if (pd->partitions.length == 0)
+                    continue;
                   if (doOcclusionCulling) {
                     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
                                  _partition_cache[idx].indexBuffer);
@@ -679,8 +950,8 @@ void *render(void *v) {
                                       pd->partitions.length);
 
                     int batchRenderSize =
-                        10000;  // experiment with this, should be some function
-                                // of max_res
+                        10000; // experiment with this, should be some
+                               // function of max_res
                     int numEdges = pd->partitions.length / 2;
                     for (int i = 0; i < (int)ceil((double)numEdges /
                                                   (double)batchRenderSize);
@@ -690,40 +961,60 @@ void *render(void *v) {
                                        ? batchRenderSize
                                        : numEdges - startIdx;
 
-                      GLuint q;
-                      glGenQueries(1, &q);
+                      // GLuint q;
+                      // glGenQueries(1, &q);
 
-                      glBeginQuery(GL_SAMPLES_PASSED, q);
+                      // glBeginQuery(GL_SAMPLES_PASSED, q);
                       glDrawElements(GL_LINES, length * 2, GL_UNSIGNED_INT,
                                      (void *)(intptr_t)startIdx);
-                      glEndQuery(GL_SAMPLES_PASSED);
+                      // glEndQuery(GL_SAMPLES_PASSED);
 
-                      GLint samples;
-                      glGetQueryObjectiv(q, GL_QUERY_RESULT, &samples);
+                      // GLint samples;
+                      // glGetQueryObjectiv(q, GL_QUERY_RESULT, &samples);
 
                       // if(samples == 0)    break;
                     }
                     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
                   } else {
-                    if (logGLCalls)
-                      if (pd->partitions.length > 0)
-                        mabLogMessage("glDrawElements", "%lu",
-                                      pd->partitions.length);
+                    if (logGLCalls && pd->partitions.length > 0)
+                      mabLogMessage("glDrawElements", "%lu",
+                                    pd->partitions.length);
 
                     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
                                  _partition_cache[idx].indexBuffer);
+
+                    // Some check to see if there are edge attributes...
+                    int thereAreEdgeAttributes = 1;
+                    if (thereAreEdgeAttributes) {
+                      glBindBuffer(GL_SHADER_STORAGE_BUFFER,
+                                   _partition_cache[idx].perPartitionSSBO);
+                      glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1,
+                                       _partition_cache[idx].perPartitionSSBO);
+                    } // end edge attribute setup
+
                     glDrawElements(GL_LINES, pd->partitions.length,
                                    GL_UNSIGNED_INT, 0);
                     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+                    // Disable edge edge attribute buffer if there are edge
+                    // attributes...
+                    if (thereAreEdgeAttributes) {
+                      glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+                    } // end edge attributes
+
+                    // printf(stderr, "\n\n\n",
+                    // _partition_cache[idx].indexBuffer);
+                    // }
                   }
                 }
               }
             }
           }
-
-          glFinish();
         }
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
+        glReadPixels(0, 0, _resolution, _resolution, GL_RGBA, GL_UNSIGNED_BYTE,
+                     _image);
         __attribute__((fallthrough));
 
       case WAIT:
@@ -757,13 +1048,15 @@ void *render(void *v) {
         }
         if (vertexShaderSource == NULL ||
             strcmp(vertexShaderSource, _vertexShaderSource) != 0) {
-          if (vertexShaderSource) free(vertexShaderSource);
+          if (vertexShaderSource)
+            free(vertexShaderSource);
           vertexShaderSource = strdup(_vertexShaderSource);
           where = INIT_PROGRAM;
         }
         if (fragmentShaderSource == NULL ||
             strcmp(fragmentShaderSource, _fragmentShaderSource) != 0) {
-          if (fragmentShaderSource) free(fragmentShaderSource);
+          if (fragmentShaderSource)
+            free(fragmentShaderSource);
           fragmentShaderSource = strdup(_fragmentShaderSource);
           where = INIT_PROGRAM;
         }
@@ -773,18 +1066,22 @@ void *render(void *v) {
         }
         if (dcIdent != _dcIdent) {
           dcIdent = _dcIdent;
-          if (dcIndex) free(dcIndex);
+          if (dcIndex)
+            free(dcIndex);
           dcIndex = _dcIndex;
-          if (dcMult) free(dcMult);
+          if (dcMult)
+            free(dcMult);
           dcMult = _dcMult;
-          if (dcOffset) free(dcOffset);
+          if (dcOffset)
+            free(dcOffset);
           dcOffset = _dcOffset;
           dcMinMult = _dcMinMult;
           dcMaxMult = _dcMaxMult;
           where = INIT_SORT;
         }
         if (dataset == NULL || strcmp(dataset, _dataset) != 0) {
-          if (dataset) free(dataset);
+          if (dataset)
+            free(dataset);
           dataset = strdup(_dataset);
           where = INIT_GRAPH;
         }
@@ -794,7 +1091,9 @@ void *render(void *v) {
         }
 
         break;
-    } /* switch */
+      } /* switch */
+    }
+  }
 } /* render */
 
 size_t tojpeg(void *rgba, int resolution, void **jpg, size_t *jpgsize) {
@@ -854,9 +1153,9 @@ struct MHD_Response *MAB_create_response_from_file(const char *filename) {
   return MHD_create_response_from_buffer(size, data, MHD_RESPMEM_MUST_FREE);
 }
 
-#define ANSWER(name)                                                  \
-  int name(void *cls, struct MHD_Connection *conn, const char *url,   \
-           const char *method, const char *version, const char *data, \
+#define ANSWER(name)                                                           \
+  int name(void *cls, struct MHD_Connection *conn, const char *url,            \
+           const char *method, const char *version, const char *data,          \
            size_t *size, void **con_cls)
 
 ANSWER(Index) {
@@ -966,7 +1265,8 @@ ANSWER(Tile) {
       char *key = it;
 
       it = strchrnul(it, ',');
-      if (!*it) break;
+      if (!*it)
+        break;
       *it++ = '\0';
 
       void *value = it;
@@ -1017,7 +1317,8 @@ ANSWER(Tile) {
                 (char *)value);
       }
 
-      if (done) break;
+      if (done)
+        break;
     }
 
     mabLogMessage("opt_vert length", "%d", strlen(opt_vert));
@@ -1142,8 +1443,10 @@ ANSWER(answer) {
   size_t i;
 
   for (i = 1; i < sizeof(routes) / sizeof(*routes); ++i) {
-    if (strcmp(method, routes[i].method) != 0) continue;
-    if (routes[i].exact && strcmp(url, routes[i].url) != 0) continue;
+    if (strcmp(method, routes[i].method) != 0)
+      continue;
+    if (routes[i].exact && strcmp(url, routes[i].url) != 0)
+      continue;
     if (!routes[i].exact &&
         strncmp(url, routes[i].url, strlen(routes[i].url)) != 0)
       continue;
@@ -1181,8 +1484,8 @@ static void *fgl_transformer_thread(void *v) {
     dup2(proc_in[0], 0);
     dup2(proc_out[1], 1);
 
-    execlp("/usr/bin/python3.8", "/usr/bin/python3.8", "/opt/fgl/fgl.py", "makeurl_repl",
-           (char *)NULL);
+    execlp("/usr/bin/python3.8", "/usr/bin/python3.8", "/opt/fgl/fgl.py",
+           "makeurl_repl", (char *)NULL);
     perror("execlp");
     exit(1);
   } else {

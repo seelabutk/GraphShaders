@@ -121,9 +121,10 @@ use() {
 }
 
 stress() {
-    url='http://accona.eecs.utk.edu:8365/tile/knit-graph/5/15/15/,vert,base64:CgkJdm9pZCBub2RlKGluIGZsb2F0IHgsIGluIGZsb2F0IHksIGluIGZsb2F0IGRhdGUsIGluIGZsb2F0IF9udW1NYWludCwgaW4gZmxvYXQgY3ZlLCBvdXQgZmxvYXQgdnVsbmVyYWJsZSkgewoJCQl2dWxuZXJhYmxlID0gY3ZlOwoJCQlmZ19Ob2RlUG9zaXRpb24gPSB2ZWMyKHgsIHkpOwogICAgICAgICAgICBmZ19Ob2RlRGVwdGggPSBmZ19tZWFuKHgpOwoJCX0KCQ==,frag,base64:CgkJdm9pZCBlZGdlKGluIGZsb2F0IHZ1bG5lcmFibGUpIHsKCQkJdmVjNCByZWQgPSB2ZWM0KDAuOCwgMC4xLCAwLjEsIDEuMCk7CgkJCXZlYzQgZ3JlZW4gPSB2ZWM0KDAuMCwgMS4wLCAwLjAsIDEuMCk7CgkJCXZlYzQgY29sb3IgPSBtaXgocmVkLCBncmVlbiwgdnVsbmVyYWJsZSk7CgkJCWZnX0ZyYWdDb2xvciA9ICgxLjAgLSBmZ19GcmFnRGVwdGgpICogY29sb3I7CgkJfQoJ,pDepth,10,dcIdent,590,dcIndex,base64:AQAAAAAAAAA=,dcMult,base64:AACAPw==,dcOffset,base64:AAAAAA==,dcMinMult,0.5,dcMaxMult,0.5'
+    #url='http://accona.eecs.utk.edu:8365/tile/knit-graph/5/15/15/,vert,base64:CgkJdm9pZCBub2RlKGluIGZsb2F0IHgsIGluIGZsb2F0IHksIGluIGZsb2F0IGRhdGUsIGluIGZsb2F0IF9udW1NYWludCwgaW4gZmxvYXQgY3ZlLCBvdXQgZmxvYXQgdnVsbmVyYWJsZSkgewoJCQl2dWxuZXJhYmxlID0gY3ZlOwoJCQlmZ19Ob2RlUG9zaXRpb24gPSB2ZWMyKHgsIHkpOwogICAgICAgICAgICBmZ19Ob2RlRGVwdGggPSBmZ19tZWFuKHgpOwoJCX0KCQ==,frag,base64:CgkJdm9pZCBlZGdlKGluIGZsb2F0IHZ1bG5lcmFibGUpIHsKCQkJdmVjNCByZWQgPSB2ZWM0KDAuOCwgMC4xLCAwLjEsIDEuMCk7CgkJCXZlYzQgZ3JlZW4gPSB2ZWM0KDAuMCwgMS4wLCAwLjAsIDEuMCk7CgkJCXZlYzQgY29sb3IgPSBtaXgocmVkLCBncmVlbiwgdnVsbmVyYWJsZSk7CgkJCWZnX0ZyYWdDb2xvciA9ICgxLjAgLSBmZ19GcmFnRGVwdGgpICogY29sb3I7CgkJfQoJ,pDepth,10,dcIdent,590,dcIndex,base64:AQAAAAAAAAA=,dcMult,base64:AACAPw==,dcOffset,base64:AAAAAA==,dcMinMult,0.5,dcMaxMult,0.5'
+	url='http://kavir.eecs.utk.edu:8365/tile/cit-Patents/3/3/3/,vert,base64:CgkJdm9pZCBub2RlKGluIGZsb2F0IHgsIGluIGZsb2F0IHksIGluIGZsb2F0IGFwcGRhdGUsIGluIGZsb2F0IGdvdGRhdGUsIGluIGZsb2F0IG5jbGFzcywgaW4gZmxvYXQgY2NsYXNzLCBvdXQgdmVjMyBjb2xvcikgewoJCQkJCWZnX05vZGVQb3NpdGlvbiA9IHZlYzIoeCwgeSk7CgkJCQkJZmdfTm9kZURlcHRoID0gZmdfbWluKGFwcGRhdGUpOwoJCQkJCWNvbG9yID0gdUNhdDZbaW50KDUuMCpjY2xhc3MpXTsKCQkJfQoJ,frag,base64:CgkJdm9pZCBlZGdlKGluIHZlYzMgY29sb3IpIHsKCQkJZmdfRnJhZ0NvbG9yID0gdmVjNChmZ19GcmFnRGVwdGggKiBjb2xvciwgMS4wKTsKCQl9Cgk=,pDepth,10,dcIdent,1,dcIndex,base64:AwAAAAAAAAA=,dcMult,base64:AACAPw==,dcOffset,base64:AAAAAA==,dcMinMult,1,dcMaxMult,0'
 
-    printf $'name,replicas,z_inc,nthreads,pDepth,mode,real,user,sys\n' >> stress.csv
+	printf $'name,replicas,z_inc,nthreads,pDepth,mode,real,user,sys\n' >> stress.csv
 
     for pDepth in 4 0 10; do
     for replicas in 1 2 3 4 5 6 7 8; do
@@ -131,7 +132,13 @@ stress() {
     for nthreads in 6 12; do
     for id in "replicas=${replicas:?}-z_inc=${z_inc:?}-nthreads=${nthreads:?}"; do
 
-    destroy
+    #for pDepth in 10; do
+    #for replicas in 1 2 3 4 5 6 7 8; do
+    #for z_inc in 4; do
+    #for nthreads in 6; do
+    #for id in "replicas=${replicas:?}-z_inc=${z_inc:?}-nthreads=${nthreads:?}"; do
+    
+	destroy
     build
     mv logs logs.bak
     mkdir -p "_stress/${id:?}"
@@ -142,8 +149,7 @@ stress() {
 
     sleep 0.5 || break
 
-    printf $'%s,%s,%s,%s,%s,%s,' "${id:?}" "${replicas:?}" "${z_inc:?}"
-	"${nthreads:?}" "${pDepth:?}" "${mode:?}" >> stress.csv
+    printf $'%s,%s,%s,%s,%s,%s,' "${id:?}" "${replicas:?}" "${z_inc:?}" "${nthreads:?}" "${pDepth:?}" "${mode:?}" >> stress.csv
 
     /usr/bin/time \
     --format='%e,%U,%S' \

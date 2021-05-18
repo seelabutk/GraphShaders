@@ -68,17 +68,16 @@ code[class*="language-"] {
 <script src="https://unpkg.com/prismjs@1.20.0/plugins/autoloader/prism-autoloader.min.js"></script>
 <script src="https://unpkg.com/mathjs@7.0.0/dist/math.min.js"></script>
 <script type="x-shader/x-vertex" id="default-vert">
-		void node(in float x, in float y, in float date, in float _numMaint, in float cve, out float vulnerable) {
-			vulnerable = cve;
+		void node(in float x, in float y, out float tt) {
 			fg_NodePosition = vec2(x, y);
-            fg_NodeDepth = fg_min(-cve);
+      		fg_NodeDepth = fg_min(x);
+			tt = 1.0;
 		}
 </script><!-- #default-vert -->
+<!-- //vec4(vec3(float(gl_PrimitiveID) / 3.0), tt);//vec4(GlobalEdgeData[PrimitiveLookasideBuffer[gl_PrimitiveID]].rgb, tt); ec4(float(gl_PrimitiveID), 0.0, 0.0, tt);-->
 <script type="x-shader/x-fragment" id="default-frag">
-		void edge(in float vulnerable) {
-			vec4 red = vec4(0.8, 0.1, 0.1, 0.1);
-			vec4 green = vec4(0.0, 1.0, 0.0, 0.1);
-			vec4 color = mix(red, green, vulnerable);
+		void edge(in float tt) {
+			vec4 color = vec4(fg_EdgeData.rgb, tt);
 			fg_FragColor = color;
 		} 
 </script><!-- default-frag -->
@@ -95,7 +94,7 @@ window.btoa = function(x) {
 
 const guiParams = {
 	'selector': { value: 0.5, min: 0.0, max: 1.0 },
-    'partitions': { value: 10, min: 0, max: 16 },
+    'partitions': { value: 0, min: 0, max: 16 },
 };
 
 const jar = new CodeJar(document.querySelector('#editor'), Prism.highlightElement);
@@ -419,7 +418,7 @@ function makeDC() {
 }
 
 function makeUrlTemplate() {
-	const dataset = 'knit-graph';
+	const dataset = 'edgetest';
 	const vert = btoa(thevert(config));
 	const frag = btoa(thefrag(config));
 	console.log(atob(vert))

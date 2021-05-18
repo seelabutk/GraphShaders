@@ -6,8 +6,11 @@
 
 uniform vec3 uCat6[6];
 {% else %}
-#version 300 es
+#version 460 core
 precision mediump float;
+
+layout(early_fragment_tests) in;
+
 {% endif %}
 
 {{ source|safe }}
