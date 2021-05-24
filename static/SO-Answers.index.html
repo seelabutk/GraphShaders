@@ -68,15 +68,17 @@ code[class*="language-"] {
 <script src="https://unpkg.com/prismjs@1.20.0/plugins/autoloader/prism-autoloader.min.js"></script>
 <script src="https://unpkg.com/mathjs@7.0.0/dist/math.min.js"></script>
 <script type="x-shader/x-vertex" id="default-vert">
-		void node(in float x, in float y, in float id, in float loop, out vec4 color) {
-			vec4 green = vec4(0.506, 0.655, 0.471, 1.0);
-			vec4 yellow = vec4(0.945, 0.839, 0.518, 1.0);
-			color = mix(green, yellow, loop) * id;
-			fg_NodePosition = vec3(x, y, id);
+		void node(in float x, in float y, out float tt) {
+			fg_NodePosition = vec2(x, y);
+      fg_NodeDepth = fg_min(x);
+			tt = 1.0;
 		}
 </script><!-- #default-vert -->
+<!-- //vec4(vec3(float(gl_PrimitiveID) / 3.0), tt);//vec4(GlobalEdgeData[PrimitiveLookasideBuffer[gl_PrimitiveID]].rgb, tt); ec4(float(gl_PrimitiveID), 0.0, 0.0, tt);-->
 <script type="x-shader/x-fragment" id="default-frag">
-		void edge(in vec4 color) {
+		void edge(in float tt) {
+			float time_norm = fg_EdgeData.r;
+			vec4 color = vec4(vec3(time_norm), tt);
 			fg_FragColor = color;
 		} 
 </script><!-- default-frag -->
@@ -100,8 +102,6 @@ const jar = new CodeJar(document.querySelector('#editor'), Prism.highlightElemen
 jar.updateCode(
 `fg({
 	params: guiParams, 
-	variables: 'X Y Id Loop',
-	depth: 'min(X)',
 	node: (config) => \`
 		${document.querySelector('#default-vert').textContent.trim()}
 	\`,
@@ -111,7 +111,9 @@ jar.updateCode(
 });
 `);
 
-let gui = null, config = null, dcIdent = 1000*Math.random()|0, lastdepth = null, thevariables, thedc = null, thedepth = null, thevert = null, thefrag = null;
+const thevariables = ['x', 'y', 'date', 'maintainercount', 'cve', 'source'].join(' ');
+
+let gui = null, config = null, dcIdent = 0, lastdepth = null, thedc = null, thedepth = null, thevert = null, thefrag = null;
 let debounce = null;
 function fg({ params, variables, depth, node, edge }) {
 	if (gui === null) {
@@ -130,7 +132,7 @@ function fg({ params, variables, depth, node, edge }) {
 	thedepth = depth;
 	thevert = node;
 	thefrag = edge;
-	thevariables = variables;
+	//thevariables = variables;
 	thedc = makeDC();
 	if (thedc === null) return;
 	if (debounce == null)
@@ -311,7 +313,7 @@ L.TileLayer.LoggingTileLayer = L.TileLayer.extend({
 const map = L.map('map', {
         crs: L.CRS.Simple,
         center: [-128, 128],
-        zoom: 0,
+        zoom: 6,
         tms: true,
         fadeAnimation: false
 });
@@ -350,21 +352,26 @@ function makeDC() {
 		offset: [],
 		combine: 0.5,
 	};
+    const vert = thevert(config);
+    const match = vert.match(/fg_NodeDepth = (.*);/);
+    console.log({ match });
+    const thedepth = match[1];
+    console.log({ thedepth });
 	const code = math.compile(thedepth);
 	const variables = thevariables.split(' ');
 
 	const scope = {
-		min: (v) => v,
-		max: (v) => v,
-		mean: (v) => v,
+		fg_min: (v) => v,
+		fg_max: (v) => v,
+		fg_mean: (v) => v,
 	};
 	variables.forEach((v) => { scope[v] = 0.0; });
 
 	try {
 		const combine = code.evaluate({ ...scope,
-			min: () => 'min',
-			max: () => 'max',
-			mean: () => 'mean',
+			fg_min: () => 'min',
+			fg_max: () => 'max',
+			fg_mean: () => 'mean',
 		});
 		if (combine === 'min') dc.combine = 0.0;
 		else if (combine === 'max') dc.combine = 1.0;
@@ -416,6 +423,7 @@ function makeUrlTemplate() {
 	const vert = btoa(thevert(config));
 	const frag = btoa(thefrag(config));
 	console.log(atob(vert))
+    console.log({ thedc });
 	const dcIndex = btoa(new Uint32Array(thedc.index));
 	const dcMult = btoa(new Float32Array(thedc.mult));
 	const dcOffset = btoa(new Float32Array(thedc.offset));
