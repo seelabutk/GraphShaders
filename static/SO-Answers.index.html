@@ -70,16 +70,20 @@ code[class*="language-"] {
 <script type="x-shader/x-vertex" id="default-vert">
 		void node(in float x, in float y, out float tt) {
 			fg_NodePosition = vec2(x, y);
-      fg_NodeDepth = fg_min(x);
-			tt = 1.0;
+      		fg_NodeDepth = fg_max(x);
+			tt = 1.0f;
 		}
 </script><!-- #default-vert -->
-<!-- //vec4(vec3(float(gl_PrimitiveID) / 3.0), tt);//vec4(GlobalEdgeData[PrimitiveLookasideBuffer[gl_PrimitiveID]].rgb, tt); ec4(float(gl_PrimitiveID), 0.0, 0.0, tt);-->
 <script type="x-shader/x-fragment" id="default-frag">
 		void edge(in float tt) {
-			float time_norm = fg_EdgeData.r;
-			vec4 color = vec4(vec3(time_norm), tt);
-			fg_FragColor = color;
+
+			vec3 hsv = vec3(fg_EdgeData[0]*10, 1.0f, fg_EdgeData[0]*5);
+
+			vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+			vec3 p = abs(fract(hsv.xxx + K.xyz) * 6.0 - K.www);
+			vec3 color = hsv.z * normalize(mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), hsv.y));
+
+			fg_FragColor = vec4(color, fg_EdgeData[0]*2);
 		} 
 </script><!-- default-frag -->
 <script type="module">
