@@ -468,19 +468,19 @@ void *render(void *v) {
 
             eattribs[i].data = malloc(eattribs[i].size);
             fread(eattribs[i].data, 1, eattribs[i].size, f);
-            fprintf(stderr, "eattribs size is: %ld bytes \n", eattribs[i].size);
+            //fprintf(stderr, "eattribs size is: %ld bytes \n", eattribs[i].size);
             if (i > 0) {
               runningStride += 4;
               runningSize += eattribs[i].size;
             }
           }
-          fprintf(stderr, "Total bytes per edge: %lu, there are %lu edges \n",
-                  runningStride, totalEdgeCount);
-          fprintf(stderr, "Total size for edge attributes: %lu \n",
-                  runningSize);
+          // fprintf(stderr, "Total bytes per edge: %lu, there are %lu edges \n",
+          //         runningStride, totalEdgeCount);
+          // fprintf(stderr, "Total size for edge attributes: %lu \n",
+          //         runningSize);
           // send me to jail
-          fprintf(stderr, "Next 16 byte alignment: %lu \n",
-                  ((GLint64)runningStride + 15) & -16);
+          // fprintf(stderr, "Next 16 byte alignment: %lu \n",
+          //         ((GLint64)runningStride + 15) & -16);
 
           if (globalSSBO) {
             glDeleteBuffers(1, &globalSSBO);
@@ -510,9 +510,9 @@ void *render(void *v) {
                 if (i + 1 >= ecount) {
                   ((float *)edgeData)[edgeNumber * edgePad + i] = 0.0;
                 } else {
-                  fprintf(stderr, "\tSet edge %d attribute %d to %f \n",
-                          edgeNumber, i + 1,
-                          eattribs[i + 1].floats[edgeNumber - 1]);
+                  // fprintf(stderr, "\tSet edge %d attribute %d to %f \n",
+                  //         edgeNumber, i + 1,
+                  //         eattribs[i + 1].floats[edgeNumber - 1]);
                   ((float *)edgeData)[edgeNumber * edgePad + i] =
                       eattribs[i + 1].floats[edgeNumber - 1];
                 }

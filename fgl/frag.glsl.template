@@ -1,5 +1,5 @@
 {% if not preprocessed %}
-#define edge(...) edge(__VA_ARGS__, in vec2 fg_FragCoord, in float fg_FragDepth, in vec4 fg_EdgeData, out vec4 fg_FragColor)
+#define edge(...) edge(__VA_ARGS__, in vec2 fg_FragCoord, in float fg_FragDepth, in vec4 fg_EdgeData, out vec4 fg_FragColor, out float fg_EdgeMutate, out float fg_Disregard)
 {% else %}
 #version 460 core
 precision mediump float;
@@ -40,6 +40,8 @@ uniform float uTranslateX, uTranslateY, uScale;
 
 void main() {
     vec4 fg_EdgeData = global_edge_data[global_indices[gl_PrimitiveID] + 1].color;
+    float fg_EdgeMutate = 0.0;
+    float fg_Disregard = 0.0;
     edge(
         {%- for param in in_params -%}
         {%- if not loop.first %}, {% endif %}
@@ -49,5 +51,11 @@ void main() {
         {{ param.name -}}
         {% endfor %}
     );
+
+    if (fg_Disregard >= 1.0) {
+        discard;
+    }
+
+    gl_FragDepth = fg_EdgeMutate;
 }
 {% endif %}

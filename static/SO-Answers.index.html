@@ -68,23 +68,39 @@ code[class*="language-"] {
 <script src="https://unpkg.com/prismjs@1.20.0/plugins/autoloader/prism-autoloader.min.js"></script>
 <script src="https://unpkg.com/mathjs@7.0.0/dist/math.min.js"></script>
 <script type="x-shader/x-vertex" id="default-vert">
-		void node(in float x, in float y, out float tt) {
-			fg_NodePosition = vec2(x, y);
-      		fg_NodeDepth = fg_max(x);
-			tt = 1.0f;
-		}
+	void node(in float x, in float y, in float id, in float self, out float accountCreated) {
+		fg_NodePosition = vec2(x, y);
+		fg_NodeDepth = fg_max(x);
+		accountCreated = id;
+		fg_NodeDepth = 1.0 - accountCreated;
+	}
 </script><!-- #default-vert -->
 <script type="x-shader/x-fragment" id="default-frag">
-		void edge(in float tt) {
+	void edge(in float accountCreated) {
+		
+		fg_Disregard = 0.0;
 
-			vec3 hsv = vec3(fg_EdgeData[0]*10, 1.0f, fg_EdgeData[0]*5);
+		
+		float account_max = 0.01;
+		float account_min = 0.00;
+		if (accountCreated > account_max || accountCreated < account_min) {
+			fg_Disregard = 1.0;
+		}
 
-			vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-			vec3 p = abs(fract(hsv.xxx + K.xyz) * 6.0 - K.www);
-			vec3 color = hsv.z * normalize(mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), hsv.y));
+		vec3 cool = vec3(0.6, 0.749, 0.596);
+		vec3 warm = vec3(0.878, 0.38, 0.282);
+		vec3 color = mix(cool, warm, smoothstep(account_min, account_max, accountCreated));
 
-			fg_FragColor = vec4(color, fg_EdgeData[0]*2);
-		} 
+		float seen = fg_EdgeData.x * 5.0;
+		float seen_max = 0.10;
+		float seen_min = 0.00;
+		if (seen > seen_max || seen < seen_min) {
+			fg_Disregard = 1.0;
+		}
+
+		fg_EdgeMutate = (1.0 - seen);
+		fg_FragColor = vec4(color * clamp(smoothstep(seen_min, seen_max, seen), 0.1, 1.0), 1.0);
+	}
 </script><!-- default-frag -->
 <script type="module">
 import {CodeJar} from 'https://unpkg.com/codejar@2.0.0/codejar.js';

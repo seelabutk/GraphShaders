@@ -192,8 +192,8 @@ def main_makeurl_repl(infile, outfile):
         z, x, y = map(int, (z, x, y))
         options = { k: v for k, v in grouper(options.split(',')[1:], 2) }
 
-        #print(f'{b64decode(options["vert"][len("base64:"):]) =!s}', file=sys.stderr)
-        #print(f'{b64decode(options["frag"][len("base64:"):]) =!s}', file=sys.stderr)
+        print(f'{b64decode(options["vert"][len("base64:"):]) =!s}', file=sys.stderr)
+        print(f'{b64decode(options["frag"][len("base64:"):]) =!s}', file=sys.stderr)
         
         nodefile = StringIO(b64decode(options["vert"][len("base64:"):]))
         nodefile.name = '<url>'
@@ -216,8 +216,8 @@ def main_makeurl_repl(infile, outfile):
         options['vert'] = f'base64:{b64encode(nodeshader)}'
         options['frag'] = f'base64:{b64encode(edgeshader)}'
 
-        #print(f'{b64decode(options["vert"][len("base64:"):]) =!s}', file=sys.stderr)
-        #print(f'{b64decode(options["frag"][len("base64:"):]) =!s}', file=sys.stderr)
+        print(f'{b64decode(options["vert"][len("base64:"):]) =!s}', file=sys.stderr)
+        print(f'{b64decode(options["frag"][len("base64:"):]) =!s}', file=sys.stderr)
 
         options = ',' + ','.join(flatten(options.items()))
         z, x, y = map(str, (z, x, y))
