@@ -5,3 +5,4 @@ Dockerfile
 src/server.c
 static/index.html
 logparse.py
+stitch.py

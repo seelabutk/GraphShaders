@@ -47,6 +47,7 @@ run() {
 		${cap_add:+--cap-add=$cap_add} \
 		${xauth:+-e DISPLAY -v /etc/group:/etc/group:ro -v /etc/passwd:/etc/passwd:ro -v /etc/shadow:/etc/shadow:ro -v /etc/sudoers.d:/etc/sudoers.d:ro -v $xauth:$xauth -e XAUTHORITY=$xauth} \
 		${entrypoint:+--entrypoint $entrypoint} \
+		--detach-keys="ctrl-q,ctrl-q" \
 		$tag \
 		"$@"
 }
@@ -118,6 +119,27 @@ use() {
 	dataset=${1:?need dataset}
 
 	ln -sf ${dataset:?}.index.html static/index.html
+}
+
+stitch() {
+    # JS-Deps master
+    #url='http://kavir.eecs.utk.edu:8223/tile/knit-graph/5/15/15/,vert,base64:CgkJdm9pZCBub2RlKGluIGZsb2F0IHgsIGluIGZsb2F0IHksIGluIGZsb2F0IGRhdGUsIGluIGZsb2F0IF9udW1NYWludCwgaW4gZmxvYXQgY3ZlLCBvdXQgZmxvYXQgdnVsbmVyYWJsZSkgewoJCQl2dWxuZXJhYmxlID0gY3ZlOwoJCQlmZ19Ob2RlUG9zaXRpb24gPSB2ZWMyKHgsIHkpOwogICAgICAgICAgICBmZ19Ob2RlRGVwdGggPSBmZ19taW4oLWN2ZSk7CgkJfQoJ,frag,base64:CgkJdm9pZCBlZGdlKGluIGZsb2F0IHZ1bG5lcmFibGUpIHsKCQkJdmVjNCByZWQgPSB2ZWM0KDAuOCwgMC4xLCAwLjEsIDAuMSk7CgkJCXZlYzQgZ3JlZW4gPSB2ZWM0KDAuMCwgMS4wLCAwLjAsIDAuMSk7CgkJCXZlYzQgY29sb3IgPSBtaXgocmVkLCBncmVlbiwgdnVsbmVyYWJsZSk7CgkJCWZnX0ZyYWdDb2xvciA9IGNvbG9yOwoJCX0KCQ==,pDepth,10,dcIdent,1,dcIndex,base64:BQAAAAAAAAA=,dcMult,base64:AACAvw==,dcOffset,base64:AAAAgA==,dcMinMult,1,dcMaxMult,0'
+
+    # JS-Deps feature/gotta-go-fast
+    url='http://kavir.eecs.utk.edu:8223/tile/knit-graph/6/31/31/,vert,base64:CgkJdm9pZCBub2RlKGluIGZsb2F0IHgsIGluIGZsb2F0IHksIGluIGZsb2F0IGRhdGUsIGluIGZsb2F0IF9udW1NYWludCwgaW4gZmxvYXQgY3ZlLCBvdXQgZmxvYXQgdnVsbmVyYWJsZSkgewoJCQl2dWxuZXJhYmxlID0gY3ZlOwoJCQlmZ19Ob2RlUG9zaXRpb24gPSB2ZWMyKHgsIHkpOwogICAgICAgICAgICBmZ19Ob2RlRGVwdGggPSBmZ19taW4oLWN2ZSk7CgkJfQoJ,frag,base64:CgkJdm9pZCBlZGdlKGluIGZsb2F0IHZ1bG5lcmFibGUpIHsKCQkJdmVjNCByZWQgPSB2ZWM0KDAuOCwgMC4xLCAwLjEsIDAuMSk7CgkJCXZlYzQgZ3JlZW4gPSB2ZWM0KDAuMCwgMS4wLCAwLjAsIDAuMSk7CgkJCXZlYzQgY29sb3IgPSBtaXgocmVkLCBncmVlbiwgdnVsbmVyYWJsZSk7CgkJCWZnX0ZyYWdDb2xvciA9IGNvbG9yOwoJCX0KCQ==,pDepth,10,dcIdent,1,dcIndex,base64:BQAAAAAAAAA=,dcMult,base64:AACAvw==,dcOffset,base64:AAAAgA==,dcMinMult,1,dcMaxMult,0'
+
+    destroy
+    build
+    replicas=6 create-fg || break
+
+    python3.8 stitch.py \
+        --nthreads 6 \
+        --z-inc 4 \
+        --mode stitch \
+        -o out.png \
+        <<<"${url:?},pDepth,0"
+
+    destroy
 }
 
 stress() {

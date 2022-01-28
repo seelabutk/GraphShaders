@@ -29,6 +29,8 @@
 #include "stb_image_write.h"
 #define GLAPIENTRY APIENTRY
 
+#define FG_MAGIC (('f' << 24) | ('g' << 16) | ('0' << 8) | ('1'))
+
 struct attrib {
   GLuint64 size;
   union {
@@ -282,6 +284,7 @@ void *render(void *v) {
                                       contextAttribs);
         if (!eglContext) {
           fprintf(stderr, "could not init EGL context\n");
+          fprintf(stderr, "Do you have a GPU? (If you're part of Seelab, then run FG from Kavir\n");
           exit(1);
         }
 
@@ -540,6 +543,7 @@ void *render(void *v) {
       MAB_WRAP("init partition") {
         printf("partitioning data...\n");
         unsigned j;
+        char filename[128];
 
         // clear previous partitions
         if (_partition_cache) {
@@ -565,6 +569,50 @@ void *render(void *v) {
           vec_init(&_partition_cache[i].partitions);
           vec_init(&_partition_cache[i].edgeIdxs);
         }
+
+        snprintf(filename, sizeof(filename), "cache/%s_mr%u.partition.dat", dataset, _max_res);
+        f = fopen(filename, "rb");
+        if (f != NULL) {
+          uint32_t magic;
+
+          if (fread(&magic, sizeof(magic), 1, f) != 1) {
+            fprintf(stderr, "Partition cache %s has no magic! Ignoring it\n", filename);
+            fclose(f);
+            goto stop_reading_partition_cache; // XXX(th): sorry
+          }
+
+          if (magic != FG_MAGIC) {
+            fprintf(stderr, "Partition cache %s has bad magic! Ignoring it\n", filename);
+            fclose(f);
+            goto stop_reading_partition_cache; // XXX(th): sorry
+          }
+
+          for (i=0; i< _max_res * _max_res; ++i) {
+            size_t length, size;
+
+            fread(&length, sizeof(length), 1, f);
+
+            _partition_cache[i].partitions.length = length;
+            _partition_cache[i].partitions.capacity = length;
+
+            size = sizeof(*_partition_cache[i].partitions.data) * length;
+            _partition_cache[i].partitions.data = malloc(size);
+            fread(_partition_cache[i].partitions.data, size, 1, f);
+
+            fread(&length, sizeof(length), 1, f);
+
+            _partition_cache[i].edgeIdxs.length = length;
+            _partition_cache[i].edgeIdxs.capacity = length;
+
+            size = sizeof(*_partition_cache[i].edgeIdxs.data) * length;
+            _partition_cache[i].edgeIdxs.data = malloc(size);
+            fread(_partition_cache[i].edgeIdxs.data, size, 1, f);
+          }
+          fclose(f);
+
+          goto done_partitioning; // XXX(th): sorry
+        }
+stop_reading_partition_cache: ; // XXX(th): sorry
 
         GLfloat *vertsX = nattribs[0].floats;
         GLfloat *vertsY = nattribs[1].floats;
@@ -616,6 +664,38 @@ void *render(void *v) {
         }
         printf("100%% done\n");
         // log_partition_cache(_partition_cache);
+
+        f = fopen(filename, "wb");
+        if (f != NULL) {
+          uint32_t magic;
+          magic = 0;
+          fwrite(&magic, sizeof(magic), 1, f);
+
+          for (i=0; i< _max_res * _max_res; ++i) {
+            size_t length, size;
+
+            length = _partition_cache[i].partitions.length;
+            fwrite(&length, sizeof(length), 1, f);
+
+            size = sizeof(*_partition_cache[i].partitions.data) * length;
+            fwrite(_partition_cache[i].partitions.data, size, 1, f);
+
+            length = _partition_cache[i].edgeIdxs.length;
+            fwrite(&length, sizeof(length), 1, f);
+
+            size = sizeof(*_partition_cache[i].edgeIdxs.data) * length;
+            fwrite(_partition_cache[i].edgeIdxs.data, size, 1, f);
+          }
+
+          fseek(f, 0, SEEK_SET);
+
+          magic = FG_MAGIC;
+          fwrite(&magic, sizeof(magic), 1, f);
+
+          fclose(f);
+        }
+
+done_partitioning: ; // XXX(th): sorry
       }
       __attribute__((fallthrough));
 
@@ -1544,6 +1624,7 @@ int main(int argc, char **argv) {
   }
 
   fprintf(stderr, "could not open log\n");
+  fprintf(stderr, "It's likely that the logs/ directory is full. Remove unneeded .log files\n");
   return 1;
 
 got_log:
