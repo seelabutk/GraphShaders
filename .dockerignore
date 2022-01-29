@@ -1,8 +1,12 @@
-build
-data
-logs
-logs.bak
-_stress
-_stress.bak
-workArea
-cache
+# Ignore everything by default
+*
+
+!libmicrohttpd-0.9.70
+!zorder-lib
+!Makefile
+!src
+!fgl
+
+# Ensure Docker files are ignored
+Dockerfile
+.dockerignore
