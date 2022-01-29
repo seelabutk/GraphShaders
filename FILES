@@ -4,5 +4,7 @@ env.sh
 Dockerfile
 src/server.c
 static/index.html
+static/index.js
+static/index.css
 logparse.py
 stitch.py

@@ -99,6 +99,7 @@ static pthread_barrier_t *_barrier;
 
 static volatile int _logGLCalls;
 static volatile int _doOcclusionCulling;
+static volatile int _doScissorTest;
 
 static volatile GLuint _max_depth = 0;
 static unsigned volatile _max_res;
@@ -207,7 +208,7 @@ void *render(void *v) {
   GLboolean first;
   GLuint dcIdent, *dcIndex;
   GLfloat *dcMult, *dcOffset, dcMinMult, dcMaxMult;
-  int logGLCalls, doOcclusionCulling;
+  int logGLCalls, doOcclusionCulling, doScissorTest;
 
   _partition_cache = NULL;
 
@@ -223,6 +224,7 @@ void *render(void *v) {
   dcMult = dcOffset = NULL;
   logGLCalls = 0;
   doOcclusionCulling = 0;
+  doScissorTest = 0;
 
   x = y = z = INFINITY;
   dataset = vertexShaderSource = fragmentShaderSource = NULL;
@@ -981,6 +983,8 @@ done_partitioning: ; // XXX(th): sorry
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LEQUAL);
 
+        glEnable(GL_SCISSOR_TEST);
+
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         if (_x >= 0 && _y >= 0 && _x < res && _y < res) {
@@ -1011,10 +1015,28 @@ done_partitioning: ; // XXX(th): sorry
             int numTilesY =
                 numTilesX; // seperated just in case if in the future we want
                            // to have different x and y
+            size_t distBetweenTilesX = _resolution / numTilesX;
+            size_t distBetweenTilesY = _resolution / numTilesY;
 
             MAB_WRAP("rendering tiles") {
               for (i = 0; i < numTilesX; ++i) {
                 for (j = 0; j < numTilesY; ++j) {
+                  // if (i > 0 || j > 0) continue;
+
+                  if (doScissorTest) {
+                    // coordinates are from bottom left
+                    // (left 0, bottom 0) bottom left
+                    // (left 10, bottom 20) 10 pixels from left, 20 pixels from bottom
+                    size_t left, bottom, width, height;
+
+                    left = i * distBetweenTilesX;
+                    bottom = j * distBetweenTilesY;
+                    width = distBetweenTilesX;
+                    height = distBetweenTilesY;
+
+                    glScissor(left, bottom, width, height);
+                  }
+
                   unsigned long idx = (ry + j) * _max_res + (rx + i);
                   PartitionData *pd = &_partition_cache[idx];
                   pd->count++;
@@ -1088,6 +1110,10 @@ done_partitioning: ; // XXX(th): sorry
                     // }
                   }
                 }
+
+                if (doScissorTest) {
+                  glScissor(0, 0, _resolution, _resolution);
+                }
               }
             }
           }
@@ -1117,6 +1143,7 @@ done_partitioning: ; // XXX(th): sorry
 
         logGLCalls = _logGLCalls;
         doOcclusionCulling = _doOcclusionCulling;
+        doScissorTest = _doScissorTest;
 
         if (fabsf(x - _x) > 0.1) {
           x = _x;
@@ -1238,17 +1265,63 @@ struct MHD_Response *MAB_create_response_from_file(const char *filename) {
            const char *method, const char *version, const char *data,          \
            size_t *size, void **con_cls)
 
-ANSWER(Index) {
-  struct MHD_Response *index_response;
+ANSWER(IndexHTML) {
+  struct MHD_Response *response;
   int rc;
 
-  index_response = MAB_create_response_from_file("static/index.html");
-  if (index_response == NULL) {
+  response = MAB_create_response_from_file("static/index.html");
+  if (response == NULL) {
     printf("Could not read file static/index.html\n");
     exit(1);
   }
-  rc = MHD_queue_response(conn, MHD_HTTP_OK, index_response);
-  MHD_destroy_response(index_response);
+  MHD_add_response_header(response, "Content-Type", "text/html");
+  rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
+  MHD_destroy_response(response);
+  return rc;
+}
+
+ANSWER(IndexJS) {
+  struct MHD_Response *response;
+  int rc;
+
+  response = MAB_create_response_from_file("static/index.js");
+  if (response == NULL) {
+    printf("Could not read file static/index.js\n");
+    exit(1);
+  }
+  MHD_add_response_header(response, "Content-Type", "text/javascript");
+  rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
+  MHD_destroy_response(response);
+  return rc;
+}
+
+ANSWER(IndexCSS) {
+  struct MHD_Response *response;
+  int rc;
+
+  response = MAB_create_response_from_file("static/index.css");
+  if (response == NULL) {
+    printf("Could not read file static/index.css\n");
+    exit(1);
+  }
+  MHD_add_response_header(response, "Content-Type", "text/css");
+  rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
+  MHD_destroy_response(response);
+  return rc;
+}
+
+ANSWER(FGJS) {
+  struct MHD_Response *response;
+  int rc;
+
+  response = MAB_create_response_from_file("static/fg.js");
+  if (response == NULL) {
+    printf("Could not read file static/fg.js\n");
+    exit(1);
+  }
+  MHD_add_response_header(response, "Content-Type", "text/javascript");
+  rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
+  MHD_destroy_response(response);
   return rc;
 }
 
@@ -1262,6 +1335,7 @@ ANSWER(Static) {
   struct MHD_Response *response;
   int rc;
 
+  // skip leading slash
   const char *URL = url + 1;
 
   response = MAB_create_response_from_file(URL);
@@ -1337,6 +1411,9 @@ ANSWER(Tile) {
     GLfloat opt_dcMaxMult = 0.0;
     int opt_logGLCalls = 0;
     int opt_doOcclusionCulling = 0;
+    int opt_doScissorTest = 0;
+    int opt_debugTileBoundaries = 0;
+    int opt_debugPartitionBoundaries = 0;
 
     // fprintf(stderr, "options: '''\n%s\n'''\n", options);
 
@@ -1392,6 +1469,12 @@ ANSWER(Tile) {
         opt_logGLCalls = atoi(value);
       } else if (strcmp(key, "doOcclusionCulling") == 0) {
         opt_doOcclusionCulling = atoi(value);
+      } else if (strcmp(key, "doScissorTest") == 0) {
+        opt_doScissorTest = atoi(value);
+      } else if (strcmp(key, "debugTileBoundaries") == 0) {
+        opt_debugTileBoundaries = atoi(value);
+      } else if (strcmp(key, "debugPartitionBoundaries") == 0) {
+        opt_debugPartitionBoundaries = atoi(value);
       } else {
         fprintf(stderr, "WARNING: unhandled option '%s' = '%s'\n", key,
                 (char *)value);
@@ -1424,6 +1507,7 @@ ANSWER(Tile) {
       _dcMaxMult = opt_dcMaxMult;
       _logGLCalls = opt_logGLCalls;
       _doOcclusionCulling = opt_doOcclusionCulling;
+      _doScissorTest = opt_doScissorTest;
       _error = ERROR_NONE;
 
       mabLogForward(&renderInfo);
@@ -1455,6 +1539,51 @@ ANSWER(Tile) {
         goto end;
 
       } else {
+        if (opt_debugPartitionBoundaries) {
+          size_t tileres = _resolution;
+          size_t maxres = (size_t)pow(2, max_depth);
+          size_t res = (size_t)pow(2, z);
+          // size_t rx = (size_t)interpolate(0, res, 0, maxres, x);
+          // size_t ry = (size_t)interpolate(0, res, 0, maxres, y);
+
+          // assume x and y partition resolution are the same
+          size_t numTiles = (size_t)ceil((float)maxres / (float)res);
+          size_t distBetweenTiles = tileres / numTiles;
+
+          for (size_t i=0; i<tileres; ++i) {
+            for (size_t j=0; j<numTiles; ++j) {
+              // left column
+              _image[(i)*tileres*4 + (j*distBetweenTiles)*4 + 0] = 0x00;
+              _image[(i)*tileres*4 + (j*distBetweenTiles)*4 + 1] = 0xFF;
+              _image[(i)*tileres*4 + (j*distBetweenTiles)*4 + 2] = 0x00;
+              _image[(i)*tileres*4 + (j*distBetweenTiles)*4 + 3] = 0xFF;
+
+              // top row
+              _image[(j*distBetweenTiles)*tileres*4 + (i)*4 + 0] = 0x00;
+              _image[(j*distBetweenTiles)*tileres*4 + (i)*4 + 1] = 0xFF;
+              _image[(j*distBetweenTiles)*tileres*4 + (i)*4 + 2] = 0x00;
+              _image[(j*distBetweenTiles)*tileres*4 + (i)*4 + 3] = 0xFF;
+            }
+          }
+        }
+
+        if (opt_debugTileBoundaries) {
+          size_t res = _resolution;
+          for (size_t i=0; i<res; ++i) {
+            // left column
+            _image[i*res*4+0*4+0] = 0xFF;
+            _image[i*res*4+0*4+1] = 0x00;
+            _image[i*res*4+0*4+2] = 0xFF;
+            _image[i*res*4+0*4+3] = 0xFF;
+
+            // top row
+            _image[0*res*4+i*4+0] = 0xFF;
+            _image[0*res*4+i*4+1] = 0x00;
+            _image[0*res*4+i*4+2] = 0xFF;
+            _image[0*res*4+i*4+3] = 0xFF;
+          }
+        }
+
         MAB_WRAP("jpeg") {
           output = NULL;
           outputlen = 0;
@@ -1514,8 +1643,13 @@ struct {
   int exact;
   MHD_AccessHandlerCallback cb;
 } routes[] = {
-    {NULL, NULL, 0, Error},         {"GET", "/", 1, Index},
-    {"GET", "/static/", 0, Static}, {"GET", "/tile/", 0, Tile},
+    {NULL, NULL, 0, Error},
+    {"GET", "/", 1, IndexHTML},
+    {"GET", "/index.js", 1, IndexJS},
+    {"GET", "/index.css", 1, IndexCSS},
+    {"GET", "/fg.js", 1, FGJS},
+    {"GET", "/static/", 0, Static},
+    {"GET", "/tile/", 0, Tile},
     {"POST", "/log/", 0, Log},
 };
 

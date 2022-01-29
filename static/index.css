@@ -1,0 +1,45 @@
+* {
+	margin: auto;
+	padding: auto;
+	box-sizing: border-box;
+}
+
+body {
+	overflow: hidden;
+}
+
+#map {
+	width: 100vw; 
+	height: 100vh;
+}
+
+.dg.ac {
+	z-index: 9999999 !important;
+}
+
+#editor {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 40vw;
+	height: 100vh;
+	z-index: 1000000;
+	background-color: #33333377;
+}
+#editor:focus {
+	background-color: #111111ee;
+	border-right: 1px solid green;
+}
+#editor::-webkit-scrollbar {
+	display: none;
+}
+
+pre[class*="language-"],
+code[class*="language-"] {
+	text-shadow: none !important;
+	box-shadow: none !important;
+}
+
+.dg .c .slider-fg {
+	margin-left: 0;
+}
