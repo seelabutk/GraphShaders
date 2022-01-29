@@ -1265,66 +1265,6 @@ struct MHD_Response *MAB_create_response_from_file(const char *filename) {
            const char *method, const char *version, const char *data,          \
            size_t *size, void **con_cls)
 
-ANSWER(IndexHTML) {
-  struct MHD_Response *response;
-  int rc;
-
-  response = MAB_create_response_from_file("static/index.html");
-  if (response == NULL) {
-    printf("Could not read file static/index.html\n");
-    exit(1);
-  }
-  MHD_add_response_header(response, "Content-Type", "text/html");
-  rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
-  MHD_destroy_response(response);
-  return rc;
-}
-
-ANSWER(IndexJS) {
-  struct MHD_Response *response;
-  int rc;
-
-  response = MAB_create_response_from_file("static/index.js");
-  if (response == NULL) {
-    printf("Could not read file static/index.js\n");
-    exit(1);
-  }
-  MHD_add_response_header(response, "Content-Type", "text/javascript");
-  rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
-  MHD_destroy_response(response);
-  return rc;
-}
-
-ANSWER(IndexCSS) {
-  struct MHD_Response *response;
-  int rc;
-
-  response = MAB_create_response_from_file("static/index.css");
-  if (response == NULL) {
-    printf("Could not read file static/index.css\n");
-    exit(1);
-  }
-  MHD_add_response_header(response, "Content-Type", "text/css");
-  rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
-  MHD_destroy_response(response);
-  return rc;
-}
-
-ANSWER(FGJS) {
-  struct MHD_Response *response;
-  int rc;
-
-  response = MAB_create_response_from_file("static/fg.js");
-  if (response == NULL) {
-    printf("Could not read file static/fg.js\n");
-    exit(1);
-  }
-  MHD_add_response_header(response, "Content-Type", "text/javascript");
-  rc = MHD_queue_response(conn, MHD_HTTP_OK, response);
-  MHD_destroy_response(response);
-  return rc;
-}
-
 struct MHD_Response *error_response;
 ANSWER(Error) {
   fprintf(stderr, "404: '%s' '%s'\n", method, url);
@@ -1637,20 +1577,67 @@ ANSWER(Log) {
   return rc;
 }
 
+#define ANSWER_WITH_FILE(TheName, TheFile, TheContentType)                     \
+  ANSWER(TheName) {                                                            \
+    struct MHD_Response *response;                                             \
+    int rc;                                                                    \
+                                                                               \
+    response = MAB_create_response_from_file(TheFile);                         \
+    if (response == NULL) {                                                    \
+      printf("Could not read file " TheFile "\n");                             \
+      exit(1);                                                                 \
+    }                                                                          \
+    MHD_add_response_header(response, "Content-Type", TheContentType);         \
+    rc = MHD_queue_response(conn, MHD_HTTP_OK, response);                      \
+    MHD_destroy_response(response);                                            \
+    return rc;                                                                 \
+  }
+
+ANSWER_WITH_FILE(IndexHTML         , "static/index.html"           , "text/html")
+
+ANSWER_WITH_FILE(CommonIndexHTML   , "static/common/index.html"    , "text/html")
+ANSWER_WITH_FILE(CommonIndexCSS    , "static/common/index.css"     , "text/css")
+ANSWER_WITH_FILE(CommonFGJS        , "static/common/fg.js"         , "text/javascript")
+
+ANSWER_WITH_FILE(JSDepsIndexJS     , "static/JS-Deps/index.js"     , "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS  , "static/SO-Answers/index.js"  , "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS, "static/NBER-Patents/index.js", "text/javascript")
+ANSWER_WITH_FILE(COMOrkutIndexJS   , "static/COM-Orkut/index.js"   , "text/javascript")
+
 struct {
   const char *method;
   const char *url;
   int exact;
   MHD_AccessHandlerCallback cb;
 } routes[] = {
-    {NULL, NULL, 0, Error},
-    {"GET", "/", 1, IndexHTML},
-    {"GET", "/index.js", 1, IndexJS},
-    {"GET", "/index.css", 1, IndexCSS},
-    {"GET", "/fg.js", 1, FGJS},
-    {"GET", "/static/", 0, Static},
-    {"GET", "/tile/", 0, Tile},
-    {"POST", "/log/", 0, Log},
+//  { METHOD , URL                      , EXACT , CALLBACK           },
+    { NULL   , NULL                     , 0     , Error              },
+
+    { "GET"  , "/"                      , 1     , IndexHTML          },
+
+    { "GET"  , "/JS-Deps/"              , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers/"           , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/COM-Orkut/"            , 1     , CommonIndexHTML    },
+
+    { "GET"  , "/JS-Deps/index.css"     , 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers/index.css"  , 1     , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/COM-Orkut/index.css"   , 1     , CommonIndexCSS     },
+
+    { "GET"  , "/JS-Deps/fg.js"         , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers/fg.js"      , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/COM-Orkut/fg.js"       , 1     , CommonFGJS         },
+
+    { "GET"  , "/JS-Deps/index.js"      , 1     , JSDepsIndexJS      },
+    { "GET"  , "/SO-Answers/index.js"   , 1     , SOAnswersIndexJS   },
+    { "GET"  , "/NBER-Patents/index.js" , 1     , NBERPatentsIndexJS },
+    { "GET"  , "/COM-Orkut/index.js"    , 1     , COMOrkutIndexJS    },
+
+//  { "GET"  , "/static/"               , 0     , Static             },
+    { "GET"  , "/tile/"                 , 0     , Tile               },
+    { "POST" , "/log/"                  , 0     , Log                },
 };
 
 ANSWER(answer) {
