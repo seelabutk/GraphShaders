@@ -34,7 +34,7 @@ let _makeDC_previousDepthExpression = null;
 let _makeDC_previousDCIdent = 1337;
 function makeDC(vert, variables) {
 	const dc = {
-        ident: 0,
+        ident: _makeDC_previousDCIdent,
 		index: [],
 		mult: [],
 		offset: [],
@@ -287,6 +287,7 @@ export class Application {
     #jar;
     #oldTileLayer;
     #curTileLayer;
+    #oldCode;
     #currentlyWaitingForTiles;
     #shouldRequestNewTilesWhenTilesAreLoaded;
 
@@ -315,6 +316,7 @@ export class Application {
         this.#curTileLayer = null;
         this.#currentlyWaitingForTiles = false;
         this.#shouldRequestNewTilesWhenTilesAreLoaded = false;
+        this.#oldCode = null;
 
         // setup event listeners
         this.#jar.updateCode(makeFGCode(options));
@@ -354,13 +356,18 @@ export class Application {
         //
         // [1]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/eval#never_use_eval!
 
+        const code = this.#jar.toString();
+        if (this.#oldCode !== null && this.#oldCode === code) {
+            return;
+        }
+
         // if we're already waiting, don't kick off another request
         if (this.#currentlyWaitingForTiles) {
             this.#shouldRequestNewTilesWhenTilesAreLoaded = true;
             return;
         }
 
-        const code = this.#jar.toString();
+        this.#oldCode = code;
         const foo = Function('"use strict";return function(fg) { return ' + code + ' };');
         const bar = foo();
         bar(this.update);
@@ -372,6 +379,7 @@ export class Application {
         }
 
         this.#curTileLayer.off('load', this.handleTilesLoaded);
+        this.#curTileLayer.off('tileerror', this.handleTilesLoaded);
         if (this.#oldTileLayer !== null) {
             this.#map.removeLayer(this.#oldTileLayer);
             this.#oldTileLayer._map = {};
@@ -397,9 +405,17 @@ export class Application {
 
         this.#options = options;
         if (this.#curTileLayer !== null) {
+            if (this.#oldTileLayer !== null) {
+                this.#map.removeLayer(this.#oldTileLayer);
+                this.#oldTileLayer._map = {};
+                this.#oldTileLayer = null;
+            }
+
             this.#oldTileLayer = this.#curTileLayer;
             this.#oldTileLayer.setUrl(L.Util.emptyImageUrl, true);
         }
         this.#curTileLayer = curTileLayer;
+        curTileLayer.on('load', this.handleTilesLoaded);
+        curTileLayer.on('tileerror', this.handleTilesLoaded);
     }
 };

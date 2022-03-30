@@ -5,6 +5,8 @@
 
 int mabLogToFile(char *filename, char *mode);
 
+void mabLogFlush(int always_flush);
+
 void mabLogAction(char *message, ...);
 
 void mabLogMessage(char *name, char *message, ...);

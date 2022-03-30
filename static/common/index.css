@@ -1,8 +1,17 @@
+
 * {
 	margin: auto;
 	padding: auto;
 	box-sizing: border-box;
 }
+
+/* 
+.leaflet * {
+	margin: initial;
+	padding: initial;
+	box-sizing: initial;
+} */
+
 
 body {
 	overflow: hidden;
@@ -42,4 +51,9 @@ code[class*="language-"] {
 
 .dg .c .slider-fg {
 	margin-left: 0;
+}
+
+/* Allow right clicking on leaflet tiles */
+.leaflet-marker-icon, .leaflet-marker-shadow, .leaflet-image-layer, .leaflet-pane > svg path, .leaflet-tile-container {
+    pointer-events: all;
 }

@@ -6,8 +6,8 @@ new Application({
     zoom: 6,
     editorid: 'editor',
     options: {
-        debugTileBoundaries: 1,
-        debugPartitionBoundaries: 1,
+        debugTileBoundaries: 0,
+        debugPartitionBoundaries: 0,
         doScissorTest: 1,
         dataset: 'cit-Patents',
         pDepth: 10,

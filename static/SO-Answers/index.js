@@ -6,8 +6,8 @@ new Application({
     zoom: 6,
     editorid: 'editor',
     options: {
-        debugTileBoundaries: 1,
-        debugPartitionBoundaries: 1,
+        // debugTileBoundaries: 1,
+        // debugPartitionBoundaries: 1,
         doScissorTest: 1,
         dataset: 'so-answers',
         pDepth: 10,
