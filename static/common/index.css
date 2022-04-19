@@ -13,6 +13,14 @@
 } */
 
 
+#measurements {
+	position: absolute;
+	left: 0;
+	top: 0;
+	z-index: 11000001;
+	display: none;
+}
+
 body {
 	overflow: hidden;
 }

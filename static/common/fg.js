@@ -19,7 +19,7 @@ function makeVertexVariables(vert) {
     const variables = [];
 
     for (const parameter of match[1].split(',')) {
-        const match = parameter.match(/\s*in float ([a-zA-Z_]+)\s*/);
+        const match = parameter.match(/\s*in (?:float|int) ([a-zA-Z_]+)\s*/);
         if (!match) continue;
 
         variables.push(match[1]);
@@ -43,7 +43,7 @@ function makeDC(vert, variables) {
 
     const match = vert.match(/fg_NodeDepth = (.*);/);
     console.log({ match });
-    const thedepth = match[1];
+    const thedepth = match !== null ? match[1] : 'fg_min(x)';
     console.log({ thedepth });
 
     if (_makeDC_previousDepthExpression !== thedepth) {
@@ -278,6 +278,96 @@ ${indent(dedent(options.edge), 2)}
 })
 `;
 
+/** Utils */
+
+export const MeasuringTileLayer = L.TileLayer.extend({
+    statics: {
+        _measurements: [],
+
+        _activeMeasurements: new Map(),
+
+        _begin: null,
+
+        clearMeasurements() {
+            MeasuringTileLayer._measurements.length = 0;
+        },
+
+        getMeasurements() {
+            const measurements = [...MeasuringTileLayer._measurements];
+            // const end = performance.now();
+            // for (const start of MeasuringTileLayer._activeMeasurements.values()) {
+            //     measurements.push({ status: 'active', dt: end - start });
+            // }
+            return measurements;
+        },
+
+        _reportTile(tile, status) {
+            if (tile.src.startsWith('data:')) return;
+            if (!MeasuringTileLayer._activeMeasurements.has(tile)) {
+                throw `tile ${tile.src} not recognized`;
+            }
+            const start = MeasuringTileLayer._activeMeasurements.get(tile);
+            const end = performance.now();
+            MeasuringTileLayer._measurements.push({ elapsed: start - MeasuringTileLayer._begin, status, dt: end - start });
+            MeasuringTileLayer._activeMeasurements.delete(tile);
+        },
+
+        _reportTileCreate(tile) {
+            if (tile.src.startsWith('data:')) return;
+            if (MeasuringTileLayer._activeMeasurements.has(tile)) {
+                throw `tile ${tile.src} already being tracked`;
+            }
+            const now = performance.now();
+            if (MeasuringTileLayer._begin === null) {
+                MeasuringTileLayer._begin = now;
+            }
+            MeasuringTileLayer._activeMeasurements.set(tile, now);
+        },
+
+        _reportTileLoad(tile) {
+            MeasuringTileLayer._reportTile(tile, 'success');
+        },
+
+        _reportTileError(tile) {
+            MeasuringTileLayer._reportTile(tile, 'error');
+        },
+
+        _reportTileAbort({ tile }) {
+            MeasuringTileLayer._reportTile(tile, 'abort');
+        },
+
+    },
+
+    initialize(url, options) {
+        L.TileLayer.prototype.initialize.call(this, url, options);
+        this.on('tileabort', MeasuringTileLayer._reportTileAbort);
+    },
+
+    createTile: function (coords, done) {
+        const tile = L.TileLayer.prototype.createTile.call(this, coords, done);
+        MeasuringTileLayer._reportTileCreate(tile);
+        L.DomEvent.on(tile, 'load', L.Util.bind(MeasuringTileLayer._reportTileLoad, null, tile));
+        L.DomEvent.on(tile, 'error', L.Util.bind(MeasuringTileLayer._reportTileError, null, tile));
+        return tile;
+    },
+});
+window.MeasuringTileLayer = MeasuringTileLayer;
+
+
+L.Map.prototype.panToOffset = function (latlng, offset, options) {
+    var x = this.latLngToContainerPoint(latlng).x - offset[0]
+    var y = this.latLngToContainerPoint(latlng).y - offset[1]
+    var point = this.containerPointToLatLng([x, y])
+    return this.setView(point, this._zoom, { pan: options })
+}
+
+
+L.Map.prototype.setViewOffset = function (latlng, offset, targetZoom) {
+    var targetPoint = this.project(latlng, targetZoom).subtract(offset),
+    targetLatLng = this.unproject(targetPoint, targetZoom);
+    return this.setView(targetLatLng, targetZoom);
+}
+
 
 /** Application */
 
@@ -290,8 +380,13 @@ export class Application {
     #oldCode;
     #currentlyWaitingForTiles;
     #shouldRequestNewTilesWhenTilesAreLoaded;
+    #doMeasurements;
+    #center;
+    #zoom;
 
-    constructor({ mapid, center, zoom, editorid, options }) {
+    constructor({ mapid, center, zoom, editorid, keyframes, options }) {
+        window.App = this;
+
         // bind class methods to this
         this.update = this.update.bind(this);
         this.handleCodeChange = this.handleCodeChange.bind(this);
@@ -317,13 +412,46 @@ export class Application {
         this.#currentlyWaitingForTiles = false;
         this.#shouldRequestNewTilesWhenTilesAreLoaded = false;
         this.#oldCode = null;
+        this.#doMeasurements = options.doMeasurements === undefined ? true : options.doMeasurements;
+        this.#center = center;
+        this.#zoom = zoom;
 
         // setup event listeners
         this.#jar.updateCode(makeFGCode(options));
         this.#jar.onUpdate(this.handleCodeChange);
 
+        if (keyframes) {
+            this.startAnimation(keyframes);
+        }
+
         // kick everything off
         this.update({});
+    }
+
+    startAnimation(keyframes) {
+        const w = +window.innerWidth/2;
+        const h = +window.innerHeight/2;
+
+        for (let i=0, totalDelay = 0; i<keyframes.length; ++i) {
+            const keyframe = keyframes[i];
+            setTimeout(() => {
+                if (keyframe.offset !== undefined) {
+                    this.#map.setViewOffset(
+                        this.#center,
+                        [w * keyframe.offset[0], h * keyframe.offset[1]],
+                        this.#zoom + keyframe.offset[2],
+                    );
+                }
+                if (keyframe.node !== undefined && keyframe.edge !== undefined) {
+                    const options = { node: keyframe.node, edge: keyframe.edge };
+                    this.#jar.updateCode(makeFGCode(options));
+                    this.update(options);
+                }
+                if (keyframe.callback !== undefined) {
+                    keyframe.callback();
+                }
+            }, (totalDelay += keyframe.delay === undefined ? 5 * 1000 : keyframe.delay));
+        }
     }
 
     handleCodeChange() {
@@ -390,14 +518,33 @@ export class Application {
         this.#currentlyWaitingForTiles = false;
     }
 
+    clearMeasurements() {
+        MeasuringTileLayer.clearMeasurements();
+    }
+
+    getMeasurements() {
+        return MeasuringTileLayer.getMeasurements();
+    }
+
     update(options) {
         options = {
             ...this.#options,
             ...options,
         };
 
+        const newMeasurements = options.doMeasurements === undefined ? true : options.doMeasurements;
+        if (newMeasurements !== this.#doMeasurements) {
+            this.#doMeasurements = options.doMeasurements;
+            if (this.#doMeasurements) {
+                this.clearMeasurements();
+            }
+        }
+
         const url = fg(options);
-        const curTileLayer = new L.TileLayer(url, {
+        const constructor = this.#doMeasurements
+            ? MeasuringTileLayer
+            : L.TileLayer;
+        const curTileLayer = new constructor(url, {
             tileSize: 256,
         });
         curTileLayer.addTo(this.#map);
@@ -418,4 +565,30 @@ export class Application {
         curTileLayer.on('load', this.handleTilesLoaded);
         curTileLayer.on('tileerror', this.handleTilesLoaded);
     }
+};
+
+window.saveMeasurements = () => {
+    const storage = window.localStorage;
+    if (storage.getItem('n') === null) {
+        storage.setItem('n', '0');
+    }
+    const n = +storage.getItem('n');
+    storage.setItem(`${n}`, JSON.stringify(MeasuringTileLayer.getMeasurements()));
+    storage.setItem('n', `${n+1}`);
+    serializeMeasurements();
+};
+
+window.serializeMeasurements = () => {
+    const storage = window.localStorage;
+    const n = +storage.getItem('n');
+    let ret = [];
+    for (let i=0; i<n; ++i) {
+        ret = [...ret, ...JSON.parse(storage.getItem(`${i}`))];
+    }
+    document.getElementById('measurements').value = JSON.stringify(ret);
+    document.getElementById('measurements').style.display = 'block';
+};
+
+window.clearAllMeasurements = () => {
+    window.localStorage.removeItem('n');
 };

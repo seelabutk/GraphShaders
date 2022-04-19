@@ -1,5 +1,5 @@
 {% if not preprocessed %}
-#define edge(...) edge(__VA_ARGS__, in vec2 fg_FragCoord, in float fg_FragDepth, in vec4 fg_EdgeData, out vec4 fg_FragColor, out float fg_EdgeMutate, out float fg_Disregard)
+#define edge(...) edge(in vec2 fg_FragCoord, in float fg_FragDepth, in vec4 fg_EdgeData, ## __VA_ARGS__, out vec4 fg_FragColor, out float fg_Disregard)
 {% else %}
 #version 460 core
 precision mediump float;
@@ -22,7 +22,11 @@ layout(std430, binding = 1) readonly buffer PrimitiveLookasideBuffer {
 
 {% endif %}
 
+{% if not preprocessed %}
 {{ source|safe }}
+{% else %}
+{{ source|replace(" flat ", " ")|safe }}
+{% endif %}
 
 {% if preprocessed %}
 uniform float uNodeMin1, uNodeMin2, uNodeMin3, uNodeMin4, uNodeMin5, uNodeMin6, uNodeMin7, uNodeMin8;
@@ -30,32 +34,32 @@ uniform float uNodeMax1, uNodeMax2, uNodeMax3, uNodeMax4, uNodeMax5, uNodeMax6, 
 
 uniform float uTranslateX, uTranslateY, uScale;
 
-{% for param in in_params -%}
-{{ StorageQualifier(param.storage).name|lower }} {{ param.base_type.name }} {{ param.name }};
+{% for param in params_from_node | selectattr("storage", "eq", "in") -%}
+{{ param.storage }} {% if param.qualifier %}{{ param.qualifier }} {% endif %}{{ param.type }} {{ param.name }};
 {% endfor %}
 
-{% for param in out_params -%}
-{{ StorageQualifier(param.storage).name|lower }} {{ param.base_type.name }} {{ param.name }};
+{% for param in params_from_edge | selectattr("storage", "eq", "out") -%}
+{{ param.storage }} {{ param.type }} {{ param.name }};
 {% endfor %}
 
 void main() {
     vec4 fg_EdgeData = global_edge_data[global_indices[gl_PrimitiveID] + 1].color;
-    float fg_EdgeMutate = 0.0;
     float fg_Disregard = 0.0;
     edge(
-        {%- for param in in_params -%}
+        {%- for param in params_from_node | selectattr("storage", "eq", "in") -%}
         {%- if not loop.first %}, {% endif %}
-        {{ param.name }}
+        {{ param.name }} /* {{ param }} */ 
         {%- endfor -%}
-        {% for param in out_params -%},
-        {{ param.name -}}
+        {%- for param in params_from_edge | selectattr("storage", "eq", "in") -%},
+        fg_EdgeData[{{ loop.index0 }}] /* {{ param }} */ 
+        {%- endfor -%}
+        {% for param in params_from_edge | selectattr("storage", "eq", "out") -%},
+        {{ param.name -}} /* {{ param }} */ 
         {% endfor %}
     );
 
     if (fg_Disregard >= 1.0) {
         discard;
     }
-
-    gl_FragDepth = fg_EdgeMutate;
 }
 {% endif %}

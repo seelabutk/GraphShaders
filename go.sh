@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 die() { printf $'Error: %s\n' "$*" >&2; exit 1; }
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)
 
 tag=fg_$USER:latest
 name=fg_$USER
@@ -21,11 +22,11 @@ constraint=
 runtime=
 network=fg_$USER
 cap_add=SYS_PTRACE
-replicas=8
+replicas=1
 tty=1
 declare -A urls
 
-[ -f env.sh ] && . env.sh
+test -f "${root:?}/env.sh" && source "${_:?}"
 
 build() {
 	docker build \
@@ -85,6 +86,7 @@ create() {
 		${net:+--network=$net} \
 		${cwd:+--mount type=bind,src=$PWD,dst=$PWD -w $PWD} \
 		${data:+--mount type=bind,src=$data,dst=$data} \
+		${cache:+--mount type=bind,src=$cache,dst=$cache} \
 		${port:+-p $port:$port} \
 		${constraint:+--constraint=$constraint} \
 		${replicas:+--replicas=$replicas} \
@@ -123,6 +125,7 @@ create-fg() {
 	create env \
 		FG_SERVICE=1 \
 		FG_PORT=$port \
+		FG_LOGFILE=fg.log \
 		/app/build/server \
 		"$@"
 }
@@ -202,6 +205,21 @@ stitch() {
 	done
 }
 
+makefig() {
+	id=${1:?need id}
+	url=${figurls["${id:?}"]:?}
+
+	/usr/bin/time \
+		--format="${id:?},real%e,user%U,sys%S" \
+			python3.8 stitch.py \
+				--nthreads 1 \
+				--z-inc 1 \
+				--mode stitch \
+				-o "${id:?}.png" \
+				<<<"${url:?}" \
+			|| die "stitch.py failed"
+}
+
 stress() {
     #url='http://accona.eecs.utk.edu:8365/tile/knit-graph/5/15/15/,vert,base64:CgkJdm9pZCBub2RlKGluIGZsb2F0IHgsIGluIGZsb2F0IHksIGluIGZsb2F0IGRhdGUsIGluIGZsb2F0IF9udW1NYWludCwgaW4gZmxvYXQgY3ZlLCBvdXQgZmxvYXQgdnVsbmVyYWJsZSkgewoJCQl2dWxuZXJhYmxlID0gY3ZlOwoJCQlmZ19Ob2RlUG9zaXRpb24gPSB2ZWMyKHgsIHkpOwogICAgICAgICAgICBmZ19Ob2RlRGVwdGggPSBmZ19tZWFuKHgpOwoJCX0KCQ==,frag,base64:CgkJdm9pZCBlZGdlKGluIGZsb2F0IHZ1bG5lcmFibGUpIHsKCQkJdmVjNCByZWQgPSB2ZWM0KDAuOCwgMC4xLCAwLjEsIDEuMCk7CgkJCXZlYzQgZ3JlZW4gPSB2ZWM0KDAuMCwgMS4wLCAwLjAsIDEuMCk7CgkJCXZlYzQgY29sb3IgPSBtaXgocmVkLCBncmVlbiwgdnVsbmVyYWJsZSk7CgkJCWZnX0ZyYWdDb2xvciA9ICgxLjAgLSBmZ19GcmFnRGVwdGgpICogY29sb3I7CgkJfQoJ,pDepth,10,dcIdent,590,dcIndex,base64:AQAAAAAAAAA=,dcMult,base64:AACAPw==,dcOffset,base64:AAAAAA==,dcMinMult,0.5,dcMaxMult,0.5'
 	url='http://kavir.eecs.utk.edu:8365/tile/cit-Patents/3/3/3/,vert,base64:CgkJdm9pZCBub2RlKGluIGZsb2F0IHgsIGluIGZsb2F0IHksIGluIGZsb2F0IGFwcGRhdGUsIGluIGZsb2F0IGdvdGRhdGUsIGluIGZsb2F0IG5jbGFzcywgaW4gZmxvYXQgY2NsYXNzLCBvdXQgdmVjMyBjb2xvcikgewoJCQkJCWZnX05vZGVQb3NpdGlvbiA9IHZlYzIoeCwgeSk7CgkJCQkJZmdfTm9kZURlcHRoID0gZmdfbWluKGFwcGRhdGUpOwoJCQkJCWNvbG9yID0gdUNhdDZbaW50KDUuMCpjY2xhc3MpXTsKCQkJfQoJ,frag,base64:CgkJdm9pZCBlZGdlKGluIHZlYzMgY29sb3IpIHsKCQkJZmdfRnJhZ0NvbG9yID0gdmVjNChmZ19GcmFnRGVwdGggKiBjb2xvciwgMS4wKTsKCQl9Cgk=,pDepth,10,dcIdent,1,dcIndex,base64:AwAAAAAAAAA=,dcMult,base64:AACAPw==,dcOffset,base64:AAAAAA==,dcMinMult,1,dcMaxMult,0'
@@ -264,6 +282,59 @@ stress() {
     done
     done
     done
+}
+
+makeanim() {
+	files=()
+
+	for id in SO-Answers-8 SO-Answers-7; do
+	for url in "${figurls[$id]}"; do
+	for lo in {0..99}; do
+	printf -v hi $'%03d' "$((lo+1))"
+	printf -v lo $'%03d' "${lo:?}"
+
+	oldfrag=${url##*,frag,base64:}
+	oldfrag=${oldfrag%%,*}
+	newfrag=$(base64 -d <<<"${oldfrag:?}")
+	newfrag=${newfrag/\#define LO 0.33/#define LO ${lo:0:1}.${lo:1}}
+	newfrag=${newfrag/\#define HI 0.34/#define HI ${hi:0:1}.${hi:1}}
+	newfrag=$(base64 -w 0 <<<"${newfrag:?}" | tr -d $'\n')
+
+	newurl=${url/,frag,base64:${oldfrag:?},/,frag,base64:${newfrag:?},}
+
+	file=${id:?},lo=${lo:?},hi=${hi:?}.png
+	files+=( "${file:?}" )
+	if [ -e "${file:?}" ]; then
+		continue
+	fi
+
+	/usr/bin/time \
+		--format="${id:?},real%e,user%U,sys%S" \
+			python3.8 stitch.py \
+				--nthreads 1 \
+				--z-inc 1 \
+				--mode stitch \
+				-o "${file:?}" \
+				<<<"${newurl:?}" \
+			|| die "stitch.py failed"
+
+	done
+	done
+
+	file=${id:?}.mp4
+	if [ -e "${file:?}" ]; then
+		continue
+	fi
+
+	"${HOME:?}/opt/magick/go.sh" docker exec ffmpeg \
+		-framerate 10 \
+		-pattern_type glob \
+		-i "${id:?},lo=*,hi=*.png" \
+		-c:v libx264 \
+		-pix_fmt yuv420p \
+		"${file:?}"
+
+	done
 }
 
 "$@"

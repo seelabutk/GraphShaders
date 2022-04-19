@@ -588,6 +588,10 @@ void *render(void *v) {
 
         snprintf(filename, sizeof(filename), "cache/%s_mr%u.partition.dat", dataset, _max_res);
         f = fopen(filename, "rb");
+        if (f == NULL) {
+          mabLogMessage("@info", "Partition cache %s does not exist", filename);
+        }
+
         if (f != NULL) {
           uint32_t magic;
 
@@ -682,6 +686,10 @@ stop_reading_partition_cache: ; // XXX(th): sorry
         // log_partition_cache(_partition_cache);
 
         f = fopen(filename, "wb");
+        if (f == NULL) {
+          mabLogMessage("@error", "Could not create partition cache %s", filename);
+        }
+
         if (f != NULL) {
           uint32_t magic;
           magic = 0;
@@ -773,6 +781,7 @@ done_partitioning: ; // XXX(th): sorry
             dcDepth[i] += sourceDepth < targetDepth
                               ? dcMinMult * sourceDepth + dcMaxMult * targetDepth
                               : dcMinMult * targetDepth + dcMaxMult * sourceDepth;
+            dcDepth[i] *= -1.;
           }
 
           GLuint64 *dcReorder;
@@ -798,7 +807,7 @@ done_partitioning: ; // XXX(th): sorry
           for (i = 0; i < count; ++i) {
             edges[2 * i + 0] = pd->partitions.data[2 * dcReorder[i] + 0];
             edges[2 * i + 1] = pd->partitions.data[2 * dcReorder[i] + 1];
-            edgeIdxs[i] = pd->partitions.data[2 * dcReorder[i]];
+            edgeIdxs[i] = pd->edgeIdxs.data[dcReorder[i]];
           }
 
           vec_destroy(&pd->partitions);
@@ -854,6 +863,8 @@ done_partitioning: ; // XXX(th): sorry
             mabLogEnd("ERROR: Vertex Shader Compilation Failed");
             mabLogEnd("ERROR: Vertex Shader Compilation Failed");
             _error = ERROR_COMPILE_VERTEX_SHADER;
+            vertexShaderSource = NULL;
+            fragmentShaderSource = NULL;
             goto done_with_request;
           }
         }
@@ -875,6 +886,8 @@ done_partitioning: ; // XXX(th): sorry
             mabLogEnd("ERROR: Fragment Shader Compilation Failed");
             mabLogEnd("ERROR: Fragment Shader Compilation Failed");
             _error = ERROR_COMPILE_FRAGMENT_SHADER;
+            vertexShaderSource = NULL;
+            fragmentShaderSource = NULL;
             goto done_with_request;
           }
         }
@@ -896,6 +909,8 @@ done_partitioning: ; // XXX(th): sorry
             mabLogEnd("ERROR: Shader Program Linking Failed");
             mabLogEnd("ERROR: Shader Program Linking Failed");
             _error = ERROR_LINK_PROGRAM;
+            vertexShaderSource = NULL;
+            fragmentShaderSource = NULL;
             goto done_with_request;
           }
 
@@ -1645,8 +1660,38 @@ ANSWER_WITH_FILE(CommonIndexCSS    , "static/common/index.css"     , "text/css")
 ANSWER_WITH_FILE(CommonFGJS        , "static/common/fg.js"         , "text/javascript")
 
 ANSWER_WITH_FILE(JSDepsIndexJS     , "static/JS-Deps/index.js"     , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS0    , "static/JS-Deps-0/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS1    , "static/JS-Deps-1/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS2    , "static/JS-Deps-2/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS3    , "static/JS-Deps-3/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS4    , "static/JS-Deps-4/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS5    , "static/JS-Deps-5/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS6    , "static/JS-Deps-6/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS7    , "static/JS-Deps-7/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS8    , "static/JS-Deps-8/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS9    , "static/JS-Deps-9/index.js"   , "text/javascript")
 ANSWER_WITH_FILE(SOAnswersIndexJS  , "static/SO-Answers/index.js"  , "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS0 , "static/SO-Answers-0/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS1 , "static/SO-Answers-1/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS2 , "static/SO-Answers-2/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS3 , "static/SO-Answers-3/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS4 , "static/SO-Answers-4/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS5 , "static/SO-Answers-5/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS6 , "static/SO-Answers-6/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS7 , "static/SO-Answers-7/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS8 , "static/SO-Answers-8/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS9 , "static/SO-Answers-9/index.js", "text/javascript")
 ANSWER_WITH_FILE(NBERPatentsIndexJS, "static/NBER-Patents/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS0, "static/NBER-Patents-0/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS1, "static/NBER-Patents-1/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS2, "static/NBER-Patents-2/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS3, "static/NBER-Patents-3/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS4, "static/NBER-Patents-4/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS5, "static/NBER-Patents-5/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS6, "static/NBER-Patents-6/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS7, "static/NBER-Patents-7/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS8, "static/NBER-Patents-8/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS9, "static/NBER-Patents-9/index.js", "text/javascript")
 ANSWER_WITH_FILE(COMOrkutIndexJS   , "static/COM-Orkut/index.js"   , "text/javascript")
 
 struct {
@@ -1661,24 +1706,144 @@ struct {
     { "GET"  , "/"                      , 1     , IndexHTML          },
 
     { "GET"  , "/JS-Deps/"              , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-0/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-1/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-2/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-3/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-4/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-5/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-6/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-7/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-8/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-9/"            , 1     , CommonIndexHTML    },
     { "GET"  , "/SO-Answers/"           , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-0/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-1/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-2/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-3/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-4/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-5/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-6/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-7/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-8/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-9/"         , 1     , CommonIndexHTML    },
     { "GET"  , "/NBER-Patents/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-0/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-1/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-2/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-3/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-4/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-5/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-6/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-7/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-8/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-9/"       , 1     , CommonIndexHTML    },
     { "GET"  , "/COM-Orkut/"            , 1     , CommonIndexHTML    },
 
     { "GET"  , "/JS-Deps/index.css"     , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-0/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-1/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-2/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-3/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-4/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-5/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-6/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-7/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-8/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-9/index.css"   , 1     , CommonIndexCSS     },
     { "GET"  , "/SO-Answers/index.css"  , 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-0/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-1/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-2/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-3/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-4/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-5/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-6/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-7/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-8/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-9/index.css", 1     , CommonIndexCSS     },
     { "GET"  , "/NBER-Patents/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-0/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-1/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-2/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-3/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-4/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-5/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-6/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-7/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-8/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-9/index.css", 1   , CommonIndexCSS     },
     { "GET"  , "/COM-Orkut/index.css"   , 1     , CommonIndexCSS     },
 
     { "GET"  , "/JS-Deps/fg.js"         , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-0/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-1/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-2/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-3/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-4/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-5/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-6/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-7/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-8/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-9/fg.js"       , 1     , CommonFGJS         },
     { "GET"  , "/SO-Answers/fg.js"      , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-0/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-1/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-2/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-3/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-4/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-5/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-6/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-7/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-8/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-9/fg.js"    , 1     , CommonFGJS         },
     { "GET"  , "/NBER-Patents/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-0/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-1/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-2/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-3/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-4/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-5/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-6/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-7/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-8/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-9/fg.js"  , 1     , CommonFGJS         },
     { "GET"  , "/COM-Orkut/fg.js"       , 1     , CommonFGJS         },
 
     { "GET"  , "/JS-Deps/index.js"      , 1     , JSDepsIndexJS      },
+    { "GET"  , "/JS-Deps-0/index.js"    , 1     , JSDepsIndexJS0     },
+    { "GET"  , "/JS-Deps-1/index.js"    , 1     , JSDepsIndexJS1     },
+    { "GET"  , "/JS-Deps-2/index.js"    , 1     , JSDepsIndexJS2     },
+    { "GET"  , "/JS-Deps-3/index.js"    , 1     , JSDepsIndexJS3     },
+    { "GET"  , "/JS-Deps-4/index.js"    , 1     , JSDepsIndexJS4     },
+    { "GET"  , "/JS-Deps-5/index.js"    , 1     , JSDepsIndexJS5     },
+    { "GET"  , "/JS-Deps-6/index.js"    , 1     , JSDepsIndexJS6     },
+    { "GET"  , "/JS-Deps-7/index.js"    , 1     , JSDepsIndexJS7     },
+    { "GET"  , "/JS-Deps-8/index.js"    , 1     , JSDepsIndexJS8     },
+    { "GET"  , "/JS-Deps-9/index.js"    , 1     , JSDepsIndexJS9     },
     { "GET"  , "/SO-Answers/index.js"   , 1     , SOAnswersIndexJS   },
+    { "GET"  , "/SO-Answers-0/index.js" , 1     , SOAnswersIndexJS0  },
+    { "GET"  , "/SO-Answers-1/index.js" , 1     , SOAnswersIndexJS1  },
+    { "GET"  , "/SO-Answers-2/index.js" , 1     , SOAnswersIndexJS2  },
+    { "GET"  , "/SO-Answers-3/index.js" , 1     , SOAnswersIndexJS3  },
+    { "GET"  , "/SO-Answers-4/index.js" , 1     , SOAnswersIndexJS4  },
+    { "GET"  , "/SO-Answers-5/index.js" , 1     , SOAnswersIndexJS5  },
+    { "GET"  , "/SO-Answers-6/index.js" , 1     , SOAnswersIndexJS6  },
+    { "GET"  , "/SO-Answers-7/index.js" , 1     , SOAnswersIndexJS7  },
+    { "GET"  , "/SO-Answers-8/index.js" , 1     , SOAnswersIndexJS8  },
+    { "GET"  , "/SO-Answers-9/index.js" , 1     , SOAnswersIndexJS9  },
     { "GET"  , "/NBER-Patents/index.js" , 1     , NBERPatentsIndexJS },
-    { "GET"  , "/COM-Orkut/index.js"    , 1     , COMOrkutIndexJS    },
+    { "GET"  , "/NBER-Patents-0/index.js", 1    , NBERPatentsIndexJS0 },
+    { "GET"  , "/NBER-Patents-1/index.js", 1    , NBERPatentsIndexJS1 },
+    { "GET"  , "/NBER-Patents-2/index.js", 1    , NBERPatentsIndexJS2 },
+    { "GET"  , "/NBER-Patents-3/index.js", 1    , NBERPatentsIndexJS3 },
+    { "GET"  , "/NBER-Patents-4/index.js", 1    , NBERPatentsIndexJS4 },
+    { "GET"  , "/NBER-Patents-5/index.js", 1    , NBERPatentsIndexJS5 },
+    { "GET"  , "/NBER-Patents-6/index.js", 1    , NBERPatentsIndexJS6 },
+    { "GET"  , "/NBER-Patents-7/index.js", 1    , NBERPatentsIndexJS7 },
+    { "GET"  , "/NBER-Patents-8/index.js", 1    , NBERPatentsIndexJS8 },
+    { "GET"  , "/NBER-Patents-9/index.js", 1    , NBERPatentsIndexJS9 },
+    { "GET"  , "//OM-Orkut/index.js"    , 1     , COMOrkutIndexJS    },
 
 //  { "GET"  , "/static/"               , 0     , Static             },
     { "GET"  , "/tile/"                 , 0     , Tile               },
@@ -1730,8 +1895,7 @@ static void *fgl_transformer_thread(void *v) {
     dup2(proc_in[0], 0);
     dup2(proc_out[1], 1);
 
-    execlp("/usr/bin/python3.8", "/usr/bin/python3.8", "/opt/fgl/fgl.py",
-           "makeurl_repl", (char *)NULL);
+    execlp("/usr/bin/python3.8", "/usr/bin/python3.8", "/opt/fgl/fgl.py", (char *)NULL);
     perror("execlp");
     exit(1);
   } else {

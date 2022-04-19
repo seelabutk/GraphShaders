@@ -3,22 +3,23 @@
 """
 
 from base64 import b64encode, b64decode
+from collections import namedtuple
+from dataclasses import dataclass
 from io import StringIO
 import itertools
 from pathlib import Path
 from pprint import pprint
+import re
 import sys
 from urllib.parse import urlparse, urlunparse
 
 from jinja2 import Environment, FileSystemLoader
 from pcpp import Preprocessor
-from pyglsl_parser import parse
-from pyglsl_parser.ast import Ast
-from pyglsl_parser.enums import ShaderType, StorageQualifier
-from pyglsl_parser.lexemes import Typename
 
 from functools import partial
-p = partial(print, file=sys.stderr, flush=True)
+# p = partial(print, file=sys.stderr, flush=True)
+p = lambda *args: None
+
 
 def pairwise(iterable):
     "s -> (s0,s1), (s1,s2), (s2, s3), ..."
@@ -248,44 +249,138 @@ def main_makeurl_repl(infile, outfile):
     print("main function exited? this should not happen.", file=sys.stderr, flush=True)
 
 
+Parameter = namedtuple('Parameter', 'storage qualifier type name')
+
+
+def main():
+    env = Environment(
+        loader=FileSystemLoader(Path(__file__).parent),
+    )
+    frag_template = env.get_template('frag.glsl.template')
+    vert_template = env.get_template('vert.glsl.template')
+
+    it = iter(sys.stdin)
+    it = (x.rstrip() for x in it)
+    for url in it:
+        if url == '':
+            break
+
+        scheme, netloc, path, params, query, fragment = urlparse(url)
+        empty, tile, dataset, z, x, y, options = path.split('/', 6)
+        z, x, y = map(int, (z, x, y))
+        options = { k: v for k, v in grouper(options.split(',')[1:], 2) }
+
+
+        vert = b64decode(options["vert"][len("base64:"):])
+        p(f'{vert = !s}')
+
+        vert = vert_template.render(dict(
+            source=vert,
+            preprocessed=False,
+        ))
+        p(f'{vert = !s}')
+
+        vert = preprocess(vert)
+        p(f'{vert = !s}')
+
+        match = re.search(r'void node\(.+', vert)
+        if match is None:
+            print('', flush=True)
+            continue
+        node_def = match.group()
+        p(f'{node_def = }')
+
+        node_params = []
+        for match in re.finditer(r'(?P<storage>in|out)\s+(?:(?P<qualifier>flat)\s+)?(?P<type>float|vec4|vec2|vec3|int)\s+(?P<name>\w+)', node_def):
+            node_params.append(Parameter(
+                storage=match.group('storage'),
+                qualifier=match.group('qualifier'),
+                type=match.group('type'),
+                name=match.group('name'),
+            ))
+        p(f'{node_params = }')
+
+        vert = vert_template.render(dict(
+            source=vert,
+            preprocessed=True,
+            params=node_params,
+        ))
+        p(f'{vert = !s}')
+
+        options['vert'] = f'base64:{b64encode(vert)}'
+
+
+        frag = b64decode(options["frag"][len("base64:"):])
+        p(f'{frag = !s}')
+
+        frag = frag_template.render(dict(
+            source=frag,
+            preprocessed=False,
+        ))
+        p(f'{frag = !s}')
+
+        frag = preprocess(frag)
+        p(f'{frag = !s}')
+
+        match = re.search(r'void edge\(.+', frag)
+        if match is None:
+            print('', flush=True)
+            continue
+        edge_def = match.group()
+        p(f'{edge_def = }')
+
+        edge_params = []
+        for match in re.finditer(r'(?P<storage>in|out)\s+(?:(?P<qualifier>flat)\s+)?(?P<type>float|vec4|vec2|vec3|int)\s+(?P<name>\w+)', edge_def):
+            edge_params.append(Parameter(
+                storage=match.group('storage'),
+                qualifier=match.group('qualifier'),
+                type=match.group('type'),
+                name=match.group('name'),
+            ))
+        p(f'{edge_params = }')
+
+        node_param_names = [param.name for param in node_params]
+        node_param_names += [
+            'fg_FragCoord',
+            'fg_FragDepth',
+            'fg_EdgeData',
+        ]
+
+        params_from_node = []
+        params_from_edge = []
+        for param in edge_params:
+            if param.name in node_param_names:
+                params_from_node.append(param)
+            else:
+                params_from_edge.append(param)
+
+        frag = frag_template.render(dict(
+            source=frag,
+            preprocessed=True,
+            params_from_node=params_from_node,
+            params_from_edge=params_from_edge,
+        ))
+        p(f'{frag = !s}')
+
+        options['frag'] = f'base64:{b64encode(frag)}'
+
+
+        options = ',' + ','.join(flatten(options.items()))
+        z, x, y = map(str, (z, x, y))
+        path = '/'.join((empty, tile, dataset, z, x, y, options))
+        url = urlunparse((scheme, netloc, path, params, query, fragment))
+
+        print(url, flush=True)
+
+
 def cli():
     import argparse
     import sys
 
     parser = argparse.ArgumentParser()
-    parser.set_defaults(main=None)
-    subparsers = parser.add_subparsers()
-
-    node = subparsers.add_parser('node')
-    node.set_defaults(main=main_node)
-    node.add_argument('--infile', '-i', default=sys.stdin, type=argparse.FileType('r'))
-    node.add_argument('--outfile', '-o', default=sys.stdout, type=argparse.FileType('w'))
-
-    edge = subparsers.add_parser('edge')
-    edge.set_defaults(main=main_edge)
-    edge.add_argument('--infile', '-i', default=sys.stdin, type=argparse.FileType('r'))
-    edge.add_argument('--outfile', '-o', default=sys.stdout, type=argparse.FileType('w'))
-
-    makeurl = subparsers.add_parser('makeurl')
-    makeurl.set_defaults(main=main_makeurl)
-    makeurl.add_argument('--infile', '-i', default=sys.stdin, type=argparse.FileType('r'))
-    makeurl.add_argument('--nodefile', '-n', type=argparse.FileType('r'), required=True)
-    makeurl.add_argument('--edgefile', '-e', type=argparse.FileType('r'), required=True)
-    makeurl.add_argument('--outfile', '-o', default=sys.stdout, type=argparse.FileType('w'))
-
-    makeurl_repl = subparsers.add_parser('makeurl_repl')
-    makeurl_repl.set_defaults(main=main_makeurl_repl)
-    makeurl_repl.add_argument('--infile', '-i', default=sys.stdin, type=argparse.FileType('r'))
-    makeurl_repl.add_argument('--outfile', '-o', default=sys.stdout, type=argparse.FileType('w'))
-
     args = vars(parser.parse_args())
-    main = args.pop('main')
-    try:
-        main(**args)
-    except Exception as e:
-        print('main function failed', file=sys.stderr, flush=True)
-        print(e, file=sys.stderr, flush=True)
-        import traceback; traceback.print_exc(file=sys.stderr)
+
+    main(**args)
 
 
 if __name__ == '__main__':
