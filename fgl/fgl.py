@@ -3,19 +3,22 @@
 """
 
 from base64 import b64encode, b64decode
+from collections import namedtuple
+from dataclasses import dataclass
 from io import StringIO
 import itertools
 from pathlib import Path
 from pprint import pprint
+import re
 import sys
 from urllib.parse import urlparse, urlunparse
 
 from jinja2 import Environment, FileSystemLoader
 from pcpp import Preprocessor
-from pyglsl_parser import parse
-from pyglsl_parser.ast import Ast
-from pyglsl_parser.enums import ShaderType, StorageQualifier
-from pyglsl_parser.lexemes import Typename
+
+from functools import partial
+# p = partial(print, file=sys.stderr, flush=True)
+p = lambda *args: None
 
 
 def pairwise(iterable):
@@ -117,8 +120,11 @@ def main_edge(infile, outfile):
         source=source,
         preprocessed=False,
     ))
+    p(f'{source = !s}')
     source = preprocess(source)
+    p(f'{source = !s}')
     ast = parse(source, filename, shader_type=ShaderType.Fragment)
+    p(f'ast')
 
     for function in ast.functions:
         if function.name == 'edge':
@@ -156,14 +162,14 @@ def main_makeurl(infile, nodefile, edgefile, outfile):
         main_node(nodefile, nodeshader)
         nodeshader = nodeshader.getvalue()
 
-        print(f'{nodeshader = !s}', file=sys.stderr)
+    # print(f'{nodeshader = !s}', file=sys.stderr)
 
     if edgefile is not None:
         edgeshader = StringIO()
         main_edge(edgefile, edgeshader)
         edgeshader = edgeshader.getvalue()
 
-        print(f'{edgeshader = !s}', file=sys.stderr)
+    # print(f'{edgeshader = !s}', file=sys.stderr)
 
     for url in infile:
         url = url.rstrip()
@@ -172,8 +178,8 @@ def main_makeurl(infile, nodefile, edgefile, outfile):
         z, x, y = map(int, (z, x, y))
         options = { k: v for k, v in grouper(options.split(',')[1:], 2) }
 
-        print(f'{b64decode(options["vert"][len("base64:"):]) =!s}', file=sys.stderr)
-        print(f'{b64decode(options["frag"][len("base64:"):]) =!s}', file=sys.stderr)
+        # print(f'{b64decode(options["vert"][len("base64:"):]) =!s}', file=sys.stderr)
+        # print(f'{b64decode(options["frag"][len("base64:"):]) =!s}', file=sys.stderr)
 
         options['vert'] = f'base64:{b64encode(nodeshader)}'
         options['frag'] = f'base64:{b64encode(edgeshader)}'
@@ -187,15 +193,21 @@ def main_makeurl(infile, nodefile, edgefile, outfile):
 
 
 def main_makeurl_repl(infile, outfile):
+    p('got here 1')
+    p(repr(infile))
     for url in infile:
+        p('got here 2')
+        print(f'got {url = }', file=sys.stderr, flush=True)
         url = url.rstrip()
         scheme, netloc, path, params, query, fragment = urlparse(url)
         empty, tile, dataset, z, x, y, options = path.split('/', 6)
         z, x, y = map(int, (z, x, y))
         options = { k: v for k, v in grouper(options.split(',')[1:], 2) }
 
-        #print(f'{b64decode(options["vert"][len("base64:"):]) =!s}', file=sys.stderr)
-        #print(f'{b64decode(options["frag"][len("base64:"):]) =!s}', file=sys.stderr)
+        p('got here 3')
+
+        p(f'{b64decode(options["vert"][len("base64:"):]) =!s}')
+        p(f'{b64decode(options["frag"][len("base64:"):]) =!s}')
         
         nodefile = StringIO(b64decode(options["vert"][len("base64:"):]))
         nodefile.name = '<url>'
@@ -203,23 +215,31 @@ def main_makeurl_repl(infile, outfile):
         try:
             main_node(nodefile, nodeshader)
         except Exception as e:
+            print('<wtf>', file=outfile, flush=True)
             import traceback; traceback.print_exc(file=sys.stderr)
+            continue
         nodeshader = nodeshader.getvalue()
+
+        p('done w/ node')
 
         edgefile = StringIO(b64decode(options["frag"][len("base64:"):]))
         edgefile.name = '<url>'
         edgeshader = StringIO()
         try:
             main_edge(edgefile, edgeshader)
-        except:
-            pass
+        except Exception as e:
+            print('<wtfer>', file=outfile, flush=True)
+            import traceback; traceback.print_exc(file=sys.stderr)
+            continue
         edgeshader = edgeshader.getvalue()
+
+        p('done w/ edge')
 
         options['vert'] = f'base64:{b64encode(nodeshader)}'
         options['frag'] = f'base64:{b64encode(edgeshader)}'
 
-        #print(f'{b64decode(options["vert"][len("base64:"):]) =!s}', file=sys.stderr)
-        #print(f'{b64decode(options["frag"][len("base64:"):]) =!s}', file=sys.stderr)
+        # print(f'{b64decode(options["vert"][len("base64:"):]) =!s}', file=sys.stderr)
+        # print(f'{b64decode(options["frag"][len("base64:"):]) =!s}', file=sys.stderr)
 
         options = ',' + ','.join(flatten(options.items()))
         z, x, y = map(str, (z, x, y))
@@ -228,39 +248,140 @@ def main_makeurl_repl(infile, outfile):
 
         print(url, file=outfile, flush=True)
 
+    print("main function exited? this should not happen.", file=sys.stderr, flush=True)
+
+
+Parameter = namedtuple('Parameter', 'storage qualifier type name')
+
+
+def main():
+    env = Environment(
+        loader=FileSystemLoader(Path(__file__).parent),
+    )
+    frag_template = env.get_template('frag.glsl.template')
+    vert_template = env.get_template('vert.glsl.template')
+
+    it = iter(sys.stdin)
+    it = (x.rstrip() for x in it)
+    for url in it:
+        if url == '':
+            break
+
+        scheme, netloc, path, params, query, fragment = urlparse(url)
+        empty, tile, dataset, z, x, y, options = path.split('/', 6)
+        z, x, y = map(int, (z, x, y))
+        options = { k: v for k, v in grouper(options.split(',')[1:], 2) }
+
+
+        vert = b64decode(options["vert"][len("base64:"):])
+        p(f'{vert = !s}')
+
+        vert = vert_template.render(dict(
+            source=vert,
+            preprocessed=False,
+        ))
+        p(f'{vert = !s}')
+
+        vert = preprocess(vert)
+        p(f'{vert = !s}')
+
+        match = re.search(r'void node\(.+', vert)
+        if match is None:
+            print('', flush=True)
+            continue
+        node_def = match.group()
+        p(f'{node_def = }')
+
+        node_params = []
+        for match in re.finditer(r'(?P<storage>in|out)\s+(?:(?P<qualifier>flat)\s+)?(?P<type>float|vec4|vec2|vec3|int)\s+(?P<name>\w+)', node_def):
+            node_params.append(Parameter(
+                storage=match.group('storage'),
+                qualifier=match.group('qualifier'),
+                type=match.group('type'),
+                name=match.group('name'),
+            ))
+        p(f'{node_params = }')
+
+        vert = vert_template.render(dict(
+            source=vert,
+            preprocessed=True,
+            params=node_params,
+        ))
+        p(f'{vert = !s}')
+
+        options['vert'] = f'base64:{b64encode(vert)}'
+
+
+        frag = b64decode(options["frag"][len("base64:"):])
+        p(f'{frag = !s}')
+
+        frag = frag_template.render(dict(
+            source=frag,
+            preprocessed=False,
+        ))
+        p(f'{frag = !s}')
+
+        frag = preprocess(frag)
+        p(f'{frag = !s}')
+
+        match = re.search(r'void edge\(.+', frag)
+        if match is None:
+            print('', flush=True)
+            continue
+        edge_def = match.group()
+        p(f'{edge_def = }')
+
+        edge_params = []
+        for match in re.finditer(r'(?P<storage>in|out)\s+(?:(?P<qualifier>flat)\s+)?(?P<type>float|vec4|vec2|vec3|int)\s+(?P<name>\w+)', edge_def):
+            edge_params.append(Parameter(
+                storage=match.group('storage'),
+                qualifier=match.group('qualifier'),
+                type=match.group('type'),
+                name=match.group('name'),
+            ))
+        p(f'{edge_params = }')
+
+        node_param_names = [param.name for param in node_params]
+        node_param_names += [
+            'fg_FragCoord',
+            'fg_FragDepth',
+            'fg_EdgeData',
+        ]
+
+        params_from_node = []
+        params_from_edge = []
+        for param in edge_params:
+            if param.name in node_param_names:
+                params_from_node.append(param)
+            else:
+                params_from_edge.append(param)
+
+        frag = frag_template.render(dict(
+            source=frag,
+            preprocessed=True,
+            params_from_node=params_from_node,
+            params_from_edge=params_from_edge,
+        ))
+        p(f'{frag = !s}')
+
+        options['frag'] = f'base64:{b64encode(frag)}'
+
+
+        options = ',' + ','.join(flatten(options.items()))
+        z, x, y = map(str, (z, x, y))
+        path = '/'.join((empty, tile, dataset, z, x, y, options))
+        url = urlunparse((scheme, netloc, path, params, query, fragment))
+
+        print(url, flush=True)
+
 
 def cli():
     import argparse
     import sys
 
     parser = argparse.ArgumentParser()
-    parser.set_defaults(main=None)
-    subparsers = parser.add_subparsers()
-
-    node = subparsers.add_parser('node')
-    node.set_defaults(main=main_node)
-    node.add_argument('--infile', '-i', default=sys.stdin, type=argparse.FileType('r'))
-    node.add_argument('--outfile', '-o', default=sys.stdout, type=argparse.FileType('w'))
-
-    edge = subparsers.add_parser('edge')
-    edge.set_defaults(main=main_edge)
-    edge.add_argument('--infile', '-i', default=sys.stdin, type=argparse.FileType('r'))
-    edge.add_argument('--outfile', '-o', default=sys.stdout, type=argparse.FileType('w'))
-
-    makeurl = subparsers.add_parser('makeurl')
-    makeurl.set_defaults(main=main_makeurl)
-    makeurl.add_argument('--infile', '-i', default=sys.stdin, type=argparse.FileType('r'))
-    makeurl.add_argument('--nodefile', '-n', type=argparse.FileType('r'))
-    makeurl.add_argument('--edgefile', '-e', type=argparse.FileType('r'))
-    makeurl.add_argument('--outfile', '-o', default=sys.stdout, type=argparse.FileType('w'))
-
-    makeurl_repl = subparsers.add_parser('makeurl_repl')
-    makeurl_repl.set_defaults(main=main_makeurl_repl)
-    makeurl_repl.add_argument('--infile', '-i', default=sys.stdin, type=argparse.FileType('r'))
-    makeurl_repl.add_argument('--outfile', '-o', default=sys.stdout, type=argparse.FileType('w'))
-
     args = vars(parser.parse_args())
-    main = args.pop('main')
+
     main(**args)
 
 

@@ -1,6 +1,7 @@
 #include "server.h"
 
 #include <arpa/inet.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <math.h>
 #include <microhttpd.h>
@@ -28,6 +29,8 @@
 
 #include "stb_image_write.h"
 #define GLAPIENTRY APIENTRY
+
+#define FG_MAGIC (('f' << 24) | ('g' << 16) | ('0' << 8) | ('1'))
 
 struct attrib {
   GLuint64 size;
@@ -64,6 +67,7 @@ enum {
   ERROR_COMPILE_VERTEX_SHADER,
   ERROR_COMPILE_FRAGMENT_SHADER,
   ERROR_LINK_PROGRAM,
+  ERROR_BAD_SORT,
   NUM_ERRORS,
 };
 
@@ -72,6 +76,7 @@ char *errorMessages[NUM_ERRORS] = {
         [ERROR_COMPILE_VERTEX_SHADER] = "Could not compile vertex shader",
         [ERROR_COMPILE_FRAGMENT_SHADER] = "Could not compile fragment shader",
         [ERROR_LINK_PROGRAM] = "Could not link program",
+        [ERROR_BAD_SORT] = "Bad sort",
 };
 
 static const int _g_resolution = 256;
@@ -97,6 +102,8 @@ static pthread_barrier_t *_barrier;
 
 static volatile int _logGLCalls;
 static volatile int _doOcclusionCulling;
+static volatile int _doScissorTest;
+static volatile int _doRepartition;
 
 static volatile GLuint _max_depth = 0;
 static unsigned volatile _max_res;
@@ -147,10 +154,11 @@ void GLAPIENTRY eglMessageCallback(GLenum source, GLenum type, GLuint id,
                                    GLenum severity, GLsizei length,
                                    const GLchar *message,
                                    const void *userParam) {
-  fprintf(stderr,
-          "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
-          (type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : ""), type, severity,
-          message);
+  MAB_WRAP("eglMessageCallback") {
+    mabLogMessage("type", "0x%x", type);
+    mabLogMessage("severity", "0x%x", severity);
+    mabLogMessage("message", "%s", message);
+  }
 }
 static pthread_mutex_t *_fgl_lock;
 static pthread_barrier_t *_fgl_barrier;
@@ -205,7 +213,8 @@ void *render(void *v) {
   GLboolean first;
   GLuint dcIdent, *dcIndex;
   GLfloat *dcMult, *dcOffset, dcMinMult, dcMaxMult;
-  int logGLCalls, doOcclusionCulling;
+  int logGLCalls, doOcclusionCulling, doScissorTest;
+  int doRepartition;
 
   _partition_cache = NULL;
 
@@ -221,6 +230,8 @@ void *render(void *v) {
   dcMult = dcOffset = NULL;
   logGLCalls = 0;
   doOcclusionCulling = 0;
+  doScissorTest = 0;
+  doRepartition = 0;
 
   x = y = z = INFINITY;
   dataset = vertexShaderSource = fragmentShaderSource = NULL;
@@ -237,19 +248,22 @@ void *render(void *v) {
     case INIT_OSMESA:
       MAB_WRAP("create osmesa context") {
         if (!gladLoadEGL()) {
-          fprintf(stderr, "Could not load EGL!");
+          mabLogMessage("@error", "Could not load EGL!");
+          exit(1);
         }
 
         // 0. Get EGL Display (offscreen in case of headless)
         eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
         if (EGL_NO_DISPLAY == eglDisplay) {
-          fprintf(stderr, "Could not create the EGL Display!");
+          mabLogMessage("@error", "Could not create the EGL Display!");
+          exit(1);
         }
 
         // 1. Inititialize EGL
         EGLint major, minor;
         if (EGL_FALSE == eglInitialize(eglDisplay, &major, &minor)) {
-          fprintf(stderr, "Could not initialize EGL!");
+          mabLogMessage("@error", "Could not initialize EGL!");
+          exit(1);
         }
 
         // 2. Choose Configuration, give them the minimum requirements
@@ -262,7 +276,7 @@ void *render(void *v) {
 
         // 3. Bind the API, we are Using OPENGL not ES!
         if (EGL_FALSE == eglBindAPI(EGL_OPENGL_API)) {
-          fprintf(stderr, "OpenGL is not support for this EGL context!\n");
+          mabLogMessage("@error", "OpenGL is not support for this EGL context!");
           exit(1);
         }
 
@@ -281,7 +295,8 @@ void *render(void *v) {
         eglContext = eglCreateContext(eglDisplay, eglCfg, EGL_NO_CONTEXT,
                                       contextAttribs);
         if (!eglContext) {
-          fprintf(stderr, "could not init EGL context\n");
+          mabLogMessage("@error", "could not init EGL context");
+          mabLogMessage("@info", "Do you have a GPU? (If you're part of Seelab, then run FG from Kavir");
           exit(1);
         }
 
@@ -289,13 +304,13 @@ void *render(void *v) {
         EGLBoolean currentSuccess = eglMakeCurrent(eglDisplay, EGL_NO_SURFACE,
                                                    EGL_NO_SURFACE, eglContext);
         if (!currentSuccess) {
-          fprintf(stderr, "could not bind to image buffer\n");
+          mabLogMessage("@error", "could not bind to image buffer");
           exit(1);
         }
 
         // Load GL+Extensions
         if (!gladLoadGL()) {
-          fprintf(stderr, "Could not load GL!\n");
+          mabLogMessage("@error", "Could not load GL!");
         }
 
         // Enable Debugging
@@ -333,7 +348,7 @@ void *render(void *v) {
         // Make sure the Framebuffer is complete!
         if (!(GL_FRAMEBUFFER_COMPLETE ==
               glCheckFramebufferStatus(GL_FRAMEBUFFER))) {
-          fprintf(stderr, "Could not complete the framebuffer!");
+          mabLogMessage("@error", "Could not complete the framebuffer!");
           exit(1);
         }
 
@@ -344,20 +359,20 @@ void *render(void *v) {
         // Ensure resolution and viewport match 1:1, EGL can "fake" this call
         // and one symptom is viewport mismatch
         if ((_resolution + _resolution) != (viewport[2] + viewport[3])) {
-          fprintf(stderr,
-                  "Viewport does not meet the resolution requirement!\n");
+          mabLogMessage("@error", "Viewport does not meet the resolution requirement!");
           exit(1);
         }
-        fprintf(stderr, "EGL+OpenGL Setup complete.\n");
+        mabLogMessage("@info", "EGL+OpenGL Setup complete.");
 
-        // Clear color to white as well as empty depth buffer
+        // Reset clear color and empty depth buffer
+        // glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glFlush();
 
         _image = malloc(_depth * _resolution * _resolution);
         if (!_image) {
-          fprintf(stderr, "could not allocate image buffer\n");
+          mabLogMessage("@error", "could not allocate image buffer");
           exit(1);
         }
 
@@ -366,22 +381,23 @@ void *render(void *v) {
         const GLubyte *eglExtensions =
             eglQueryString(eglDisplay, EGL_EXTENSIONS);
         const GLubyte *eglAPIs = eglQueryString(eglDisplay, EGL_CLIENT_APIS);
-        fprintf(stderr,
-                "EGL Info\n\tVendor - %s\n\tVersion - %s\n\tExtensions - "
-                "%s\n\tAPIs - %s\n",
-                eglVendor, eglVersion, eglExtensions, eglAPIs);
+        mabLogMessage("EGL Vendor", "%s", eglVendor);
+        mabLogMessage("EGL Version", "%s", eglVersion);
+        mabLogMessage("EGL Extensions", "%s", eglExtensions);
+        mabLogMessage("EGL APIs", "%s", eglAPIs);
 
         const GLubyte *glVendor = glGetString(GL_VENDOR);
-        fprintf(stderr, "GL_VENDOR=%s\n", glVendor);
+        mabLogMessage("GL Vendor", "%s", glVendor);
         const GLubyte *glRenderer = glGetString(GL_RENDERER);
-        fprintf(stderr, "GL_RENDERER=%s\n", glRenderer);
+        mabLogMessage("GL Renderer", "%s", glRenderer);
         const GLubyte *glVersion = glGetString(GL_VERSION);
-        fprintf(stderr, "GL_VERSION=%s\n", glVersion);
+        mabLogMessage("GL Version", "%s", glVersion);
 
         const GLubyte *glslVersion = glGetString(GL_SHADING_LANGUAGE_VERSION);
-        fprintf(stderr, "GL_SHADING_LANGUAGE_VERSION=%s\n", glslVersion);
+        mabLogMessage("GLSL Version", "%s", glslVersion);
       }
       __attribute__((fallthrough));
+
     case INIT_GRAPH:
       MAB_WRAP("load graph") {
         if (nattribs[0].data)
@@ -437,7 +453,7 @@ void *render(void *v) {
           GLuint64 runningSize = 0;
           GLuint64 totalEdgeCount = 0;
           // Edge count should be 1 more than the total count of edges.
-          fprintf(stderr, "edge count: %lu\n", ecount);
+          mabLogMessage("edge count", "%lu", ecount);
           for (i = 0; i < ecount; ++i) {
             eattribs[i] = (struct attrib){0};
 
@@ -468,19 +484,19 @@ void *render(void *v) {
 
             eattribs[i].data = malloc(eattribs[i].size);
             fread(eattribs[i].data, 1, eattribs[i].size, f);
-            fprintf(stderr, "eattribs size is: %ld bytes \n", eattribs[i].size);
+            //fprintf(stderr, "eattribs size is: %ld bytes \n", eattribs[i].size);
             if (i > 0) {
               runningStride += 4;
               runningSize += eattribs[i].size;
             }
           }
-          fprintf(stderr, "Total bytes per edge: %lu, there are %lu edges \n",
-                  runningStride, totalEdgeCount);
-          fprintf(stderr, "Total size for edge attributes: %lu \n",
-                  runningSize);
+          // fprintf(stderr, "Total bytes per edge: %lu, there are %lu edges \n",
+          //         runningStride, totalEdgeCount);
+          // fprintf(stderr, "Total size for edge attributes: %lu \n",
+          //         runningSize);
           // send me to jail
-          fprintf(stderr, "Next 16 byte alignment: %lu \n",
-                  ((GLint64)runningStride + 15) & -16);
+          // fprintf(stderr, "Next 16 byte alignment: %lu \n",
+          //         ((GLint64)runningStride + 15) & -16);
 
           if (globalSSBO) {
             glDeleteBuffers(1, &globalSSBO);
@@ -510,9 +526,9 @@ void *render(void *v) {
                 if (i + 1 >= ecount) {
                   ((float *)edgeData)[edgeNumber * edgePad + i] = 0.0;
                 } else {
-                  fprintf(stderr, "\tSet edge %d attribute %d to %f \n",
-                          edgeNumber, i + 1,
-                          eattribs[i + 1].floats[edgeNumber - 1]);
+                  // fprintf(stderr, "\tSet edge %d attribute %d to %f \n",
+                  //         edgeNumber, i + 1,
+                  //         eattribs[i + 1].floats[edgeNumber - 1]);
                   ((float *)edgeData)[edgeNumber * edgePad + i] =
                       eattribs[i + 1].floats[edgeNumber - 1];
                 }
@@ -538,8 +554,9 @@ void *render(void *v) {
 
     case INIT_PARTITION:
       MAB_WRAP("init partition") {
-        printf("partitioning data...\n");
+        // printf("partitioning data...\n");
         unsigned j;
+        char filename[128];
 
         // clear previous partitions
         if (_partition_cache) {
@@ -557,14 +574,65 @@ void *render(void *v) {
         unsigned long blkSize = _max_res * _max_res * sizeof(PartitionData);
         _partition_cache = (PartitionData *)calloc(blkSize, sizeof(char));
         if (!_partition_cache) {
-          printf("Could not create partition cache of size %lu bytes!\n",
-                 blkSize);
+          mabLogMessage("@error", "Could not create partition cache of size %lu bytes!\n", blkSize);
           exit(1);
         }
         for (i = 0; i < _max_res * _max_res; ++i) {
           vec_init(&_partition_cache[i].partitions);
           vec_init(&_partition_cache[i].edgeIdxs);
         }
+
+        if (doRepartition) {
+          goto stop_reading_partition_cache; // XXX(th): sorry
+        }
+
+        snprintf(filename, sizeof(filename), "cache/%s_mr%u.partition.dat", dataset, _max_res);
+        f = fopen(filename, "rb");
+        if (f == NULL) {
+          mabLogMessage("@info", "Partition cache %s does not exist", filename);
+        }
+
+        if (f != NULL) {
+          uint32_t magic;
+
+          if (fread(&magic, sizeof(magic), 1, f) != 1) {
+            mabLogMessage("@info", "Partition cache %s has no magic! Ignoring it", filename);
+            fclose(f);
+            goto stop_reading_partition_cache; // XXX(th): sorry
+          }
+
+          if (magic != FG_MAGIC) {
+            mabLogMessage("@info", "Partition cache %s has bad magic! Ignoring it", filename);
+            fclose(f);
+            goto stop_reading_partition_cache; // XXX(th): sorry
+          }
+
+          for (i=0; i< _max_res * _max_res; ++i) {
+            size_t length, size;
+
+            fread(&length, sizeof(length), 1, f);
+
+            _partition_cache[i].partitions.length = length;
+            _partition_cache[i].partitions.capacity = length;
+
+            size = sizeof(*_partition_cache[i].partitions.data) * length;
+            _partition_cache[i].partitions.data = malloc(size);
+            fread(_partition_cache[i].partitions.data, size, 1, f);
+
+            fread(&length, sizeof(length), 1, f);
+
+            _partition_cache[i].edgeIdxs.length = length;
+            _partition_cache[i].edgeIdxs.capacity = length;
+
+            size = sizeof(*_partition_cache[i].edgeIdxs.data) * length;
+            _partition_cache[i].edgeIdxs.data = malloc(size);
+            fread(_partition_cache[i].edgeIdxs.data, size, 1, f);
+          }
+          fclose(f);
+
+          goto done_partitioning; // XXX(th): sorry
+        }
+stop_reading_partition_cache: ; // XXX(th): sorry
 
         GLfloat *vertsX = nattribs[0].floats;
         GLfloat *vertsY = nattribs[1].floats;
@@ -583,12 +651,12 @@ void *render(void *v) {
 
         *edges = eattribs[0];
         long sz = edges->count;
-        long tenth = sz / 10;
-        if (tenth == 0)
-          ++tenth;
+        long hundredth = sz / 100;
+        if (hundredth == 0)
+          ++hundredth;
         for (i = 0; i < sz; i += 2) {
-          if (i % tenth < 2)
-            printf("%d%% done...\n", (int)(100 * (double)i / (double)sz));
+          if (i % hundredth < 2)
+            mabLogMessage("@info", "partitioning %d%% done", (int)(100 * (double)i / (double)sz));
 
           GLuint e0 = edges->uints[i + 0];
           GLuint e1 = edges->uints[i + 1];
@@ -614,94 +682,147 @@ void *render(void *v) {
           }
           vec_destroy(&partitions);
         }
-        printf("100%% done\n");
+        mabLogMessage("@info", "done partitioning");
         // log_partition_cache(_partition_cache);
+
+        f = fopen(filename, "wb");
+        if (f == NULL) {
+          mabLogMessage("@error", "Could not create partition cache %s", filename);
+        }
+
+        if (f != NULL) {
+          uint32_t magic;
+          magic = 0;
+          fwrite(&magic, sizeof(magic), 1, f);
+
+          for (i=0; i< _max_res * _max_res; ++i) {
+            size_t length, size;
+
+            length = _partition_cache[i].partitions.length;
+            fwrite(&length, sizeof(length), 1, f);
+
+            size = sizeof(*_partition_cache[i].partitions.data) * length;
+            fwrite(_partition_cache[i].partitions.data, size, 1, f);
+
+            length = _partition_cache[i].edgeIdxs.length;
+            fwrite(&length, sizeof(length), 1, f);
+
+            size = sizeof(*_partition_cache[i].edgeIdxs.data) * length;
+            fwrite(_partition_cache[i].edgeIdxs.data, size, 1, f);
+          }
+
+          fseek(f, 0, SEEK_SET);
+
+          magic = FG_MAGIC;
+          fwrite(&magic, sizeof(magic), 1, f);
+
+          fclose(f);
+        }
+
+done_partitioning: ; // XXX(th): sorry
       }
       __attribute__((fallthrough));
 
     case INIT_SORT:
-      printf("Sorting depth...\n");
+      MAB_WRAP("sort depth") {
+        unsigned j;
+        GLuint sz = _max_res * _max_res;
+        long hundredth = sz / 10;
+        if (hundredth == 0)
+          ++hundredth;
 
-      unsigned j;
-      GLuint sz = _max_res * _max_res;
-      long tenth = sz / 10;
-      if (tenth == 0)
-        ++tenth;
+        for (j = 0; j < sz; ++j) {
+          if (j % hundredth < 1)
+            mabLogMessage("@info", "sorting %d%% done", (int)(100 * (double)j / (double)sz));
 
-      for (j = 0; j < sz; ++j) {
-        if (j % tenth < 1)
-          printf("%d%% done...\n", (int)(100 * (double)j / (double)sz));
+          PartitionData *pd = &_partition_cache[j];
+          unsigned long count = pd->partitions.length / 2;
+          int i;
+          GLfloat *dcDepth;
+          dcDepth = malloc(count * sizeof(*dcDepth));
+          for (i = 0; i < count; ++i) {
+            GLuint e0 = pd->partitions.data[2 * i + 0];
+            GLuint e1 = pd->partitions.data[2 * i + 1];
 
-        PartitionData *pd = &_partition_cache[j];
-        unsigned long count = pd->partitions.length / 2;
-        int i;
-        GLfloat *dcDepth;
-        dcDepth = malloc(count * sizeof(*dcDepth));
-        for (i = 0; i < count; ++i) {
-          GLuint e0 = pd->partitions.data[2 * i + 0];
-          GLuint e1 = pd->partitions.data[2 * i + 1];
+            dcDepth[i] = 0.0;
 
-          dcDepth[i] = 0.0;
+            int k = 0;
+            for (k = 0; k < 16; ++k)
+              if (!dcIndex[k])
+                break;
+            --k;
 
-          int k = 0;
-          for (k = 0; k < 16; ++k)
-            if (!dcIndex[k])
-              break;
-          --k;
+            if (k < 0) {
+              _error = ERROR_BAD_SORT;
+              goto done_with_request;
+            }
 
-          float sourceDepth =
-              dcMult[k] *
-                  nattribs[dcIndex[k] - 1].floats[eattribs[0].uints[e0]] +
-              dcOffset[k];
-          float targetDepth =
-              dcMult[k] *
-                  nattribs[dcIndex[k] - 1].floats[eattribs[0].uints[e1]] +
-              dcOffset[k];
+            float sourceDepth =
+                dcMult[k] *
+                    (
+                      nattribs[dcIndex[k] - 1].floats[eattribs[0].uints[e0]] -
+                      nattribs[dcIndex[k] - 1].frange[0]
+                    ) / (
+                      nattribs[dcIndex[k] - 1].frange[1] -
+                      nattribs[dcIndex[k] - 1].frange[0]
+                    ) +
+                dcOffset[k];
+            float targetDepth =
+                dcMult[k] *
+                  (
+                    nattribs[dcIndex[k] - 1].floats[eattribs[0].uints[e1]] -
+                    nattribs[dcIndex[k] - 1].frange[0]
+                  ) / (
+                    nattribs[dcIndex[k] - 1].frange[1] -
+                    nattribs[dcIndex[k] - 1].frange[0]
+                  ) +
+                dcOffset[k];
 
-          dcDepth[i] += sourceDepth < targetDepth
-                            ? dcMinMult * sourceDepth + dcMaxMult * targetDepth
-                            : dcMinMult * targetDepth + dcMaxMult * sourceDepth;
+            dcDepth[i] += sourceDepth < targetDepth
+                              ? dcMinMult * sourceDepth + dcMaxMult * targetDepth
+                              : dcMinMult * targetDepth + dcMaxMult * sourceDepth;
+            dcDepth[i] *= -1.;
+          }
+
+          GLuint64 *dcReorder;
+          dcReorder = malloc(count * sizeof(*dcReorder));
+          for (i = 0; i < count; ++i) {
+            dcReorder[i] = i;
+          }
+
+          int compare(const void *av, const void *bv) {
+            const GLuint64 *a = av;
+            const GLuint64 *b = bv;
+
+            if (dcDepth[*a] < dcDepth[*b])
+              return -1;
+            if (dcDepth[*a] > dcDepth[*b])
+              return 1;
+            return 0;
+          }
+          qsort(dcReorder, count, sizeof(*dcReorder), compare);
+
+          GLuint *edges = malloc(count * 2 * sizeof(*edges));
+          GLuint *edgeIdxs = malloc(count * sizeof(*edgeIdxs));
+          for (i = 0; i < count; ++i) {
+            edges[2 * i + 0] = pd->partitions.data[2 * dcReorder[i] + 0];
+            edges[2 * i + 1] = pd->partitions.data[2 * dcReorder[i] + 1];
+            edgeIdxs[i] = pd->edgeIdxs.data[dcReorder[i]];
+          }
+
+          vec_destroy(&pd->partitions);
+          pd->partitions.data = edges;
+          pd->partitions.capacity = pd->partitions.length = count * 2;
+
+          vec_destroy(&pd->edgeIdxs);
+          pd->edgeIdxs.data = edgeIdxs;
+          pd->edgeIdxs.capacity = pd->edgeIdxs.length = count;
+
+          free(dcReorder);
+          free(dcDepth);
         }
-
-        GLuint64 *dcReorder;
-        dcReorder = malloc(count * sizeof(*dcReorder));
-        for (i = 0; i < count; ++i) {
-          dcReorder[i] = i;
-        }
-
-        int compare(const void *av, const void *bv) {
-          const GLuint64 *a = av;
-          const GLuint64 *b = bv;
-
-          if (dcDepth[*a] < dcDepth[*b])
-            return -1;
-          if (dcDepth[*a] > dcDepth[*b])
-            return 1;
-          return 0;
-        }
-        qsort(dcReorder, count, sizeof(*dcReorder), compare);
-
-        GLuint *edges = malloc(count * 2 * sizeof(*edges));
-        GLuint *edgeIdxs = malloc(count * sizeof(*edgeIdxs));
-        for (i = 0; i < count; ++i) {
-          edges[2 * i + 0] = pd->partitions.data[2 * dcReorder[i] + 0];
-          edges[2 * i + 1] = pd->partitions.data[2 * dcReorder[i] + 1];
-          edgeIdxs[i] = pd->partitions.data[2 * dcReorder[i]];
-        }
-
-        vec_destroy(&pd->partitions);
-        pd->partitions.data = edges;
-        pd->partitions.capacity = pd->partitions.length = count * 2;
-
-        vec_destroy(&pd->edgeIdxs);
-        pd->edgeIdxs.data = edgeIdxs;
-        pd->edgeIdxs.capacity = pd->edgeIdxs.length = count;
-
-        free(dcReorder);
-        free(dcDepth);
+        mabLogMessage("@info", "sorting 100%% done");
       }
-      printf("100%% done\n");
-
       __attribute__((fallthrough));
 
     case INIT_BUFFERS:
@@ -738,10 +859,12 @@ void *render(void *v) {
           glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &rc);
           if (!rc) {
             glGetShaderInfoLog(vertexShader, sizeof(log), NULL, log);
-            printf("ERROR: Vertex Shader Compilation Failed\n%s\n", log);
+            mabLogMessage("@error", "vertex shader compilation failed: %s", log);
             mabLogEnd("ERROR: Vertex Shader Compilation Failed");
             mabLogEnd("ERROR: Vertex Shader Compilation Failed");
             _error = ERROR_COMPILE_VERTEX_SHADER;
+            vertexShaderSource = NULL;
+            fragmentShaderSource = NULL;
             goto done_with_request;
           }
         }
@@ -759,10 +882,12 @@ void *render(void *v) {
           glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &rc);
           if (!rc) {
             glGetShaderInfoLog(fragmentShader, sizeof(log), NULL, log);
-            printf("ERROR: Fragment Shader Compilation Failed\n%s\n", log);
+            mabLogMessage("@error", "fragment shader compilation failed: %s", log);
             mabLogEnd("ERROR: Fragment Shader Compilation Failed");
             mabLogEnd("ERROR: Fragment Shader Compilation Failed");
             _error = ERROR_COMPILE_FRAGMENT_SHADER;
+            vertexShaderSource = NULL;
+            fragmentShaderSource = NULL;
             goto done_with_request;
           }
         }
@@ -780,10 +905,12 @@ void *render(void *v) {
           glGetProgramiv(program, GL_LINK_STATUS, &rc);
           if (!rc) {
             glGetProgramInfoLog(program, sizeof(log), NULL, log);
-            printf("ERROR: Shader Program Linking Failed\n%s\n", log);
+            mabLogMessage("@error", "shader program linking failed: %s", log);
             mabLogEnd("ERROR: Shader Program Linking Failed");
             mabLogEnd("ERROR: Shader Program Linking Failed");
             _error = ERROR_LINK_PROGRAM;
+            vertexShaderSource = NULL;
+            fragmentShaderSource = NULL;
             goto done_with_request;
           }
 
@@ -893,13 +1020,16 @@ void *render(void *v) {
         // get current partition resolution by zoom level
         unsigned long res = (unsigned long)pow(2, _z);
 
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        // glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LEQUAL);
+
+        glEnable(GL_SCISSOR_TEST);
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -931,10 +1061,28 @@ void *render(void *v) {
             int numTilesY =
                 numTilesX; // seperated just in case if in the future we want
                            // to have different x and y
+            size_t distBetweenTilesX = _resolution / numTilesX;
+            size_t distBetweenTilesY = _resolution / numTilesY;
 
             MAB_WRAP("rendering tiles") {
               for (i = 0; i < numTilesX; ++i) {
                 for (j = 0; j < numTilesY; ++j) {
+                  // if (i > 0 || j > 0) continue;
+
+                  if (doScissorTest) {
+                    // coordinates are from bottom left
+                    // (left 0, bottom 0) bottom left
+                    // (left 10, bottom 20) 10 pixels from left, 20 pixels from bottom
+                    size_t left, bottom, width, height;
+
+                    left = i * distBetweenTilesX;
+                    bottom = j * distBetweenTilesY;
+                    width = distBetweenTilesX;
+                    height = distBetweenTilesY;
+
+                    glScissor(left, bottom, width, height);
+                  }
+
                   unsigned long idx = (ry + j) * _max_res + (rx + i);
                   PartitionData *pd = &_partition_cache[idx];
                   pd->count++;
@@ -965,8 +1113,10 @@ void *render(void *v) {
                       // glGenQueries(1, &q);
 
                       // glBeginQuery(GL_SAMPLES_PASSED, q);
+                      
                       glDrawElements(GL_LINES, length * 2, GL_UNSIGNED_INT,
                                      (void *)(intptr_t)startIdx);
+
                       // glEndQuery(GL_SAMPLES_PASSED);
 
                       // GLint samples;
@@ -1008,6 +1158,10 @@ void *render(void *v) {
                     // }
                   }
                 }
+
+                if (doScissorTest) {
+                  glScissor(0, 0, _resolution, _resolution);
+                }
               }
             }
           }
@@ -1037,6 +1191,8 @@ void *render(void *v) {
 
         logGLCalls = _logGLCalls;
         doOcclusionCulling = _doOcclusionCulling;
+        doScissorTest = _doScissorTest;
+        doRepartition = _doRepartition;
 
         if (fabsf(x - _x) > 0.1) {
           x = _x;
@@ -1060,7 +1216,7 @@ void *render(void *v) {
           fragmentShaderSource = strdup(_fragmentShaderSource);
           where = INIT_PROGRAM;
         }
-        if (max_depth != _max_depth) {
+        if (doRepartition || max_depth != _max_depth) {
           max_depth = _max_depth;
           where = INIT_PARTITION;
         }
@@ -1158,20 +1314,6 @@ struct MHD_Response *MAB_create_response_from_file(const char *filename) {
            const char *method, const char *version, const char *data,          \
            size_t *size, void **con_cls)
 
-ANSWER(Index) {
-  struct MHD_Response *index_response;
-  int rc;
-
-  index_response = MAB_create_response_from_file("static/index.html");
-  if (index_response == NULL) {
-    printf("Could not read file static/index.html\n");
-    exit(1);
-  }
-  rc = MHD_queue_response(conn, MHD_HTTP_OK, index_response);
-  MHD_destroy_response(index_response);
-  return rc;
-}
-
 struct MHD_Response *error_response;
 ANSWER(Error) {
   fprintf(stderr, "404: '%s' '%s'\n", method, url);
@@ -1182,6 +1324,7 @@ ANSWER(Static) {
   struct MHD_Response *response;
   int rc;
 
+  // skip leading slash
   const char *URL = url + 1;
 
   response = MAB_create_response_from_file(URL);
@@ -1205,7 +1348,7 @@ ANSWER(Tile) {
   const char *info =
       MHD_lookup_connection_value(conn, MHD_HEADER_KIND, "X-MAB-Log-Info");
   if (info != NULL) {
-    fprintf(stderr, "info = '%s'\n", info);
+    // fprintf(stderr, "info = '%s'\n", info);
     mabLogContinue(info);
   }
 
@@ -1229,13 +1372,21 @@ ANSWER(Tile) {
 
   MAB_WRAP("answer tile request") {
     mabLogMessage("rxsize", "%zu", strlen(url));
+    if (strlen(transformed_url) == 0) {
+      mabLogMessage("@error", "transformed url is empty (FGL error)");
+      response = MHD_create_response_from_buffer(strlen("FGL error"), "FGL error",
+                                                  MHD_RESPMEM_PERSISTENT);
+      rc = MHD_queue_response(conn, MHD_HTTP_NOT_ACCEPTABLE, response);
+      MHD_destroy_response(response);
+      goto end;
+    }
     float x, y, z;
     int max_depth;
     char *dataset, *options;
     if (5 != (rc = sscanf(transformed_url, "/tile/%m[^/]/%f/%f/%f/%ms",
                           &dataset, &z, &x, &y, &options))) {
-      fprintf(stderr, "rc: %d\n", rc);
-      fprintf(stderr, "options: %s\n", options);
+      mabLogMessage("@error", "sscanf returned %d instead of 5", rc);
+      mabLogMessage("options", "%s", options);
       rc = MHD_queue_response(conn, MHD_HTTP_NOT_FOUND, error_response);
       goto end;
     }
@@ -1257,6 +1408,10 @@ ANSWER(Tile) {
     GLfloat opt_dcMaxMult = 0.0;
     int opt_logGLCalls = 0;
     int opt_doOcclusionCulling = 0;
+    int opt_doScissorTest = 0;
+    int opt_debugTileBoundaries = 0;
+    int opt_debugPartitionBoundaries = 0;
+    int opt_doRepartition = 0;
 
     // fprintf(stderr, "options: '''\n%s\n'''\n", options);
 
@@ -1282,7 +1437,7 @@ ANSWER(Tile) {
         size_t outlen = len + 128;
         char *out = malloc(outlen + 1);
         if (base64decode(data, len, out, &outlen) != 0) {
-          fprintf(stderr, "ERROR: base64decode failed\n");
+          mabLogMessage("@error", "base64decode failed");
           return MHD_NO;
         }
 
@@ -1312,9 +1467,16 @@ ANSWER(Tile) {
         opt_logGLCalls = atoi(value);
       } else if (strcmp(key, "doOcclusionCulling") == 0) {
         opt_doOcclusionCulling = atoi(value);
+      } else if (strcmp(key, "doScissorTest") == 0) {
+        opt_doScissorTest = atoi(value);
+      } else if (strcmp(key, "debugTileBoundaries") == 0) {
+        opt_debugTileBoundaries = atoi(value);
+      } else if (strcmp(key, "debugPartitionBoundaries") == 0) {
+        opt_debugPartitionBoundaries = atoi(value);
+      } else if (strcmp(key, "doRepartition") == 0) {
+        opt_doRepartition = atoi(value);
       } else {
-        fprintf(stderr, "WARNING: unhandled option '%s' = '%s'\n", key,
-                (char *)value);
+        mabLogMessage("@warn", "Unhandled options '%s' = '%s'", key, (char *)value);
       }
 
       if (done)
@@ -1344,6 +1506,8 @@ ANSWER(Tile) {
       _dcMaxMult = opt_dcMaxMult;
       _logGLCalls = opt_logGLCalls;
       _doOcclusionCulling = opt_doOcclusionCulling;
+      _doScissorTest = opt_doScissorTest;
+      _doRepartition = opt_doRepartition;
       _error = ERROR_NONE;
 
       mabLogForward(&renderInfo);
@@ -1375,6 +1539,51 @@ ANSWER(Tile) {
         goto end;
 
       } else {
+        if (opt_debugPartitionBoundaries) {
+          size_t tileres = _resolution;
+          size_t maxres = (size_t)pow(2, max_depth);
+          size_t res = (size_t)pow(2, z);
+          // size_t rx = (size_t)interpolate(0, res, 0, maxres, x);
+          // size_t ry = (size_t)interpolate(0, res, 0, maxres, y);
+
+          // assume x and y partition resolution are the same
+          size_t numTiles = (size_t)ceil((float)maxres / (float)res);
+          size_t distBetweenTiles = tileres / numTiles;
+
+          for (size_t i=0; i<tileres; ++i) {
+            for (size_t j=0; j<numTiles; ++j) {
+              // left column
+              _image[(i)*tileres*4 + (j*distBetweenTiles)*4 + 0] = 0x00;
+              _image[(i)*tileres*4 + (j*distBetweenTiles)*4 + 1] = 0xFF;
+              _image[(i)*tileres*4 + (j*distBetweenTiles)*4 + 2] = 0x00;
+              _image[(i)*tileres*4 + (j*distBetweenTiles)*4 + 3] = 0xFF;
+
+              // top row
+              _image[(j*distBetweenTiles)*tileres*4 + (i)*4 + 0] = 0x00;
+              _image[(j*distBetweenTiles)*tileres*4 + (i)*4 + 1] = 0xFF;
+              _image[(j*distBetweenTiles)*tileres*4 + (i)*4 + 2] = 0x00;
+              _image[(j*distBetweenTiles)*tileres*4 + (i)*4 + 3] = 0xFF;
+            }
+          }
+        }
+
+        if (opt_debugTileBoundaries) {
+          size_t res = _resolution;
+          for (size_t i=0; i<res; ++i) {
+            // left column
+            _image[i*res*4+0*4+0] = 0xFF;
+            _image[i*res*4+0*4+1] = 0x00;
+            _image[i*res*4+0*4+2] = 0xFF;
+            _image[i*res*4+0*4+3] = 0xFF;
+
+            // top row
+            _image[0*res*4+i*4+0] = 0xFF;
+            _image[0*res*4+i*4+1] = 0x00;
+            _image[0*res*4+i*4+2] = 0xFF;
+            _image[0*res*4+i*4+3] = 0xFF;
+          }
+        }
+
         MAB_WRAP("jpeg") {
           output = NULL;
           outputlen = 0;
@@ -1428,15 +1637,217 @@ ANSWER(Log) {
   return rc;
 }
 
+#define ANSWER_WITH_FILE(TheName, TheFile, TheContentType)                     \
+  ANSWER(TheName) {                                                            \
+    struct MHD_Response *response;                                             \
+    int rc;                                                                    \
+                                                                               \
+    response = MAB_create_response_from_file(TheFile);                         \
+    if (response == NULL) {                                                    \
+      printf("Could not read file " TheFile "\n");                             \
+      exit(1);                                                                 \
+    }                                                                          \
+    MHD_add_response_header(response, "Content-Type", TheContentType);         \
+    rc = MHD_queue_response(conn, MHD_HTTP_OK, response);                      \
+    MHD_destroy_response(response);                                            \
+    return rc;                                                                 \
+  }
+
+ANSWER_WITH_FILE(IndexHTML         , "static/index.html"           , "text/html")
+
+ANSWER_WITH_FILE(CommonIndexHTML   , "static/common/index.html"    , "text/html")
+ANSWER_WITH_FILE(CommonIndexCSS    , "static/common/index.css"     , "text/css")
+ANSWER_WITH_FILE(CommonFGJS        , "static/common/fg.js"         , "text/javascript")
+
+ANSWER_WITH_FILE(JSDepsIndexJS     , "static/JS-Deps/index.js"     , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS0    , "static/JS-Deps-0/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS1    , "static/JS-Deps-1/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS2    , "static/JS-Deps-2/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS3    , "static/JS-Deps-3/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS4    , "static/JS-Deps-4/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS5    , "static/JS-Deps-5/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS6    , "static/JS-Deps-6/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS7    , "static/JS-Deps-7/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS8    , "static/JS-Deps-8/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(JSDepsIndexJS9    , "static/JS-Deps-9/index.js"   , "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS  , "static/SO-Answers/index.js"  , "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS0 , "static/SO-Answers-0/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS1 , "static/SO-Answers-1/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS2 , "static/SO-Answers-2/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS3 , "static/SO-Answers-3/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS4 , "static/SO-Answers-4/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS5 , "static/SO-Answers-5/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS6 , "static/SO-Answers-6/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS7 , "static/SO-Answers-7/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS8 , "static/SO-Answers-8/index.js", "text/javascript")
+ANSWER_WITH_FILE(SOAnswersIndexJS9 , "static/SO-Answers-9/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS, "static/NBER-Patents/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS0, "static/NBER-Patents-0/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS1, "static/NBER-Patents-1/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS2, "static/NBER-Patents-2/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS3, "static/NBER-Patents-3/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS4, "static/NBER-Patents-4/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS5, "static/NBER-Patents-5/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS6, "static/NBER-Patents-6/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS7, "static/NBER-Patents-7/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS8, "static/NBER-Patents-8/index.js", "text/javascript")
+ANSWER_WITH_FILE(NBERPatentsIndexJS9, "static/NBER-Patents-9/index.js", "text/javascript")
+ANSWER_WITH_FILE(COMOrkutIndexJS   , "static/COM-Orkut/index.js"   , "text/javascript")
+
 struct {
   const char *method;
   const char *url;
   int exact;
   MHD_AccessHandlerCallback cb;
 } routes[] = {
-    {NULL, NULL, 0, Error},         {"GET", "/", 1, Index},
-    {"GET", "/static/", 0, Static}, {"GET", "/tile/", 0, Tile},
-    {"POST", "/log/", 0, Log},
+//  { METHOD , URL                      , EXACT , CALLBACK           },
+    { NULL   , NULL                     , 0     , Error              },
+
+    { "GET"  , "/"                      , 1     , IndexHTML          },
+
+    { "GET"  , "/JS-Deps/"              , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-0/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-1/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-2/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-3/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-4/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-5/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-6/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-7/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-8/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/JS-Deps-9/"            , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers/"           , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-0/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-1/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-2/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-3/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-4/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-5/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-6/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-7/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-8/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/SO-Answers-9/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents/"         , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-0/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-1/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-2/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-3/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-4/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-5/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-6/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-7/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-8/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/NBER-Patents-9/"       , 1     , CommonIndexHTML    },
+    { "GET"  , "/COM-Orkut/"            , 1     , CommonIndexHTML    },
+
+    { "GET"  , "/JS-Deps/index.css"     , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-0/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-1/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-2/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-3/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-4/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-5/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-6/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-7/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-8/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/JS-Deps-9/index.css"   , 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers/index.css"  , 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-0/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-1/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-2/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-3/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-4/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-5/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-6/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-7/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-8/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/SO-Answers-9/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents/index.css", 1     , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-0/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-1/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-2/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-3/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-4/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-5/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-6/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-7/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-8/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/NBER-Patents-9/index.css", 1   , CommonIndexCSS     },
+    { "GET"  , "/COM-Orkut/index.css"   , 1     , CommonIndexCSS     },
+
+    { "GET"  , "/JS-Deps/fg.js"         , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-0/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-1/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-2/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-3/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-4/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-5/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-6/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-7/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-8/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/JS-Deps-9/fg.js"       , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers/fg.js"      , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-0/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-1/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-2/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-3/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-4/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-5/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-6/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-7/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-8/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/SO-Answers-9/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents/fg.js"    , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-0/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-1/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-2/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-3/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-4/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-5/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-6/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-7/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-8/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/NBER-Patents-9/fg.js"  , 1     , CommonFGJS         },
+    { "GET"  , "/COM-Orkut/fg.js"       , 1     , CommonFGJS         },
+
+    { "GET"  , "/JS-Deps/index.js"      , 1     , JSDepsIndexJS      },
+    { "GET"  , "/JS-Deps-0/index.js"    , 1     , JSDepsIndexJS0     },
+    { "GET"  , "/JS-Deps-1/index.js"    , 1     , JSDepsIndexJS1     },
+    { "GET"  , "/JS-Deps-2/index.js"    , 1     , JSDepsIndexJS2     },
+    { "GET"  , "/JS-Deps-3/index.js"    , 1     , JSDepsIndexJS3     },
+    { "GET"  , "/JS-Deps-4/index.js"    , 1     , JSDepsIndexJS4     },
+    { "GET"  , "/JS-Deps-5/index.js"    , 1     , JSDepsIndexJS5     },
+    { "GET"  , "/JS-Deps-6/index.js"    , 1     , JSDepsIndexJS6     },
+    { "GET"  , "/JS-Deps-7/index.js"    , 1     , JSDepsIndexJS7     },
+    { "GET"  , "/JS-Deps-8/index.js"    , 1     , JSDepsIndexJS8     },
+    { "GET"  , "/JS-Deps-9/index.js"    , 1     , JSDepsIndexJS9     },
+    { "GET"  , "/SO-Answers/index.js"   , 1     , SOAnswersIndexJS   },
+    { "GET"  , "/SO-Answers-0/index.js" , 1     , SOAnswersIndexJS0  },
+    { "GET"  , "/SO-Answers-1/index.js" , 1     , SOAnswersIndexJS1  },
+    { "GET"  , "/SO-Answers-2/index.js" , 1     , SOAnswersIndexJS2  },
+    { "GET"  , "/SO-Answers-3/index.js" , 1     , SOAnswersIndexJS3  },
+    { "GET"  , "/SO-Answers-4/index.js" , 1     , SOAnswersIndexJS4  },
+    { "GET"  , "/SO-Answers-5/index.js" , 1     , SOAnswersIndexJS5  },
+    { "GET"  , "/SO-Answers-6/index.js" , 1     , SOAnswersIndexJS6  },
+    { "GET"  , "/SO-Answers-7/index.js" , 1     , SOAnswersIndexJS7  },
+    { "GET"  , "/SO-Answers-8/index.js" , 1     , SOAnswersIndexJS8  },
+    { "GET"  , "/SO-Answers-9/index.js" , 1     , SOAnswersIndexJS9  },
+    { "GET"  , "/NBER-Patents/index.js" , 1     , NBERPatentsIndexJS },
+    { "GET"  , "/NBER-Patents-0/index.js", 1    , NBERPatentsIndexJS0 },
+    { "GET"  , "/NBER-Patents-1/index.js", 1    , NBERPatentsIndexJS1 },
+    { "GET"  , "/NBER-Patents-2/index.js", 1    , NBERPatentsIndexJS2 },
+    { "GET"  , "/NBER-Patents-3/index.js", 1    , NBERPatentsIndexJS3 },
+    { "GET"  , "/NBER-Patents-4/index.js", 1    , NBERPatentsIndexJS4 },
+    { "GET"  , "/NBER-Patents-5/index.js", 1    , NBERPatentsIndexJS5 },
+    { "GET"  , "/NBER-Patents-6/index.js", 1    , NBERPatentsIndexJS6 },
+    { "GET"  , "/NBER-Patents-7/index.js", 1    , NBERPatentsIndexJS7 },
+    { "GET"  , "/NBER-Patents-8/index.js", 1    , NBERPatentsIndexJS8 },
+    { "GET"  , "/NBER-Patents-9/index.js", 1    , NBERPatentsIndexJS9 },
+    { "GET"  , "//OM-Orkut/index.js"    , 1     , COMOrkutIndexJS    },
+
+//  { "GET"  , "/static/"               , 0     , Static             },
+    { "GET"  , "/tile/"                 , 0     , Tile               },
+    { "POST" , "/log/"                  , 0     , Log                },
 };
 
 ANSWER(answer) {
@@ -1484,8 +1895,7 @@ static void *fgl_transformer_thread(void *v) {
     dup2(proc_in[0], 0);
     dup2(proc_out[1], 1);
 
-    execlp("/usr/bin/python3.8", "/usr/bin/python3.8", "/opt/fgl/fgl.py",
-           "makeurl_repl", (char *)NULL);
+    execlp("/usr/bin/python3.8", "/usr/bin/python3.8", "/opt/fgl/fgl.py", (char *)NULL);
     perror("execlp");
     exit(1);
   } else {
@@ -1501,16 +1911,22 @@ static void *fgl_transformer_thread(void *v) {
 
   line = NULL;
   size = 0;
-  for (;;) {
+  for (;;)
+  MAB_WRAP("transform url") {
     // wait for url from request thread
     pthread_barrier_wait(_fgl_barrier);
+
+    mabLogMessage("input url", "%s", _fgl_in_url);
 
     fprintf(proc_stdin, "%s\n", _fgl_in_url);
     fflush(proc_stdin);
 
     len = getline(&line, &size, proc_stdout);
     if (len < 0) {
-      perror("getline");
+      int myerrno = errno;
+      mabLogMessage("@error", "getline failed; probably at EOF");
+      mabLogMessage("errno", "%d", myerrno);
+      mabLogMessage("len", "%zd", len);
       exit(1);
     }
 
@@ -1528,22 +1944,32 @@ static void *fgl_transformer_thread(void *v) {
 
 int main(int argc, char **argv) {
   int opt_port, opt_service;
-  char *s, *opt_bind;
+  char *s, *opt_bind, *opt_logfile;
   struct MHD_Daemon *daemon;
   struct sockaddr_in addr;
   pthread_t tid;
 
-  for (int i = 0; i < 64; ++i) {
-    char temp[32];
-    snprintf(temp, sizeof(temp), "logs/%d.log", i);
+  opt_logfile = (s = getenv("FG_LOGFILE")) ? s : NULL;
+  if (opt_logfile == NULL) {
+    for (int i = 0; i < 64; ++i) {
+      char temp[32];
+      snprintf(temp, sizeof(temp), "logs/%d.log", i);
 
-    if (!mabLogToFile(temp, "wx")) {
+      if (!mabLogToFile(temp, "wx")) {
+        goto got_log;
+        break;
+      }
+    }
+
+  } else {
+    if (!mabLogToFile(opt_logfile, "w")) {
+      mabLogFlush(1);
       goto got_log;
-      break;
     }
   }
 
   fprintf(stderr, "could not open log\n");
+  fprintf(stderr, "It's likely that the logs/ directory is full. Remove unneeded .log files\n");
   return 1;
 
 got_log:

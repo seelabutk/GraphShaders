@@ -12,6 +12,7 @@ static int _initialized = 0;
 static pthread_mutex_t *_lock;
 static pthread_cond_t *_cond;
 static FILE *_file;
+static int _always_flush;
 static __thread int _t_initialized = 0;
 static __thread int _t_continued;
 static __thread int *_t_levels;
@@ -66,6 +67,9 @@ static char *formatLevel(int *levels, int nlevels) {
 static void writeLine(char *line) {
 	if (!_initialized) return;
 	fprintf(_file, "%s\n", line);
+	if (_always_flush) {
+		fflush(_file);
+	}
 }
 
 static void writeLog(uuid_t task, int *levels, int nlevels, struct timeval *tv, char *key, char *value) {
@@ -120,6 +124,10 @@ int mabLogToFile(char *filename, char *mode) {
 	return 0;
 }
 
+void mabLogFlush(int always_flush) {
+	_always_flush = always_flush;
+}
+
 void mabLogAction(char *message, ...) {
 	struct timeval tv;
 	char value[1024];
@@ -165,7 +173,7 @@ void mabLogMessage(char *name, char *message, ...) {
 	if (_t_continued) die("after continuing, start an action, not a log message");
 
 	if (_t_nlevels == 0) {
-		die("cannot log message, create an action first");
+		die("cannot log message, create an action first; name=%s; message=%s", name, message);
 	} else {
 		_t_levels[_t_nlevels-1]++;
 	}

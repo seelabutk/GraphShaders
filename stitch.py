@@ -49,12 +49,12 @@ def main(infile, outfile, z_inc, nthreads, mode):
                 z = z1
                 x = j
                 y = i
-                print(f'Requesting image {mycount}/{(2**(z_inc+1))**2} ({z=} {x=} {y=})')
+                # print(f'Requesting image {mycount}/{(2**(z_inc+1))**2} ({z=} {x=} {y=})')
 
             z, x, y = map(str, (z, x, y))
             path = '/'.join((empty, tile, dataset, z, x, y, options))
             url = urlunparse((scheme, netloc, path, params, query, fragment))
-            print(f'{url = !s}')
+            # print(f'{url = !s}')
 
             with requests.get(url, headers={'Connection': 'close'}) as r:
                 if mode == 'stitch':
@@ -63,7 +63,7 @@ def main(infile, outfile, z_inc, nthreads, mode):
                     _ = r.content
 
             with lock:
-                print(f'Stitching image {mycount}/{(2**(z_inc+1))**2} ({z=} {x=} {y=})')
+                # print(f'Stitching image {mycount}/{(2**(z_inc+1))**2} ({z=} {x=} {y=})')
                 if mode == 'stitch':
                     canvas.paste(image, ((j-x0) * tilesize, (i-y0) * tilesize))
                 elif mode == 'noop':

@@ -1,5 +1,5 @@
 {% if not preprocessed %}
-#define node(...) node(__VA_ARGS__, out vec2 fg_NodePosition, out float fg_NodeDepth)
+#define node(...) node(## __VA_ARGS__, out vec2 fg_NodePosition, out float fg_NodeDepth)
 #define fg_mean(x) (x)
 #define fg_min(x) (x)
 #define fg_max(x) (x)
@@ -8,33 +8,55 @@ uniform vec3 uCat6[6];
 {% else %}
 #version 460 core
 precision mediump float;
-
-layout(early_fragment_tests) in;
-
 {% endif %}
 
-{{ source|safe }}
-
 {% if preprocessed %}
-in float aNode1, aNode2, aNode3, aNode4, aNode5, aNode6, aNode7, aNode8;
 uniform float uNodeMin1, uNodeMin2, uNodeMin3, uNodeMin4, uNodeMin5, uNodeMin6, uNodeMin7, uNodeMin8;
 uniform float uNodeMax1, uNodeMax2, uNodeMax3, uNodeMax4, uNodeMax5, uNodeMax6, uNodeMax7, uNodeMax8;
 
+{% for param in params | selectattr("storage", "eq", "in") -%}
+#define {{ param.name }}Min uNodeMin{{ loop.index }}
+#define {{ param.name }}Max uNodeMax{{ loop.index }}
+{% endfor %}
+{% endif %}
+
+{% if not preprocessed %}
+{{ source|safe }}
+{% else %}
+{{ source|replace(" flat ", " ")|safe }}
+{% endif %}
+
+{% if preprocessed %}
+{% for param in params | selectattr("storage", "eq", "in") -%}
+#undef {{ param.name }}Min
+#undef {{ param.name }}Max
+{% endfor %}
+{% endif %}
+
+{% if preprocessed %}
+in float aNode1, aNode2, aNode3, aNode4, aNode5, aNode6, aNode7, aNode8;
+
 uniform float uTranslateX, uTranslateY, uScale;
 
-{% for param in out_params -%}
-{{ StorageQualifier(param.storage).name|lower }} {{ param.base_type.name }} {{ param.name }};
+{% for param in params | selectattr("storage", "eq", "out") -%}
+{{ param.storage }} {% if param.qualifier %}{{ param.qualifier }} {% endif %}{{ param.type }} {{ param.name }};
 {% endfor %}
 out vec2 fg_FragCoord;
 out float fg_FragDepth;
 
 void main() {
+    fg_NodeDepth = 0.5;
+    
     node(
-        {%- for param in in_params -%}
+        {%- for param in params | selectattr("storage", "eq", "in") -%}
         {%- if not loop.first %}, {% endif %}
+        {%- if param.type == 'int' %}
+        int(aNode{{ loop.index }})
+        {%- else %}
         (aNode{{ loop.index }} - uNodeMin{{ loop.index }}) / (uNodeMax{{ loop.index }} - uNodeMin{{ loop.index }})
+        {%- endif %}
         {%- endfor -%}
-        {% for param in out_params -%},
+        {% for param in params | selectattr("storage", "eq", "out") -%},
         {{ param.name -}}
         {% endfor %}
     );
