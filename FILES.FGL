@@ -1,0 +1,3 @@
+fgl/fgl.py
+fgl/vert.glsl.template
+fgl/frag.glsl.template

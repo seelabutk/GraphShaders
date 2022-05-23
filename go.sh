@@ -205,6 +205,14 @@ stitch() {
 	done
 }
 
+makefigs() {
+	local f
+	for f; do
+		makefig "$f" \
+		|| die "Failed to makefig $f"
+	done
+}
+
 makefig() {
 	id=${1:?need id}
 	url=${figurls["${id:?}"]:?}
@@ -334,6 +342,63 @@ makeanim() {
 		-pix_fmt yuv420p \
 		"${file:?}"
 
+	done
+}
+
+makepatentanim() {
+	files=()
+
+	for id in NBER-Patents-8; do
+	for url in "${figurls[$id]}"; do
+	for Z in 2; do
+	for I in {0..3}; do
+	for J in {0..30}; do
+
+	oldfrag=${url##*,frag,base64:}
+	oldfrag=${oldfrag%%,*}
+	newfrag=$(base64 -d <<<"${oldfrag:?}")
+	newfrag=${newfrag/\#define I 0/#define I ${I:?}}
+	newfrag=${newfrag/\#define J 0/#define J ${J:?}}
+	newfrag=$(base64 -w 0 <<<"${newfrag:?}" | tr -d $'\n')
+
+	newurl=${url/,frag,base64:${oldfrag:?},/,frag,base64:${newfrag:?},}
+
+	printf -v J $'%02d' "${J:?}"
+
+	file=${id:?},I=${I:?},J=${J:?},Z=${Z:?}.png
+	files+=( "${file:?}" )
+	if [ -e "${file:?}" ]; then
+		continue
+	fi
+
+	/usr/bin/time \
+		--format="${id:?},real%e,user%U,sys%S" \
+			python3.8 stitch.py \
+				--nthreads 1 \
+				--z-inc ${Z:?} \
+				--mode stitch \
+				-o "${file:?}" \
+				<<<"${newurl:?}" \
+			|| die "stitch.py failed"
+
+	done
+
+	file=${id:?},I=${I:?},Z=${Z:?}.mp4
+	if [ -e "${file:?}" ]; then
+		continue
+	fi
+
+	"${HOME:?}/opt/magick/go.sh" docker exec ffmpeg \
+		-framerate 10 \
+		-pattern_type glob \
+		-i "${id:?},I=${I:?},J=*,Z=${Z:?}.png" \
+		-c:v libx264 \
+		-pix_fmt yuv420p \
+		"${file:?}"
+
+	done
+	done
+	done
 	done
 }
 

@@ -9,15 +9,19 @@ from pathlib import Path
 
 
 def main(infile, outfile):
-    data = json.load(infile)
-
     writer = csv.writer(outfile)
     writer.writerow(['elapsed', 'status', 'dt'])
-    for row in data:
-        if row['status'] == 'active':
+
+    for line in infile:
+        if line == '':
             continue
 
-        writer.writerow([row['elapsed'], row['status'], row['dt']])
+        data = json.loads(line)
+        for row in data:
+            if row['status'] == 'active':
+                continue
+
+            writer.writerow([row['elapsed'], row['status'], row['dt']])
 
 
 def cli():

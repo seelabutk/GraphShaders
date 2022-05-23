@@ -9,16 +9,18 @@ new Application({
         // debugTileBoundaries: 1,
         // debugPartitionBoundaries: 1,
         doScissorTest: 1,
-        dataset: 'so-answers',
+        dataset: 'SO-Answers-nodetime',
         pDepth: 0,
         node: `\
-void node(in float x, in float y, in float id) {
+void node(in unit x, in unit y, in unit wmin, in unit wmax, out flat float fc) {
     fg_NodePosition = vec2(x, y);
-    fg_NodeDepth = fg_min(-id);
+    fg_NodeDepth = fg_min(-wmin);
+    fc = wmin;
 }`,
         edge: `\
-void edge(in float date) {
+void edge(in flat float fc, in unit when) {
     fg_FragColor = vec4(0.1);
+    fg_FragColor.r = fc;
 }`,
     },
 });

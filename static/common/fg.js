@@ -19,7 +19,7 @@ function makeVertexVariables(vert) {
     const variables = [];
 
     for (const parameter of match[1].split(',')) {
-        const match = parameter.match(/\s*in (?:float|int) ([a-zA-Z_]+)\s*/);
+        const match = parameter.match(/\s*in (?:unit|float|int) ([a-zA-Z_]+)\s*/);
         if (!match) continue;
 
         variables.push(match[1]);

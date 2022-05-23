@@ -23,7 +23,7 @@ uniform float uNodeMax1, uNodeMax2, uNodeMax3, uNodeMax4, uNodeMax5, uNodeMax6, 
 {% if not preprocessed %}
 {{ source|safe }}
 {% else %}
-{{ source|replace(" flat ", " ")|safe }}
+{{ source|replace(" flat ", " ")|replace(" unit ", " float ")|safe }}
 {% endif %}
 
 {% if preprocessed %}
@@ -52,8 +52,10 @@ void main() {
         {%- if not loop.first %}, {% endif %}
         {%- if param.type == 'int' %}
         int(aNode{{ loop.index }})
-        {%- else %}
+        {%- elif param.type == 'unit' %}
         (aNode{{ loop.index }} - uNodeMin{{ loop.index }}) / (uNodeMax{{ loop.index }} - uNodeMin{{ loop.index }})
+        {%- else %}
+        aNode{{ loop.index }}
         {%- endif %}
         {%- endfor -%}
         {% for param in params | selectattr("storage", "eq", "out") -%},

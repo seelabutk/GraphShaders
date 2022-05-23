@@ -9,19 +9,20 @@ new Application({
         // debugTileBoundaries: 1,
         // debugPartitionBoundaries: 1,
         doScissorTest: 1,
-        dataset: 'so-answers',
+        dataset: 'SO-Answers-nodetime',
         pDepth: 0,
         node: `\
-#define PI 3.1415926538
-void node(in float x, in float y, in float id) {
-    x = (1. + cos(2*PI*id)) / 2.;
-    y = (1. + sin(2*PI*id)) / 2.;
+void node(in unit x, in unit y, in unit wmin, in unit wmax, out flat float fc) {
     fg_NodePosition = vec2(x, y);
-    fg_NodeDepth = fg_min(-id);
+    fg_NodeDepth = fg_min(-wmin);
+    fc = wmin;
 }`,
         edge: `\
-void edge(in float date) {
+#define YEAR (31556952 / (uEdgeMax1 - uEdgeMin1))
+void edge(in flat float fc, in unit when) {
+    fg_Disregard = float(!(3 * YEAR <= when && when < 4 * YEAR));
     fg_FragColor = vec4(0.1);
+    fg_FragColor.r = fc;
 }`,
     },
 });

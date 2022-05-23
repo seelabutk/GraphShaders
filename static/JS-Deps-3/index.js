@@ -13,7 +13,7 @@ new Application({
         dataset: 'knit-graph',
         pDepth: 10,
         node: `\
-void node(in float x, in float y, in float date, in int maintainers, in int vulnerable, out float v, out float m) {
+void node(in unit x, in unit y, in unit date, in int maintainers, in unit vulnerable, out float v, out float m) {
     fg_NodePosition = vec2(x, y);
     fg_NodeDepth = fg_min(-vulnerable);
     v = vulnerable;

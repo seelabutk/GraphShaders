@@ -12,7 +12,7 @@ new Application({
         dataset: 'knit-graph',
         pDepth: 10,
         node: `\
-void node(in float x, in float y, in float date, in float maintainers, in float cve) {
+void node(in unit x, in unit y, in unit date, in unit maintainers, in unit cve) {
     fg_NodePosition = vec2(x, y);
     fg_NodeDepth = fg_min(x);
 }`,

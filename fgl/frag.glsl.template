@@ -22,20 +22,24 @@ layout(std430, binding = 1) readonly buffer PrimitiveLookasideBuffer {
 
 {% endif %}
 
-{% if not preprocessed %}
-{{ source|safe }}
-{% else %}
-{{ source|replace(" flat ", " ")|safe }}
-{% endif %}
-
 {% if preprocessed %}
 uniform float uNodeMin1, uNodeMin2, uNodeMin3, uNodeMin4, uNodeMin5, uNodeMin6, uNodeMin7, uNodeMin8;
 uniform float uNodeMax1, uNodeMax2, uNodeMax3, uNodeMax4, uNodeMax5, uNodeMax6, uNodeMax7, uNodeMax8;
+uniform float uEdgeMin1, uEdgeMin2, uEdgeMin3, uEdgeMin4, uEdgeMin5, uEdgeMin6, uEdgeMin7, uEdgeMin8;
+uniform float uEdgeMax1, uEdgeMax2, uEdgeMax3, uEdgeMax4, uEdgeMax5, uEdgeMax6, uEdgeMax7, uEdgeMax8;
+{% endif %}
 
+{% if not preprocessed %}
+{{ source|safe }}
+{% else %}
+{{ source|replace(" flat ", " ")|replace(" unit ", " float ")|safe }}
+{% endif %}
+
+{% if preprocessed %}
 uniform float uTranslateX, uTranslateY, uScale;
 
 {% for param in params_from_node | selectattr("storage", "eq", "in") -%}
-{{ param.storage }} {% if param.qualifier %}{{ param.qualifier }} {% endif %}{{ param.type }} {{ param.name }};
+{{ param.storage }} {% if param.qualifier %}{{ param.qualifier }} {% endif %}{{ param.type | replace("unit", "float") }} {{ param.name }};
 {% endfor %}
 
 {% for param in params_from_edge | selectattr("storage", "eq", "out") -%}
@@ -48,13 +52,19 @@ void main() {
     edge(
         {%- for param in params_from_node | selectattr("storage", "eq", "in") -%}
         {%- if not loop.first %}, {% endif %}
-        {{ param.name }} /* {{ param }} */ 
+        {{ param.name }}
         {%- endfor -%}
         {%- for param in params_from_edge | selectattr("storage", "eq", "in") -%},
-        fg_EdgeData[{{ loop.index0 }}] /* {{ param }} */ 
+        {%- if param.type == "float" -%}
+        fg_EdgeData[{{ loop.index0 }}]
+        {%- elif param.type == "unit" -%}
+        (fg_EdgeData[{{ loop.index0 }}] - uEdgeMin{{ loop.index }}) / (uEdgeMax{{ loop.index }} - uEdgeMin{{ loop.index }})
+        {%- elif param.type == "int" -%}
+        int(fg_EdgeData[{{ loop.index0 }}])
+        {%- endif %}
         {%- endfor -%}
         {% for param in params_from_edge | selectattr("storage", "eq", "out") -%},
-        {{ param.name -}} /* {{ param }} */ 
+        {{ param.name -}}
         {% endfor %}
     );
 

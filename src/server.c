@@ -189,6 +189,7 @@ void *render(void *v) {
   unsigned long i, j;
   GLuint64 ncount, ecount;
   GLint rc, uTranslateX, uTranslateY, uScale, uNodeMins[16], uNodeMaxs[16],
+      uEdgeMins[16], uEdgeMaxs[16],
       aNodeLocations[16], uCat6[6];
   GLchar log[512];
   struct attrib nattribs[16], eattribs[16], *edges;
@@ -963,6 +964,18 @@ done_partitioning: ; // XXX(th): sorry
           uNodeMaxs[i] = glGetUniformLocation(program, temp);
         }
 
+        for (i = 0; i < ecount; ++i) {
+          char temp[32];
+          snprintf(temp, sizeof(temp), "uEdgeMin%lu", (unsigned long)(i + 1));
+          uEdgeMins[i] = glGetUniformLocation(program, temp);
+        }
+        
+        for (i = 0; i < ecount; ++i) {
+          char temp[32];
+          snprintf(temp, sizeof(temp), "uEdgeMax%lu", (unsigned long)(i + 1));
+          uEdgeMaxs[i] = glGetUniformLocation(program, temp);
+        }
+
         for (i = 0; i < 6; ++i) {
           char temp[32];
           snprintf(temp, sizeof(temp), "uCat6[%lu]", (unsigned long)i);
@@ -1026,8 +1039,8 @@ done_partitioning: ; // XXX(th): sorry
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LEQUAL);
+        glDisable(GL_DEPTH_TEST);
+        // glDepthFunc(GL_LEQUAL);
 
         glEnable(GL_SCISSOR_TEST);
 
@@ -1048,6 +1061,11 @@ done_partitioning: ; // XXX(th): sorry
           for (i = 0; i < ncount; ++i) {
             glUniform1f(uNodeMins[i], nattribs[i].frange[0]);
             glUniform1f(uNodeMaxs[i], nattribs[i].frange[1]);
+          }
+
+          for (i = 0; i + 1 < ecount; ++i) {
+            glUniform1f(uEdgeMins[i], eattribs[i+1].frange[0]);
+            glUniform1f(uEdgeMaxs[i], eattribs[i+1].frange[1]);
           }
 
           // figure out which partition we're rendering in

@@ -9,23 +9,20 @@ new Application({
         // debugTileBoundaries: 1,
         // debugPartitionBoundaries: 1,
         doScissorTest: 1,
-        dataset: 'so-answers',
+        dataset: 'SO-Answers-nodetime',
         pDepth: 0,
         node: `\
-#define PI 3.1415926538
-void node(in float x, in float y, in float id, out flat float i) {
-    x = (1. + cos(2*PI*id)) / 2.;
-    y = (1. + sin(2*PI*id)) / 2.;
+void node(in unit x, in unit y, in unit wmin, in unit wmax, out flat float fc) {
+    x = wmin;
+    y = 1 - wmax;
     fg_NodePosition = vec2(x, y);
-    fg_NodeDepth = fg_min(-id);
-    i = id;
+    fg_NodeDepth = fg_min(-(wmax - wmin));
+    fc = wmin;
 }`,
         edge: `\
-void edge(in flat float i, in float date) {
-    fg_Disregard = float(!(0.33 < i && i < 0.34));
+void edge(in flat float fc, in unit when) {
     fg_FragColor = vec4(0.1);
-    fg_FragColor.r = date - i > 0. ? date - i : 0.;
-    fg_FragColor.b = i - date > 0. ? i - date : 0.;
+    fg_FragColor.r = when - fc;
 }`,
     },
 });

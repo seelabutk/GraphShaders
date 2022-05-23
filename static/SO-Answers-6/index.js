@@ -13,8 +13,8 @@ new Application({
         pDepth: 0,
         node: `\
 void node(in unit x, in unit y, in unit wmin, in unit wmax, out flat float fc) {
-    x = (1. + cos(6.28318*wmin)) / 2.;
-    y = (1. + sin(6.28318*wmin)) / 2.;
+    x = 1 - wmin;
+    y = wmax;
     fg_NodePosition = vec2(x, y);
     fg_NodeDepth = fg_min(-wmin);
     fc = wmin;
