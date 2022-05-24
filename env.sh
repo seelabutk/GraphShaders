@@ -1,4 +1,8 @@
-port=8223
+if [ "${USER:-}" = "thobson2" ]; then
+    port=8223
+else
+    port=9334
+fi
 replicas=1
 PATH=${PATH:+${PATH:?}:}/home/pprovins/opt/python-3.8.1/bin
 cache=/mnt/seenas2/data$PWD/cache

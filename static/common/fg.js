@@ -414,7 +414,12 @@ export class Application {
             fadeAnimation: false,
             center,
             zoom,
+            zoomControl: false,
         });
+
+        L.control.zoom({
+            position: 'bottomright',
+        }).addTo(map);
 
         const jar = new CodeJar(document.getElementById(editorid), Prism.highlightElement);
 
