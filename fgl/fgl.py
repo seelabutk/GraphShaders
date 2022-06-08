@@ -293,7 +293,7 @@ def main():
         p(f'{node_def = }')
 
         node_params = []
-        for match in re.finditer(r'(?P<storage>in|out)\s+(?:(?P<qualifier>flat)\s+)?(?P<type>unit|float|vec4|vec2|vec3|int)\s+(?P<name>\w+)', node_def):
+        for match in re.finditer(r'(?P<storage>in|out|inout)\s+(?:(?P<qualifier>flat)\s+)?(?P<type>unit|float|vec4|vec2|vec3|int|bool)\s+(?P<name>\w+)', node_def):
             node_params.append(Parameter(
                 storage=match.group('storage'),
                 qualifier=match.group('qualifier'),
@@ -332,7 +332,7 @@ def main():
         p(f'{edge_def = }')
 
         edge_params = []
-        for match in re.finditer(r'(?P<storage>in|out)\s+(?:(?P<qualifier>flat)\s+)?(?P<type>unit|float|vec4|vec2|vec3|int)\s+(?P<name>\w+)', edge_def):
+        for match in re.finditer(r'(?P<storage>in|out|inout)\s+(?:(?P<qualifier>flat)\s+)?(?P<type>unit|float|vec4|vec2|vec3|int|bool)\s+(?P<name>\w+)', edge_def):
             edge_params.append(Parameter(
                 storage=match.group('storage'),
                 qualifier=match.group('qualifier'),

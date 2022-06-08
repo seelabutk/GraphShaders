@@ -1,5 +1,6 @@
 {% if not preprocessed %}
-#define edge(...) edge(in vec2 fg_FragCoord, in float fg_FragDepth, in vec4 fg_EdgeData, ## __VA_ARGS__, out vec4 fg_FragColor, out float fg_Disregard)
+#define edge(...) edge(in vec2 fg_FragCoord, in float fg_FragDepth, in vec4 fg_EdgeData, ## __VA_ARGS__, out vec4 fg_FragColor, inout bool fg_Discard)
+#define discard fg_Discard = true
 {% else %}
 #version 460 core
 precision mediump float;
@@ -38,23 +39,23 @@ uniform float uEdgeMax1, uEdgeMax2, uEdgeMax3, uEdgeMax4, uEdgeMax5, uEdgeMax6, 
 {% if preprocessed %}
 uniform float uTranslateX, uTranslateY, uScale;
 
-{% for param in params_from_node | selectattr("storage", "eq", "in") -%}
+{% for param in params_from_node | selectattr("storage", "in", ("in",)) -%}
 {{ param.storage }} {% if param.qualifier %}{{ param.qualifier }} {% endif %}{{ param.type | replace("unit", "float") }} {{ param.name }};
 {% endfor %}
 
-{% for param in params_from_edge | selectattr("storage", "eq", "out") -%}
+{% for param in params_from_edge | selectattr("storage", "in", ("out",)) -%}
 {{ param.storage }} {{ param.type }} {{ param.name }};
 {% endfor %}
 
 void main() {
     vec4 fg_EdgeData = global_edge_data[global_indices[gl_PrimitiveID] + 1].color;
-    float fg_Disregard = 0.0;
+    bool fg_Discard = false;
     edge(
-        {%- for param in params_from_node | selectattr("storage", "eq", "in") -%}
+        {%- for param in params_from_node | selectattr("storage", "in", ("in",)) -%}
         {%- if not loop.first %}, {% endif %}
         {{ param.name }}
         {%- endfor -%}
-        {%- for param in params_from_edge | selectattr("storage", "eq", "in") -%},
+        {%- for param in params_from_edge | selectattr("storage", "in", ("in",)) -%},
         {%- if param.type == "float" -%}
         fg_EdgeData[{{ loop.index0 }}]
         {%- elif param.type == "unit" -%}
@@ -63,13 +64,23 @@ void main() {
         int(fg_EdgeData[{{ loop.index0 }}])
         {%- endif %}
         {%- endfor -%}
-        {% for param in params_from_edge | selectattr("storage", "eq", "out") -%},
+        {% for param in params_from_edge | selectattr("storage", "in", ["inout", "out"]) -%},
         {{ param.name -}}
         {% endfor %}
     );
 
-    if (fg_Disregard >= 1.0) {
+    if (fg_Discard) {
         discard;
     }
 }
+
+{% for param in params_from_node -%}
+/** [{{ loop.index0 }}] = {{ param }} */
+{# -#}
+{% endfor %}
+/** params_from_edge */
+{% for param in params_from_edge -%}
+{# -#}
+/** [{{ loop.index0 }}] = {{ param }} */
+{%- endfor %}
 {% endif %}
