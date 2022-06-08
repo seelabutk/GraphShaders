@@ -18,7 +18,7 @@ void node(in unit x, in unit y, in unit appdate, in unit gotdate, in int nclass,
 }`,
         edge: `\
 void edge(in int sc, in int tc) {
-    fg_FragColor = vec4(0.1);
+    fg_EdgeColor = vec4(0.1);
 }`,
     },
 });

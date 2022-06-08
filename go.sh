@@ -223,7 +223,7 @@ makefig() {
 				--nthreads 1 \
 				--z-inc 1 \
 				--mode stitch \
-				-o "${id:?}.png" \
+				-o "tmp/${id:?}.png" \
 				<<<"${url:?}" \
 			|| die "stitch.py failed"
 }

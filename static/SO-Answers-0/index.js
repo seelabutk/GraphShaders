@@ -18,7 +18,7 @@ void node(in unit x, in unit y, in unit wmin, in unit wmax) {
 }`,
         edge: `\
 void edge(in unit when, in unit swdiff, in unit twdiff) {
-    fg_FragColor = vec4(0.1);
+    fg_EdgeColor = vec4(0.1);
 }`,
     },
 });

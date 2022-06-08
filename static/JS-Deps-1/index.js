@@ -3,7 +3,7 @@ import { Application } from './fg.js';
 new Application({
     mapid: 'map',
     center: [-128, 128],
-    zoom: 6,
+    zoom: 1,
     editorid: 'editor',
     options: {
         // debugTileBoundaries: 1,
@@ -13,6 +13,8 @@ new Application({
         pDepth: 0,
         node: `\
 void node(in unit X, in unit Y, in unit ReleaseDate, in unit DevCount, in int Vulnerable, out flat float rd, out flat float dc, out flat int v) {
+    X = ReleaseDate;
+    Y = 1. - DevCount;
     fg_NodePosition = vec2(X, Y);
     fg_NodeDepth = fg_min(-ReleaseDate);
     rd = ReleaseDate;
@@ -21,7 +23,9 @@ void node(in unit X, in unit Y, in unit ReleaseDate, in unit DevCount, in int Vu
 }`,
         edge: `\
 void edge(in flat float rd, in flat float dc, in flat int v) {
+    if (!(gl_PrimitiveID % 1000 <= 50)) discard;
     fg_EdgeColor = vec4(0.1);
+    fg_EdgeColor.r = float(bool(v));
 }`,
     },
 });

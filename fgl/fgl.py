@@ -346,6 +346,7 @@ def main():
             'fg_FragCoord',
             'fg_FragDepth',
             'fg_EdgeData',
+            'fg_EdgeID',
         ]
 
         params_from_node = []
