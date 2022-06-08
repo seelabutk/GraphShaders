@@ -1,7 +1,7 @@
 if [ "${USER:-}" = "thobson2" ]; then
-    port=8223
-else
     port=9334
+else
+    port=8223
 fi
 replicas=1
 PATH=${PATH:+${PATH:?}:}/home/pprovins/opt/python-3.8.1/bin

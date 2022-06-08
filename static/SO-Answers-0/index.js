@@ -9,7 +9,7 @@ new Application({
         // debugTileBoundaries: 1,
         // debugPartitionBoundaries: 1,
         doScissorTest: 1,
-        dataset: 'SO-Answers-nodetime',
+        dataset: 'SO-Answers-edgetime',
         pDepth: 0,
         node: `\
 void node(in unit x, in unit y, in unit wmin, in unit wmax) {
@@ -17,7 +17,7 @@ void node(in unit x, in unit y, in unit wmin, in unit wmax) {
     fg_NodeDepth = fg_min(x);
 }`,
         edge: `\
-void edge(in unit when) {
+void edge(in unit when, in unit swdiff, in unit twdiff) {
     fg_FragColor = vec4(0.1);
 }`,
     },
