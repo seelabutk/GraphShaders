@@ -125,7 +125,6 @@ create-fg() {
 	create env \
 		FG_SERVICE=1 \
 		FG_PORT=$port \
-		FG_LOGFILE=fg.log \
 		/app/build/server \
 		"$@"
 }
@@ -230,15 +229,23 @@ makefig() {
 
 stress() {
     #url='http://accona.eecs.utk.edu:8365/tile/knit-graph/5/15/15/,vert,base64:CgkJdm9pZCBub2RlKGluIGZsb2F0IHgsIGluIGZsb2F0IHksIGluIGZsb2F0IGRhdGUsIGluIGZsb2F0IF9udW1NYWludCwgaW4gZmxvYXQgY3ZlLCBvdXQgZmxvYXQgdnVsbmVyYWJsZSkgewoJCQl2dWxuZXJhYmxlID0gY3ZlOwoJCQlmZ19Ob2RlUG9zaXRpb24gPSB2ZWMyKHgsIHkpOwogICAgICAgICAgICBmZ19Ob2RlRGVwdGggPSBmZ19tZWFuKHgpOwoJCX0KCQ==,frag,base64:CgkJdm9pZCBlZGdlKGluIGZsb2F0IHZ1bG5lcmFibGUpIHsKCQkJdmVjNCByZWQgPSB2ZWM0KDAuOCwgMC4xLCAwLjEsIDEuMCk7CgkJCXZlYzQgZ3JlZW4gPSB2ZWM0KDAuMCwgMS4wLCAwLjAsIDEuMCk7CgkJCXZlYzQgY29sb3IgPSBtaXgocmVkLCBncmVlbiwgdnVsbmVyYWJsZSk7CgkJCWZnX0ZyYWdDb2xvciA9ICgxLjAgLSBmZ19GcmFnRGVwdGgpICogY29sb3I7CgkJfQoJ,pDepth,10,dcIdent,590,dcIndex,base64:AQAAAAAAAAA=,dcMult,base64:AACAPw==,dcOffset,base64:AAAAAA==,dcMinMult,0.5,dcMaxMult,0.5'
-	url='http://kavir.eecs.utk.edu:8365/tile/cit-Patents/3/3/3/,vert,base64:CgkJdm9pZCBub2RlKGluIGZsb2F0IHgsIGluIGZsb2F0IHksIGluIGZsb2F0IGFwcGRhdGUsIGluIGZsb2F0IGdvdGRhdGUsIGluIGZsb2F0IG5jbGFzcywgaW4gZmxvYXQgY2NsYXNzLCBvdXQgdmVjMyBjb2xvcikgewoJCQkJCWZnX05vZGVQb3NpdGlvbiA9IHZlYzIoeCwgeSk7CgkJCQkJZmdfTm9kZURlcHRoID0gZmdfbWluKGFwcGRhdGUpOwoJCQkJCWNvbG9yID0gdUNhdDZbaW50KDUuMCpjY2xhc3MpXTsKCQkJfQoJ,frag,base64:CgkJdm9pZCBlZGdlKGluIHZlYzMgY29sb3IpIHsKCQkJZmdfRnJhZ0NvbG9yID0gdmVjNChmZ19GcmFnRGVwdGggKiBjb2xvciwgMS4wKTsKCQl9Cgk=,pDepth,10,dcIdent,1,dcIndex,base64:AwAAAAAAAAA=,dcMult,base64:AACAPw==,dcOffset,base64:AAAAAA==,dcMinMult,1,dcMaxMult,0'
+	#url='http://kavir.eecs.utk.edu:8365/tile/cit-Patents/3/3/3/,vert,base64:CgkJdm9pZCBub2RlKGluIGZsb2F0IHgsIGluIGZsb2F0IHksIGluIGZsb2F0IGFwcGRhdGUsIGluIGZsb2F0IGdvdGRhdGUsIGluIGZsb2F0IG5jbGFzcywgaW4gZmxvYXQgY2NsYXNzLCBvdXQgdmVjMyBjb2xvcikgewoJCQkJCWZnX05vZGVQb3NpdGlvbiA9IHZlYzIoeCwgeSk7CgkJCQkJZmdfTm9kZURlcHRoID0gZmdfbWluKGFwcGRhdGUpOwoJCQkJCWNvbG9yID0gdUNhdDZbaW50KDUuMCpjY2xhc3MpXTsKCQkJfQoJ,frag,base64:CgkJdm9pZCBlZGdlKGluIHZlYzMgY29sb3IpIHsKCQkJZmdfRnJhZ0NvbG9yID0gdmVjNChmZ19GcmFnRGVwdGggKiBjb2xvciwgMS4wKTsKCQl9Cgk=,pDepth,10,dcIdent,1,dcIndex,base64:AwAAAAAAAAA=,dcMult,base64:AACAPw==,dcOffset,base64:AAAAAA==,dcMinMult,1,dcMaxMult,0'
+	url='http://kavir.eecs.utk.edu:9334/tile/SO-Answers-edgetime/1/0/0/,vert,base64:dm9pZCBub2RlKGluIHVuaXQgWCwgaW4gdW5pdCBZLCBpbiB1bml0IEZpcnN0Q29udHJpYnV0aW9uLCBpbiB1bml0IExhc3RDb250cmlidXRpb24sIGluIHVuaXQgSW5EZWdyZWUsIGluIHVuaXQgT3V0RGVncmVlLCBvdXQgZmxhdCBmbG9hdCBmYywgb3V0IGZsYXQgZmxvYXQgbGMsIG91dCBmbGF0IGZsb2F0IGlkLCBvdXQgZmxhdCBmbG9hdCBvZCkgewogICAgZmdfTm9kZVBvc2l0aW9uID0gdmVjMihYLCBZKTsKICAgIGZnX05vZGVEZXB0aCA9IGZnX21pbigtRmlyc3RDb250cmlidXRpb24pOwogICAgZmMgPSBGaXJzdENvbnRyaWJ1dGlvbjsKICAgIGxjID0gTGFzdENvbnRyaWJ1dGlvbjsKICAgIGlkID0gSW5EZWdyZWU7CiAgICBvZCA9IE91dERlZ3JlZTsKfQ==,frag,base64:CmNvbnN0IHZlYzMgUGFpcmVkNENsYXNzW10gPSB2ZWMzW10oCiAgICB2ZWMzKDE2Ni4sIDIwNi4sIDIyNy4pIC8gMjU1LiwKICAgIHZlYzMoIDMxLiwgMTIwLiwgMTgwLikgLyAyNTUuLAogICAgdmVjMygxNzguLCAyMjMuLCAxMzguKSAvIDI1NS4sCiAgICB2ZWMzKCA1MS4sIDE2MC4sICA0NC4pIC8gMjU1Lik7Cgp2b2lkIGVkZ2UoaW4gZmxhdCBmbG9hdCBmYywgaW4gZmxhdCBmbG9hdCBsYywgaW4gZmxhdCBmbG9hdCBpZCwgaW4gZmxhdCBmbG9hdCBvZCwgaW4gdW5pdCBDdXJyZW50Q29udHJpYnV0aW9uLCBpbiB1bml0IFNlbmRlckxvbmdldml0eSwgaW4gdW5pdCBSZWNlaXZlckxvbmdldml0eSkgewogICAgZmdfRWRnZUNvbG9yID0gdmVjNCgxLi8xNi4pOwogICAgaW50IGluZGV4ID0gMDsKICAgIGluZGV4ICs9IDIgKiBpbnQoaWQgPiBvZCk7IC8vIGJsdWUgKGZhbHNlKSB2cyBncmVlbiAodHJ1ZSkKICAgIGluZGV4ICs9IDEgKiBpbnQoU2VuZGVyTG9uZ2V2aXR5ID49IFJlY2VpdmVyTG9uZ2V2aXR5KTsgLy8gbGlnaHQgKGZhbHNlKSB2cyBkYXJrICh0cnVlKQogICAgZmdfRWRnZUNvbG9yLnJnYiA9IFBhaXJlZDRDbGFzc1tpbmRleF07Cn0=,pDepth,0,dcIdent,6380910371648010,dcIndex,base64:AwAAAAAAAAA=,dcMult,base64:AACAvw==,dcOffset,base64:AAAAgA==,dcMinMult,base64:MQ==,dcMaxMult,base64:MA==,doScissorTest,1'
+	app=SO-Answers
 
 	printf $'name,replicas,z_inc,nthreads,pDepth,mode,real,user,sys\n' >> stress.csv
 
-    for pDepth in 4 0 10; do
-    for replicas in 1 2 3 4 5 6 7 8; do
-    for z_inc in 0 1 2 3 4; do
-    for nthreads in 6 12; do
-	for id in "replicas${replicas:?},z_inc${z_inc:?},nthreads${nthreads}"; do
+    for pDepth in 10; do
+    for replicas in 7; do
+    for z_inc in 4; do
+    for nthreads in 6; do
+	for id in "c,replicas${replicas:?},z_inc${z_inc:?},nthreads${nthreads}"; do
+
+	sleep 1 || break
+
+	if [ -d "_stress/${id:?}" ]; then
+		continue
+	fi
     
 	destroy
     build
@@ -252,7 +259,8 @@ stress() {
 		
 		The client is configured to...
 		- use a set of ${nthreads:?} simultaneous rendering requests
-		- request an image made up of 2^(${z_inc:?}+1) = $(( 2 ** (z_inc + 1) )) tiles of size 256x256 (total size = $(( 2 ** (z_inc + 1) * 256) )) pixels square)
+		- request an image made up of 2^(${z_inc:?}+1) = $(( 2 ** (z_inc + 1) )) tiles of size 256x256 (total size = $(( 2 ** (z_inc + 1) * 256 )) pixels square)
+		- base url: ${url:?}
 
 		The server is configured to...
 		- use a swarm of ${replicas:?} FG server instances
@@ -262,7 +270,12 @@ stress() {
 
     replicas=$replicas create-fg
 
-    for mode in prime test1 test2 test3; do
+    for mode in prime3 test{31..60}; do
+	case "${mode:?}" in
+	(prime*) timeout=20m;;
+	(test*) timeout=1m;;
+	(*) timeout=10m; printf $'Unknown mode: %q\n' "${mode:?}" >&2;;
+	esac
 
     sleep 0.5 || break
 
@@ -270,7 +283,7 @@ stress() {
 
     /usr/bin/time \
     --format='%e,%U,%S' \
-        timeout 10m \
+        timeout "${timeout:?}" \
             python3.8 stitch.py \
             --nthreads ${nthreads:?} \
             --z-inc ${z_inc:?} \
@@ -290,6 +303,90 @@ stress() {
     done
     done
     done
+}
+
+randstress() {
+	url='http://kavir.eecs.utk.edu:9334/tile/SO-Answers-edgetime/1/0/0/,vert,base64:dm9pZCBub2RlKGluIHVuaXQgWCwgaW4gdW5pdCBZLCBpbiB1bml0IEZpcnN0Q29udHJpYnV0aW9uLCBpbiB1bml0IExhc3RDb250cmlidXRpb24sIGluIHVuaXQgSW5EZWdyZWUsIGluIHVuaXQgT3V0RGVncmVlLCBvdXQgZmxhdCBmbG9hdCBmYywgb3V0IGZsYXQgZmxvYXQgbGMsIG91dCBmbGF0IGZsb2F0IGlkLCBvdXQgZmxhdCBmbG9hdCBvZCkgewogICAgZmdfTm9kZVBvc2l0aW9uID0gdmVjMihYLCBZKTsKICAgIGZnX05vZGVEZXB0aCA9IGZnX21pbigtRmlyc3RDb250cmlidXRpb24pOwogICAgZmMgPSBGaXJzdENvbnRyaWJ1dGlvbjsKICAgIGxjID0gTGFzdENvbnRyaWJ1dGlvbjsKICAgIGlkID0gSW5EZWdyZWU7CiAgICBvZCA9IE91dERlZ3JlZTsKfQ==,frag,base64:CmNvbnN0IHZlYzMgUGFpcmVkNENsYXNzW10gPSB2ZWMzW10oCiAgICB2ZWMzKDE2Ni4sIDIwNi4sIDIyNy4pIC8gMjU1LiwKICAgIHZlYzMoIDMxLiwgMTIwLiwgMTgwLikgLyAyNTUuLAogICAgdmVjMygxNzguLCAyMjMuLCAxMzguKSAvIDI1NS4sCiAgICB2ZWMzKCA1MS4sIDE2MC4sICA0NC4pIC8gMjU1Lik7Cgp2b2lkIGVkZ2UoaW4gZmxhdCBmbG9hdCBmYywgaW4gZmxhdCBmbG9hdCBsYywgaW4gZmxhdCBmbG9hdCBpZCwgaW4gZmxhdCBmbG9hdCBvZCwgaW4gdW5pdCBDdXJyZW50Q29udHJpYnV0aW9uLCBpbiB1bml0IFNlbmRlckxvbmdldml0eSwgaW4gdW5pdCBSZWNlaXZlckxvbmdldml0eSkgewogICAgZmdfRWRnZUNvbG9yID0gdmVjNCgxLi8xNi4pOwogICAgaW50IGluZGV4ID0gMDsKICAgIGluZGV4ICs9IDIgKiBpbnQoaWQgPiBvZCk7IC8vIGJsdWUgKGZhbHNlKSB2cyBncmVlbiAodHJ1ZSkKICAgIGluZGV4ICs9IDEgKiBpbnQoU2VuZGVyTG9uZ2V2aXR5ID49IFJlY2VpdmVyTG9uZ2V2aXR5KTsgLy8gbGlnaHQgKGZhbHNlKSB2cyBkYXJrICh0cnVlKQogICAgZmdfRWRnZUNvbG9yLnJnYiA9IFBhaXJlZDRDbGFzc1tpbmRleF07Cn0=,pDepth,0,dcIdent,6380910371648010,dcIndex,base64:AwAAAAAAAAA=,dcMult,base64:AACAvw==,dcOffset,base64:AAAAgA==,dcMinMult,base64:MQ==,dcMaxMult,base64:MA==,doScissorTest,1'
+	app='SO-Answers'
+
+	printf $'name,replicas,nthreads,pDepth,count,mode,real,user,sys\n' >> randstress.csv
+
+    for pDepth in 10; do
+    for replicas in {1..8}; do
+    for nthreads in 6 120; do
+	for id in "e;replicas${replicas:?};nthreads${nthreads}"; do
+
+	if [ -d "_stress/${id:?}" ]; then
+		continue
+	fi
+    
+	destroy
+    build
+
+    mv logs logs.bak
+    mkdir -p "_stress/${id:?}"
+    ln -sf "_stress/${id:?}" logs
+	cat <<-EOF >"_stress/${id:?}/README"
+		The logs in this directory aim to determine how FG's performance is
+		under the following conditions.
+		
+		The client is configured to...
+		- use a set of ${nthreads:?} simultaneous rendering requests
+		- randomly generate requests at different zoom levels
+		- base url: ${url:?}
+
+		The server is configured to...
+		- use a swarm of ${replicas:?} FG server instances
+		- use the ${app:?} dataset
+		- partition the data into 2^${pDepth} = $(( 2 ** pDepth )) tiles
+	EOF
+
+    replicas=${replicas:?} create-fg
+
+	for mode in prime1 test{1..30}; do
+	
+	case "${mode:?}" in
+	(prime*) count=16;;
+	(test*) count=1024;;
+	esac
+	
+	case "${mode:?}" in
+	(prime*) timeout=20m;;
+	(test*) timeout=120s;;
+	esac
+
+    sleep 0.5 || break
+
+    printf $'%s,%s,%s,%s,%s,%s,' "${id:?}" "${replicas:?}" "${nthreads:?}" "${pDepth:?}" "${count:?}" "${mode:?}" >> randstress.csv
+
+    /usr/bin/time \
+    --format='%e,%U,%S' \
+        timeout "${timeout:?}" \
+            python3.8 randstitch.py \
+            --nthreads ${nthreads:?} \
+			--count "${count:?}" \
+			--output "_stress/${id:?}/randstitch.vega.json" \
+            <<<"${url:?},pDepth,${pDepth:?}" \
+    2>>randstress.csv
+
+    done
+
+    destroy
+    rm logs
+    mv logs.bak logs
+
+    done
+    done
+    done
+    done
+}
+
+randstitch() {
+
+	python3.8 randstitch.py \
+		--count 16 \
+		--nthreads 6 \
+		<<<"${url:?}"
 }
 
 makeanim() {

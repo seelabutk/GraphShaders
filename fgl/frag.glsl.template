@@ -1,6 +1,7 @@
 {% if not preprocessed %}
 #define edge(...) edge(in vec2 fg_FragCoord, in float fg_FragDepth, in vec4 fg_EdgeData, ## __VA_ARGS__, out vec4 fg_EdgeColor, inout bool fg_Discard)
 #define discard fg_Discard = true
+uniform vec3 uCat6[6];
 {% else %}
 #version 460 core
 #define fg_EdgeID (global_indices[gl_PrimitiveID] + 1)

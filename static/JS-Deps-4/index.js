@@ -12,7 +12,7 @@ new Application({
         dataset: 'JS-Deps-filtered',
         pDepth: 0,
         node: `\
-void node(in unit X, in unit Y, in unit ReleaseDate, in unit DevCount, in int Vulnerable, out flat float rd, out flat float dc, out flat int v) {
+void node(in unit X, in unit Y, in unit ReleaseDate, in int DevCount, in int Vulnerable, out flat float rd, out flat int dc, out flat int v) {
     fg_NodePosition = vec2(X, Y);
     fg_NodeDepth = fg_min(-ReleaseDate);
     rd = ReleaseDate;
@@ -20,8 +20,14 @@ void node(in unit X, in unit Y, in unit ReleaseDate, in unit DevCount, in int Vu
     v = Vulnerable;
 }`,
         edge: `\
-void edge(in flat float rd, in flat float dc, in flat int v) {
-    fg_EdgeColor = vec4(0.1);
+#define LO 0.50
+#define HI ((LO)+0.25)
+void edge(in flat float rd, in flat int dc, in flat int v) {
+    //if (!(gl_PrimitiveID % 1000 <= 500)) discard;
+    if (!(LO <= rd && rd <= HI)) discard;
+    fg_EdgeColor = vec4(1./16.);
+    fg_EdgeColor.r = float(dc > 3);
+    fg_EdgeColor.g = float(v > 0);
 }`,
     },
 });

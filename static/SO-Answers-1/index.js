@@ -13,6 +13,8 @@ new Application({
         pDepth: 0,
         node: `\
 void node(in unit X, in unit Y, in unit FirstContribution, in unit LastContribution, in unit InDegree, in unit OutDegree, out flat float fc, out flat float lc, out flat float id, out flat float od) {
+    X = FirstContribution;
+    Y = 1. - LastContribution;
     fg_NodePosition = vec2(X, Y);
     fg_NodeDepth = fg_min(-FirstContribution);
     fc = FirstContribution;
@@ -28,12 +30,8 @@ const vec3 Paired4Class[] = vec3[](
     vec3(178., 223., 138.) / 255.,
     vec3( 51., 160.,  44.) / 255.);
 
-#define I 0
-#define J 100
-
 void edge(in flat float fc, in flat float lc, in flat float id, in flat float od, in unit CurrentContribution, in unit SenderLongevity, in unit ReceiverLongevity) {
-    if ((fg_EdgeID + I) % 1000 >= J) discard;
-    //if (!(0.00 <= fc && fc <= 0.10)) discard;
+    if (!(0.00 <= fc && fc <= 0.25)) discard;
     fg_EdgeColor = vec4(1./16.);
     int index = 0;
     index += 2 * int(id > od); // blue (false) vs green (true)
