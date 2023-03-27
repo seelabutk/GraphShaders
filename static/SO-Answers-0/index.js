@@ -28,17 +28,24 @@ const vec3 Paired4Class[] = vec3[](
     vec3(178., 223., 138.) / 255.,
     vec3( 51., 160.,  44.) / 255.);
 
-#define I 0
-#define J 100
+const vec3 RGB[] = vec3[](
+    vec3(0.0, 0.0, 0.0),
+    vec3(1.0, 0.0, 0.0),
+    vec3(1.0, 1.0, 0.0));
+
+#define I 0.00
+#define J 0.01
+#define K 0
+#define L 1000
 
 void edge(in flat float fc, in flat float lc, in flat float id, in flat float od, in unit CurrentContribution, in unit SenderLongevity, in unit ReceiverLongevity) {
-    if ((fg_EdgeID + I) % 1000 >= J) discard;
-    //if (!(0.00 <= fc && fc <= 0.10)) discard;
+    if ((fg_EdgeID + K) % 1000 >= L) discard;
+    if (!(I <= fc && fc <= I+J)) discard;
     fg_EdgeColor = vec4(1./16.);
     int index = 0;
-    index += 2 * int(id > od); // blue (false) vs green (true)
-    index += 1 * int(SenderLongevity >= ReceiverLongevity); // light (false) vs dark (true)
-    fg_EdgeColor.rgb = Paired4Class[index];
+    index += int(od > id / 32.); // blue (false) vs green (true)
+    index += int(SenderLongevity >= ReceiverLongevity); // light (false) vs dark (true)
+    fg_EdgeColor.rgb = RGB[index];
 }`,
     },
 });

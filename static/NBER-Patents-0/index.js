@@ -21,13 +21,19 @@ void node(in unit X, in unit Y, in float AppYear, in float GotYear, in int Cat1,
     c0 = Cat0 - 1;
 }`,
         edge: `\
-#define I 1
-#define J 1
+#define I 2
+#define J 4
+#define K 5
+#define L 4
 void edge(in flat float ay, in flat float gy, in flat int c1, in flat int c0, in int CitingCat0, in int CitedCat0) {
-    if (CitingCat0 != I || CitedCat0 != J) discard;
-    //if ((fg_EdgeID + 0) % 1000 >= 100) discard;
-    fg_EdgeColor = vec4(1./16.);
-    fg_EdgeColor.r = float(gy - ay > 1.);
+	if (CitingCat0 != I || CitedCat0 != J) discard;
+	if (!(1970 + K <= ay && ay <= 1970 + K + L)) discard;
+	//if ((fg_EdgeID + 500) % 1000 >= 100) discard;
+	float delta = abs(gy - ay);
+	fg_EdgeColor.r = (0. <= delta && delta <= 1.) ? 1. : 0.;
+	fg_EdgeColor.g = (2. <= delta && delta <= 3.) ? 1. : 0.;
+	fg_EdgeColor.b = (4. <= delta && delta <= 40.) ? 1. : 0.;
+	fg_EdgeColor.a = 1./16.;
 }`,
     },
 });
