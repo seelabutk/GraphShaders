@@ -100,6 +100,45 @@ int main(int argc, char **argv) {
 
     GLsizei opt_resolution_x = OPTION(std::stoi, 256, "WIDTH");
     GLsizei opt_resolution_y = OPTION(std::stoi, 256, "HEIGHT");
+    GLfloat opt_tile_x = OPTION(std::stof, 1.0f, "TILE_X");
+    GLfloat opt_tile_y = OPTION(std::stof, 1.0f, "TILE_Y");
+    GLfloat opt_tile_z = OPTION(std::stof, 2.0f, "TILE_Z");
+    std::string opt_output_file = OPTION(std::string, "out.jpg", "OUTPUT");
+    std::string opt_vertex_shader = OPTION(std::string, R"EOF(
+        #version 460 core
+        precision mediump float;
+
+        uniform float uTranslateX;
+        uniform float uTranslateY;
+        uniform float uScale;
+
+        layout (location=0) in float x;
+        layout (location=1) in float y;
+
+        void node(in float x, in float y, out vec2 fg_NodePosition) {
+            fg_NodePosition = vec2(x, y);
+        }
+
+        void main() {
+            vec2 fg_NodePosition;
+            node(x, y, fg_NodePosition);
+
+            fg_NodePosition *= uScale;
+            fg_NodePosition += vec2(uTranslateX, uTranslateY);
+
+            gl_Position = vec4(2.0 * fg_NodePosition -1.0, 0.0, 1.0);
+        }
+    )EOF", "VERTEX");
+    std::string opt_fragment_shader = OPTION(std::string, R"EOF(
+        #version 460 core
+        precision mediump float;
+
+        out vec4 gl_FragColor;
+
+        void main() {
+            gl_FragColor = vec4(1., 1., 0., 1.);
+        }
+    )EOF", "FRAGMENT");
     // GLsizei opt_node_attributes_count = OPTION(std::stoi, 0, "NODE_ATTRIBUTE_COUNT");
     // for (GLsizei i=0, n=opt_node_attributes_count; i<n; ++i) {
     // }
@@ -341,13 +380,6 @@ int main(int argc, char **argv) {
     }
 
 
-    // Clear buffers
-
-    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glFlush();
-
-
     // Load node attributes
 
 #   define GL_BUFFER_FROM_FILE(TARGET, PATTERN, ...) \
@@ -447,28 +479,8 @@ int main(int argc, char **argv) {
     }) \
     /* GL_SHADER_FROM_STRING */
 
-    GLuint gl_shader_vertex = GL_SHADER_FROM_STRING(GL_VERTEX_SHADER, R"EOF(
-        #version 460 core
-        precision mediump float;
-
-        layout (location=0) in float x;
-        layout (location=1) in float y;
-
-        void main() {
-            gl_Position = vec4(x, y, 0., 1.);
-        }
-    )EOF");
-
-    GLuint gl_shader_fragment = GL_SHADER_FROM_STRING(GL_FRAGMENT_SHADER, R"EOF(
-        #version 460 core
-        precision mediump float;
-
-        out vec4 gl_FragColor;
-
-        void main() {
-            gl_FragColor = vec4(1., 1., 0., 1.);
-        }
-    )EOF");
+    GLuint gl_shader_vertex = GL_SHADER_FROM_STRING(GL_VERTEX_SHADER, opt_vertex_shader.c_str());
+    GLuint gl_shader_fragment = GL_SHADER_FROM_STRING(GL_FRAGMENT_SHADER, opt_fragment_shader.c_str());
 
 #   undef GL_SHADER_FROM_STRING
 
@@ -494,6 +506,8 @@ int main(int argc, char **argv) {
             
             dief("program: %s\n", gl_info_log);
         }
+
+        glUseProgram(gl_program);
 
         gl_program;
     });
@@ -525,6 +539,27 @@ int main(int argc, char **argv) {
 #   undef GL_VERTEX_ATTRIBUTE
 
 
+    //--- Clear buffers
+
+    glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glFlush();
+
+
+    glDisable(GL_DEPTH_TEST);
+
+
+    //--- Uniforms
+
+    GLint gl_uniform_translate_x = glGetUniformLocation(gl_program, "uTranslateX");
+    GLint gl_uniform_translate_y = glGetUniformLocation(gl_program, "uTranslateY");
+    GLint gl_uniform_scale = glGetUniformLocation(gl_program, "uScale");
+
+    glUniform1f(gl_uniform_translate_x, -1.0f * opt_tile_x);
+    glUniform1f(gl_uniform_translate_y, -1.0f * opt_tile_y);
+    glUniform1f(gl_uniform_scale, std::pow(2.0f, opt_tile_z));
+
+
     //--- Render
 
     ({
@@ -536,6 +571,7 @@ int main(int argc, char **argv) {
         GLsizei count = gl_buffer_edge_index_size / sizeof(GLuint);
         GLenum type = GL_UNSIGNED_INT;
         GLvoid *indices = 0;
+        std::fprintf(stderr, "glDrawElements(0x%x, %u, 0x%x, %p)\n", mode, count, type, indices);
         glDrawElements(mode, count, type, indices);
     });
 
@@ -569,6 +605,8 @@ int main(int argc, char **argv) {
     std::vector<uint8_t> jpeg;
 
     ({
+        jpeg.clear();
+
         void *context = static_cast<void *>(&jpeg);
         int width = rgba_width;
         int height = rgba_height;
@@ -576,11 +614,14 @@ int main(int argc, char **argv) {
         void *rgba = rgba_data;
         int quality = 95;
         auto callback = +[](void *context, void *data, int size) {
+            // std::fprintf(stderr, "Writing %zu bytes\n", (size_t)size);
             std::vector<uint8_t> &jpeg = *static_cast<std::vector<uint8_t> *>(context);
             uint8_t *bytes = static_cast<uint8_t *>(data);
             jpeg.reserve(jpeg.size() + size);
             std::copy(bytes, bytes + size, std::back_inserter(jpeg));
         };
+
+        std::fprintf(stderr, "JPEG: %dx%d\n", width, height);
 
         int stbi_success;
         stbi_success = stbi_write_jpg_to_func(callback, context, width, height, components, rgba, quality);
@@ -594,12 +635,12 @@ int main(int argc, char **argv) {
 
     ({
         GLchar file_name[128];
-        snprintf(file_name, sizeof(file_name), "%s,w=%d,h=%d.jpg", "JS-Deps", opt_resolution_x, opt_resolution_y);
+        snprintf(file_name, sizeof(file_name), "%s", opt_output_file.c_str());
 
         FILE *file = fopen(file_name, "wb");
         fwrite(jpeg.data(), 1, jpeg.size(), file);
 
-        fprintf(stderr, "Wrote to %s\n", file_name);
+        fprintf(stderr, "Wrote %zu bytes to %s\n", jpeg.size(), file_name);
     });
 
     return 0;

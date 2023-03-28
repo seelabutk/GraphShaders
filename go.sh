@@ -52,6 +52,62 @@ go---python() {
 
 #--- csv2bin
 
+go-csv2bin() {
+    "${FUNCNAME[0]:?}-$@"
+}
+
+go-csv2bin-JS-Deps() {
+    if [ $# -eq 0 ]; then
+        set -- x y index
+    fi
+
+    for arg; do
+        "${FUNCNAME[0]:?}-${arg:?}"
+    done
+}
+
+go-csv2bin-JS-Deps-x() {
+    local domain
+    domain='-1666.310422874415,934.5458110250762'
+
+    python3 csv2bin.py \
+        --input=data/JS-Deps-filtered/nodes.csv \
+        --column=x \
+        --transform=float \
+        --format=f \
+        --output=./JS-Deps,kind=node,name=x,type=f32.bin \
+        ${domain:+--domain="${domain:?}"} \
+        ${domain:+--transform=normalize} \
+        ##
+}
+
+go-csv2bin-JS-Deps-y() {
+    local domain
+    domain='-2541.5300207136556,607.5603606114231'
+
+    python3 csv2bin.py \
+        --input=data/JS-Deps-filtered/nodes.csv \
+        --column=y \
+        --transform=float \
+        --format=f \
+        --output=./JS-Deps,kind=node,name=y,type=f32.bin \
+        ${domain:+--domain="${domain:?}"} \
+        ${domain:+--transform=normalize} \
+        ##
+}
+
+go-csv2bin-JS-Deps-index() {
+    python3 csv2bin.py \
+        --input=data/JS-Deps-filtered/edges.csv \
+        --column=src \
+        --column=tgt \
+        --transform=int \
+        --transform=-1 \
+        --format=II \
+        --output=./JS-Deps,kind=edge,name=index,type=2u32.bin \
+        ##
+}
+
 go-csv2bin.py() {
     exec python3 \
         "${root:?}/csv2bin.py" \
