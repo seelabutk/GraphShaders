@@ -1,14 +1,4 @@
-README.md
 go.sh
 env.sh
 Dockerfile
-src/server.c
-static/common/index.html
-static/common/fg.js
-static/common/index.css
-static/JS-Deps/index.js
-static/SO-Answers/index.js
-static/NBER-Patents/index.js
-static/COM-Orkut/index.js
-logparse.py
-stitch.py
+src/fg.c
