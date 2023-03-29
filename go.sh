@@ -58,7 +58,7 @@ go-csv2bin() {
 
 go-csv2bin-JS-Deps() {
     if [ $# -eq 0 ]; then
-        set -- x y index
+        set -- x y date nmaintainers cve index
     fi
 
     for arg; do
@@ -68,7 +68,7 @@ go-csv2bin-JS-Deps() {
 
 go-csv2bin-JS-Deps-x() {
     local domain
-    domain='-1666.310422874415,934.5458110250762'
+    domain=-1666.310422874415,4145.933813716894
 
     python3 csv2bin.py \
         --input=data/JS-Deps-filtered/nodes.csv \
@@ -83,7 +83,7 @@ go-csv2bin-JS-Deps-x() {
 
 go-csv2bin-JS-Deps-y() {
     local domain
-    domain='-2541.5300207136556,607.5603606114231'
+    domain=-2541.5300207136556,2247.2635371167767
 
     python3 csv2bin.py \
         --input=data/JS-Deps-filtered/nodes.csv \
@@ -91,6 +91,51 @@ go-csv2bin-JS-Deps-y() {
         --transform=float \
         --format=f \
         --output=./JS-Deps,kind=node,name=y,type=f32.bin \
+        ${domain:+--domain="${domain:?}"} \
+        ${domain:+--transform=normalize} \
+        ##
+}
+
+go-csv2bin-JS-Deps-date() {
+    local domain
+    # domain='-2541.5300207136556,607.5603606114231'
+
+    python3 csv2bin.py \
+        --input=data/JS-Deps-filtered/nodes.csv \
+        --column=date \
+        --transform=int \
+        --format=I \
+        --output=./JS-Deps,kind=node,name=date,type=u32.bin \
+        ${domain:+--domain="${domain:?}"} \
+        ${domain:+--transform=normalize} \
+        ##
+}
+
+go-csv2bin-JS-Deps-nmaintainers() {
+    local domain
+    # domain='-2541.5300207136556,607.5603606114231'
+
+    python3 csv2bin.py \
+        --input=data/JS-Deps-filtered/nodes.csv \
+        --column=nmaintainers \
+        --transform=int \
+        --format=I \
+        --output=./JS-Deps,kind=node,name=nmaintainers,type=u32.bin \
+        ${domain:+--domain="${domain:?}"} \
+        ${domain:+--transform=normalize} \
+        ##
+}
+
+go-csv2bin-JS-Deps-cve() {
+    local domain
+    # domain='-2541.5300207136556,607.5603606114231'
+
+    python3 csv2bin.py \
+        --input=data/JS-Deps-filtered/nodes.csv \
+        --column=cve \
+        --transform=int \
+        --format=I \
+        --output=./JS-Deps,kind=node,name=cve,type=u32.bin \
         ${domain:+--domain="${domain:?}"} \
         ${domain:+--transform=normalize} \
         ##
@@ -187,6 +232,7 @@ go---docker() {
 #--- fg
 
 fg_source=${root:?}
+fg_build=${root:?}/build
 
 
 go-fg() {
@@ -198,6 +244,11 @@ go-fg-build() {
         -C "${fg_source:?}" \
         "$@" \
         ##
+}
+
+go-fg-exec() {
+    PATH=${fg_build:?}${PATH:+:${PATH:?}} \
+    exec "$@"
 }
 
 

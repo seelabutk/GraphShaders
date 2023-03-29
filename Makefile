@@ -51,7 +51,7 @@ src/shaders/%.h: src/shaders/%
 build/base64.o:
 
 build/fg.o:
-build/fg.o: src/fg.h src/voxel_traversal.h src/vec.h
+build/fg.o: src/fg.h
 
 build/glad.o: CFLAGS += $(dl_CFLAGS)
 build/glad.o: src/glad/glad.h

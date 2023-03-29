@@ -65,7 +65,7 @@ def main(
                     maximum = row
                 
                 minimum = tuple(itertools.starmap(min, zip(minimum, row)))
-                maximum = tuple(itertools.starmap(max, zip(minimum, row)))
+                maximum = tuple(itertools.starmap(max, zip(maximum, row)))
 
                 dst.write(struct.pack(format, *row))
             
