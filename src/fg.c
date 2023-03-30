@@ -101,6 +101,10 @@ int main(int argc, char **argv) {
     })                                                                                                                 \
     /**/
 
+    GLfloat opt_fg_background_r = X_OPTION(std::stof, "FG_BACKGROUND_R");
+    GLfloat opt_fg_background_g = X_OPTION(std::stof, "FG_BACKGROUND_G");
+    GLfloat opt_fg_background_b = X_OPTION(std::stof, "FG_BACKGROUND_B");
+    GLfloat opt_fg_background_a = X_OPTION(std::stof, "FG_BACKGROUND_A");
     GLsizei opt_fg_tile_width = X_OPTION(std::stoi, "FG_TILE_WIDTH");
     GLsizei opt_fg_tile_height = X_OPTION(std::stoi, "FG_TILE_HEIGHT");
     GLfloat opt_fg_tile_x = X_OPTION(std::stof, "FG_TILE_X");
@@ -372,12 +376,15 @@ int main(int argc, char **argv) {
 
     //--- Clear buffers
 
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClearColor(opt_fg_background_r, opt_fg_background_g, opt_fg_background_b, opt_fg_background_a);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glFlush();
 
 
     glDisable(GL_DEPTH_TEST);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 
     // Prepare the viewport

@@ -11,20 +11,19 @@
 #pragma fg attribute(float X[N])
 #pragma fg attribute(float Y[N])
 #pragma fg attribute(uint Date[N])
+#pragma fg attribute(uint Devs[N])
+#pragma fg attribute(uint Vuln[N])
+
+#define NOV_09_2010 1289278800
+#define MAR_22_2016 1458619200
+
 
 #pragma fg shader(positional)
 float x = X[fg_NodeIndex];
 float y = Y[fg_NodeIndex];
-// float x = mod(float(fg_NodeIndex), 10000.) / 10000.;
-// float y = floor(float(fg_NodeIndex) / 10000.) / 10000.;
+float date = float(Date[fg_NodeIndex] - NOV_09_2010) / float(MAR_22_2016 - NOV_09_2010);
 
-atomicCounterMin(xmin, int(100000. * x));
-atomicCounterMax(xmax, int(100000. * x));
-
-atomicCounterMin(ymin, int(100000. * y));
-atomicCounterMax(ymax, int(100000. * y));
-
-fg_NodePosition = vec3(x, y, 0.5);
+fg_NodePosition = vec3(x, y, -date);
 
 
 #pragma fg shader(relational)
@@ -35,4 +34,9 @@ uint id = 1 + atomicAdd(in_degree[fg_TargetIndex], 1);
 atomicCounterMax(in_degree_max, id);
 
 #pragma fg shader(appearance)
-fg_FragColor = vec4(1., 0., 1., 1.);
+if ( ((gl_PrimitiveID + 100) % 1000 ) < 0) {
+    discard;
+}
+fg_FragColor = vec4(0.1);
+fg_FragColor.r = float(Devs[fg_SourceIndex] > 3);
+fg_FragColor.g = float(Vuln[fg_SourceIndex] > 0);

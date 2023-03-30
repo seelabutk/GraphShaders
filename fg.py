@@ -47,12 +47,17 @@ def main(
     input_filename: Path,
     executable: Path,
     datafiles: List[Tuple[str, str]],
+    envs: List[Tuple[str, str]],
 ):
     datafiles: Dict[str, str] = { x[0]: x[1] for x in datafiles }
 
     g = dotdict()
     # g.env = copy.copy(os.environ)
     g.env = {}
+    g.env['FG_BACKGROUND_R'] = '1.0'
+    g.env['FG_BACKGROUND_G'] = '1.0'
+    g.env['FG_BACKGROUND_B'] = '1.0'
+    g.env['FG_BACKGROUND_A'] = '1.0'
     g.env['FG_TILE_WIDTH'] = '256'
     g.env['FG_TILE_HEIGHT'] = '256'
     g.env['FG_BUFFER_COUNT'] = '0'
@@ -220,7 +225,7 @@ uniform float uScale;
 
     g.env['FG_SHADER_VERTEX'] = f'''
 
-out uint _fg_NodeIndex;
+layout(location=0) out uint _fg_NodeIndex;
 
 void main() {{
     const int fg_NodeIndex = gl_VertexID;
@@ -246,24 +251,18 @@ void main() {{
 layout (lines) in;
 layout (line_strip, max_vertices=2) out;
 
-in uint _fg_NodeIndex[];
+layout(location=0) in uint _fg_NodeIndex[];
+
+layout(location=0) out flat uint fg_SourceIndex;
+layout(location=1) out flat uint fg_TargetIndex;
 
 void main() {{
-    const uint fg_SourceIndex = _fg_NodeIndex[0];
-    const uint fg_TargetIndex = _fg_NodeIndex[1];
+    fg_SourceIndex = _fg_NodeIndex[0];
+    fg_TargetIndex = _fg_NodeIndex[1];
 
 {g.fg_shaders['relational']}
 
-    gl_PrimitiveID = 2 * gl_PrimitiveIDIn + 0;
-    gl_Position = gl_in[0].gl_Position;
-    EmitVertex();
-
-    gl_Position = gl_in[1].gl_Position;
-    EmitVertex();
-
-    EndPrimitive();
-
-    gl_PrimitiveID = 2 * gl_PrimitiveIDIn + 1;
+    gl_PrimitiveID = gl_PrimitiveIDIn;
     gl_Position = gl_in[0].gl_Position;
     EmitVertex();
 
@@ -275,15 +274,20 @@ void main() {{
     '''
 
     g.env['FG_SHADER_FRAGMENT'] = f'''
-out vec4 fg_FragColor;
+layout(location=0) in flat uint fg_SourceIndex;
+layout(location=1) in flat uint fg_TargetIndex;
+
+layout(location=0) out vec4 fg_FragColor;
 
 void main() {{
-    const bool fg_IsSource = gl_PrimitiveID % 2 == 0;
-    const int fg_PrimitiveID = gl_PrimitiveID / 2;
-
 {g.fg_shaders['appearance']}
 }}
     '''
+
+    for x in envs:
+        k = x[0]
+        v = x[1]
+        g.env[k] = v
 
     file = executable
     arg0 = f'{executable} <{input_filename.name}>'
@@ -302,6 +306,7 @@ def cli():
     parser.add_argument('--input', '-i', dest='input_filename', type=Path, required=True)
     parser.add_argument('--executable', '-x', dest='executable', default=Path('fg'))
     parser.add_argument('--file', '-f', dest='datafiles', action='append', nargs=2, default=[])
+    parser.add_argument('--env', '-e', dest='envs', action='append', nargs=2, default=[])
     args = vars(parser.parse_args())
 
     main(**args)

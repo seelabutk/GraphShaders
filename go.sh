@@ -254,6 +254,49 @@ go-fg-exec() {
 
 #---
 
+go-Stitch() {
+    dsts=()
+
+    for z in 1; do
+    for x in 0 1; do
+    for y in 0 1; do
+        dst=${root:?}/z${z:?}x${x:?}y${y:?}.jpg
+
+        "${self:?}" \
+            "${1:?}" \
+            -e FG_TILE_Z "${z:?}" \
+            -e FG_TILE_X "${x:?}" \
+            -e FG_TILE_Y "${y:?}" \
+            -e FG_OUTPUT "${dst:?}" \
+            "${@:2}" \
+            ##
+        
+        dsts+=( "${dst:?}" )
+    done
+    done
+    done
+
+    >&2 printf -- \
+        $'%s\n' \
+        "${dsts[@]:?}" \
+        ##
+}
+
+go-JS-Deps() {
+    exec "${self:?}" python \
+    exec "${root:?}/fg.py" \
+        -x "${root:?}/fg.sh" \
+        -i "${root:?}/JS-Deps.fgsl" \
+        -f element "${root:?}/JS-Deps,kind=edge,name=index,type=2u32.bin" \
+        -f X "${root:?}/JS-Deps,kind=node,name=x,type=f32.bin" \
+        -f Y "${root:?}/JS-Deps,kind=node,name=y,type=f32.bin" \
+        -f Date "${root:?}/JS-Deps,kind=node,name=date,type=u32.bin" \
+        -f Devs "${root:?}/JS-Deps,kind=node,name=nmaintainers,type=u32.bin" \
+        -f Vuln "${root:?}/JS-Deps,kind=node,name=cve,type=u32.bin" \
+        "$@" \
+        ##
+}
+
 go-exec() {
     exec "$@"
 }
