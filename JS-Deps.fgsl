@@ -13,8 +13,8 @@
 #pragma fg attribute(uint Date[N])
 
 #pragma fg shader(positional)
-float x = 10. + X[fg_NodeIndex];
-float y = 10. + Y[fg_NodeIndex];
+float x = X[fg_NodeIndex];
+float y = Y[fg_NodeIndex];
 // float x = mod(float(fg_NodeIndex), 10000.) / 10000.;
 // float y = floor(float(fg_NodeIndex) / 10000.) / 10000.;
 

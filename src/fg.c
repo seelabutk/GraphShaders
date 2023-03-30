@@ -119,12 +119,14 @@ int main(int argc, char **argv) {
     std::string opt_fg_buffer_files[opt_fg_buffer_count];
     std::string opt_fg_buffer_sizes[opt_fg_buffer_count];
     std::string opt_fg_buffer_types[opt_fg_buffer_count];
+    std::string opt_fg_buffer_binds[opt_fg_buffer_count];
     for (GLint i=0, n=opt_fg_buffer_count; i<n; ++i) {
         opt_fg_buffer_kinds[i] = X_OPTION(std::string, "FG_BUFFER_KIND_%d", i);
         opt_fg_buffer_names[i] = X_OPTION(std::string, "FG_BUFFER_NAME_%d", i);
         opt_fg_buffer_files[i] = X_OPTION(std::string, "FG_BUFFER_FILE_%d", i);
         opt_fg_buffer_sizes[i] = X_OPTION(std::string, "FG_BUFFER_SIZE_%d", i);
         opt_fg_buffer_types[i] = X_OPTION(std::string, "FG_BUFFER_TYPE_%d", i);
+        opt_fg_buffer_binds[i] = X_OPTION(std::string, "FG_BUFFER_BIND_%d", i);
     }
 
 #   undef X_OPTION
@@ -576,6 +578,7 @@ int main(int argc, char **argv) {
         std::string &opt_fg_buffer_size = opt_fg_buffer_sizes[i];
         std::string &opt_fg_buffer_type = opt_fg_buffer_types[i];
         std::string &opt_fg_buffer_name = opt_fg_buffer_names[i];
+        std::string &opt_fg_buffer_bind = opt_fg_buffer_binds[i];
 
         GLuint gl_buffer = gl_buffers[i];
         GLsizeiptr gl_buffer_size = gl_buffer_sizes[i];
@@ -586,6 +589,7 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "size: %s\n", opt_fg_buffer_size.c_str());
         std::fprintf(stderr, "type: %s\n", opt_fg_buffer_type.c_str());
         std::fprintf(stderr, "name: %s\n", opt_fg_buffer_name.c_str());
+        std::fprintf(stderr, "bind: %s\n", opt_fg_buffer_bind.c_str());
         std::fprintf(stderr, "gl_buffer: %u\n", gl_buffer);
         std::fprintf(stderr, "gl_buffer_size: %zu\n", gl_buffer_size);
     }
@@ -663,16 +667,10 @@ int main(int argc, char **argv) {
 
     //--- Node SSBOs
 
-#   define X_BIND_BUFFER(PROGRAM, INTERFACE, NAME, TARGET, BUFFER)                                                     \
+#   define X_BIND_BUFFER(TARGET, INDEX, BUFFER)                                                     \
     ({                                                                                                                 \
-        GLuint program = (PROGRAM);                                                                                    \
-        GLenum interface = (INTERFACE);                                                                                \
-        const GLchar *name = (NAME);                                                                                   \
-        GLuint index = glGetProgramResourceIndex(program, interface, name);                                            \
-        std::fprintf(stderr, "X_BIND_BUFFER: %u = glGetProgramResourceIndex(%u, 0x%x, \"%s\")\n",                      \
-            index, program, interface, name);                                                                          \
-                                                                                                                       \
         GLenum target = (TARGET);                                                                                      \
+        GLuint index = (INDEX); \
         GLuint buffer = (BUFFER);                                                                                      \
         glBindBufferBase(target, index, buffer);                                                                       \
         std::fprintf(stderr, "X_BIND_BUFFER: glBindBufferBase(0x%x, %u, %u)\n",                                        \
@@ -686,12 +684,13 @@ int main(int argc, char **argv) {
         std::string &opt_fg_buffer_size = opt_fg_buffer_sizes[i];
         std::string &opt_fg_buffer_name = opt_fg_buffer_names[i];
         std::string &opt_fg_buffer_type = opt_fg_buffer_types[i];
+        std::string &opt_fg_buffer_bind = opt_fg_buffer_binds[i];
 
         if (opt_fg_buffer_kind == "ATTRIBUTE") {
-            X_BIND_BUFFER(gl_program, GL_SHADER_STORAGE_BLOCK, opt_fg_buffer_name.c_str(), GL_SHADER_STORAGE_BUFFER, gl_buffers[i]);
+            X_BIND_BUFFER(GL_SHADER_STORAGE_BUFFER, std::stoi(opt_fg_buffer_bind.c_str()), gl_buffers[i]);
 
         } else if (opt_fg_buffer_kind == "SCRATCH") {
-            X_BIND_BUFFER(gl_program, GL_SHADER_STORAGE_BLOCK, opt_fg_buffer_name.c_str(), GL_SHADER_STORAGE_BUFFER, gl_buffers[i]);
+            X_BIND_BUFFER(GL_SHADER_STORAGE_BUFFER, std::stoi(opt_fg_buffer_bind.c_str()), gl_buffers[i]);
 
         } else if (opt_fg_buffer_kind == "ATOMIC") {
             GLenum target = GL_ATOMIC_COUNTER_BUFFER;

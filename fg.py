@@ -104,7 +104,7 @@ def main(
         g._scratch_atomic_exists = True
         g._scratch_atomic_offset += 4
         
-    g._ssbo_binding = 1
+    g._ssbo_binding = 0
     @specialize(SCRATCH)
     def SCRATCH(type, name, count, line):
         assert type in ['uint']
@@ -117,6 +117,7 @@ def main(
             TYPE=OPENGL(type),
             SIZE=count,
             FILE='<NONE>',
+            BIND=str(g._ssbo_binding),
         )
 
         g._ssbo_binding += 1
@@ -132,6 +133,7 @@ def main(
             TYPE=OPENGL(type),
             SIZE=count,
             FILE=datafiles[name],
+            BIND=str(g._ssbo_binding),
         )
 
         g._ssbo_binding += 1
@@ -182,6 +184,7 @@ def main(
         TYPE=OPENGL('uint'),
         SIZE='2E',
         FILE=datafiles['element'],
+        BIND='<NONE>',
     )
 
     SHADER('common')
@@ -197,6 +200,7 @@ def main(
             TYPE=OPENGL('uint'),
             SIZE=g._scratch_atomic_offset,
             FILE='<NONE>',
+            BIND='0',
         )
 
     g.fg_shaders['common'] = "\n".join(g.fg_shaders['common'])
@@ -226,13 +230,13 @@ void main() {{
 
     gl_Position = vec4(fg_NodePosition.xyz, 1.);
 
-//     // Apply tile transformations
-//     gl_Position.xy *= uScale;
-//     gl_Position.xy += vec2(uTranslateX, uTranslateY);
+    // Apply tile transformations
+    gl_Position.xy *= uScale;
+    gl_Position.xy += vec2(uTranslateX, uTranslateY);
 
-//     // Transform xy in [0, 1] to xy in [-1, 1]
-//     gl_Position.xy *= 2.;
-//     gl_Position.xy -= 1.;
+    // Transform xy in [0, 1] to xy in [-1, 1]
+    gl_Position.xy *= 2.;
+    gl_Position.xy -= 1.;
 
     _fg_NodeIndex = fg_NodeIndex;
 }}
