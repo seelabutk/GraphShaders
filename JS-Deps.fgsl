@@ -1,21 +1,19 @@
-#pragma fg scratch(atomic_uint in_degree_max)
-#pragma fg scratch(atomic_uint out_degree_max)
-#pragma fg scratch(atomic_uint xmin)
-#pragma fg scratch(atomic_uint xmax)
-#pragma fg scratch(atomic_uint ymin)
-#pragma fg scratch(atomic_uint ymax)
-
-#pragma fg scratch(uint in_degree[N])
-#pragma fg scratch(uint out_degree[N])
-
 #pragma fg attribute(float X[N])
 #pragma fg attribute(float Y[N])
 #pragma fg attribute(uint Date[N])
 #pragma fg attribute(uint Devs[N])
 #pragma fg attribute(uint Vuln[N])
 
+
 #define NOV_09_2010 1289278800
 #define MAR_22_2016 1458619200
+
+#define JAN_01_2011 1293858000
+#define JAN_01_2012 1325394000
+#define JAN_01_2013 1357016400
+#define JAN_01_2014 1388552400
+#define JAN_01_2015 1420088400
+#define JAN_01_2016 1451624400
 
 
 #pragma fg shader(positional)
@@ -27,6 +25,11 @@ fg_NodePosition = vec3(x, y, -date);
 
 
 #pragma fg shader(relational)
+#pragma fg scratch(atomic_uint in_degree_max)
+#pragma fg scratch(atomic_uint out_degree_max)
+#pragma fg scratch(uint in_degree[N])
+#pragma fg scratch(uint out_degree[N])
+
 uint od = 1 + atomicAdd(out_degree[fg_SourceIndex], 1);
 atomicCounterMax(out_degree_max, od);
 
@@ -34,9 +37,23 @@ uint id = 1 + atomicAdd(in_degree[fg_TargetIndex], 1);
 atomicCounterMax(in_degree_max, id);
 
 #pragma fg shader(appearance)
-if ( ((gl_PrimitiveID + 100) % 1000 ) < 0) {
+
+// if ( ((gl_PrimitiveID + 100) % 1000 ) < 0) {
+//     discard;
+// }
+
+#pragma fg scratch(atomic_uint d1)
+if (Date[fg_SourceIndex] < JAN_01_2011) {
+    atomicCounterAdd(d1, 1);
     discard;
 }
+
+#pragma fg scratch(atomic_uint d2)
+if (Date[fg_SourceIndex] > JAN_01_2012) {
+    atomicCounterAdd(d2, 1);
+    discard;
+}
+
 fg_FragColor = vec4(0.1);
-fg_FragColor.r = float(Devs[fg_SourceIndex] > 3);
-fg_FragColor.g = float(Vuln[fg_SourceIndex] > 0);
+fg_FragColor.r = float(Devs[fg_SourceIndex] > Devs[fg_TargetIndex]);
+fg_FragColor.g = float(Vuln[fg_SourceIndex] > Vuln[fg_TargetIndex]);

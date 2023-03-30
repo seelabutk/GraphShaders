@@ -61,6 +61,7 @@ def main(
     g.env['FG_TILE_WIDTH'] = '256'
     g.env['FG_TILE_HEIGHT'] = '256'
     g.env['FG_BUFFER_COUNT'] = '0'
+    g.env['FG_ATOMIC_COUNT'] = '0'
     g.env['FG_TILE_Z'] = '1'
     g.env['FG_TILE_X'] = '1'
     g.env['FG_TILE_Y'] = '0'
@@ -84,12 +85,14 @@ def main(
         assert s in _OPENGL_
         return _OPENGL_[s]
 
-    def EMIT(line):
-        g.fg_shaders[g.current_shader].append(line)
+    def EMIT(line, *, shader=None):
+        if shader is None:
+            shader = g.current_shader
+        g.fg_shaders[shader].append(line)
     
     @specialize(ERROR)
     def APPEND(prefix, **kwargs):
-        assert prefix == 'FG_BUFFER'
+        assert prefix in ['FG_BUFFER', 'FG_ATOMIC']
         count = int(g.env[f'{prefix}_COUNT'])
 
         g.env[f'{prefix}_COUNT'] = str(count + 1)
@@ -104,7 +107,12 @@ def main(
         assert type == 'atomic_uint'
         assert count is None
 
-        EMIT(f'layout (binding={g._scratch_atomic_binding}, offset={g._scratch_atomic_offset}) uniform {type} {name}; // {line}')
+        EMIT(f'layout (binding={g._scratch_atomic_binding}, offset={g._scratch_atomic_offset}) uniform {type} {name}; // {line}',
+            shader='common')
+
+        APPEND('FG_ATOMIC',
+            NAME=name,
+        )
 
         g._scratch_atomic_exists = True
         g._scratch_atomic_offset += 4
@@ -113,9 +121,10 @@ def main(
     @specialize(SCRATCH)
     def SCRATCH(type, name, count, line):
         assert type in ['uint']
-        assert count == 'N'
+        assert count in ['N', 'E']
 
-        EMIT(f'layout (std430, binding={g._ssbo_binding}) buffer _{name} {{ {type} {name}[]; }}; // {line}')
+        EMIT(f'layout (std430, binding={g._ssbo_binding}) buffer _{name} {{ {type} {name}[]; }}; // {line}',
+            shader='common')
         APPEND('FG_BUFFER',
             KIND='SCRATCH',
             NAME=f'_{name}',
@@ -129,9 +138,10 @@ def main(
     
     def ATTRIBUTE(type, name, count, line):
         assert type in ['float', 'uint']
-        assert count == 'N'
+        assert count in ['N', 'E']
 
-        EMIT(f'layout (std430, binding={g._ssbo_binding}) buffer _{name} {{ {type} {name}[]; }}; // {line}')
+        EMIT(f'layout (std430, binding={g._ssbo_binding}) buffer _{name} {{ {type} {name}[]; }}; // {line}',
+            shader='common')
         APPEND('FG_BUFFER',
             KIND='ATTRIBUTE',
             NAME=f'_{name}',
@@ -260,13 +270,17 @@ void main() {{
     fg_SourceIndex = _fg_NodeIndex[0];
     fg_TargetIndex = _fg_NodeIndex[1];
 
+    int fg_EdgeIndex = gl_PrimitiveIDIn;
+    vec4 fg_SourcePosition = gl_in[0].gl_Position;
+    vec4 fg_TargetPosition = gl_in[1].gl_Position;
+
 {g.fg_shaders['relational']}
 
-    gl_PrimitiveID = gl_PrimitiveIDIn;
-    gl_Position = gl_in[0].gl_Position;
+    gl_PrimitiveID = fg_EdgeIndex;
+    gl_Position = fg_SourcePosition;
     EmitVertex();
 
-    gl_Position = gl_in[1].gl_Position;
+    gl_Position = fg_TargetPosition;
     EmitVertex();
 
     EndPrimitive();

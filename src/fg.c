@@ -133,6 +133,13 @@ int main(int argc, char **argv) {
         opt_fg_buffer_binds[i] = X_OPTION(std::string, "FG_BUFFER_BIND_%d", i);
     }
 
+    GLint opt_fg_atomic_count = X_OPTION(std::stoi, "FG_ATOMIC_COUNT");
+    std::string opt_fg_atomic_names[opt_fg_atomic_count];
+    for (GLint i=0, n=opt_fg_atomic_count; i<n; ++i) {
+        opt_fg_atomic_names[i] = X_OPTION(std::string, "FG_ATOMIC_NAME_%d", i);
+    }
+
+
 #   undef X_OPTION
 
     std::fprintf(stderr, "buffers[%d]:\n", opt_fg_buffer_count);
@@ -509,8 +516,11 @@ int main(int argc, char **argv) {
             } else if (opt_fg_buffer_type == "GL_UNSIGNED_INT" && opt_fg_buffer_size == "N") {
                 fg_node_count = gl_buffer_sizes[i] / sizeof(GLuint);
 
+            } else if (opt_fg_buffer_type == "GL_UNSIGNED_INT" && opt_fg_buffer_size == "E") {
+                fg_edge_count = gl_buffer_sizes[i] / sizeof(GLuint);
+
             } else {
-                dief("Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
+                dief("2Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
                     opt_fg_buffer_kind.c_str(), opt_fg_buffer_file.c_str(), opt_fg_buffer_size.c_str(), opt_fg_buffer_type.c_str());
             }
 
@@ -522,7 +532,7 @@ int main(int argc, char **argv) {
                 fg_edge_count = gl_buffer_sizes[i] / sizeof(GLuint) / 2;
 
             } else {
-                dief("Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
+                dief("1Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
                     opt_fg_buffer_kind.c_str(), opt_fg_buffer_file.c_str(), opt_fg_buffer_size.c_str(), opt_fg_buffer_type.c_str());
             }
 
@@ -551,7 +561,7 @@ int main(int argc, char **argv) {
                 gl_buffer_sizes[i] = X_BUFFER_FROM_ZERO(GL_ATOMIC_COUNTER_BUFFER, GL_DYNAMIC_COPY, std::stoi(opt_fg_buffer_size), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
 
             } else {
-                dief("Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
+                dief("3Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
                     opt_fg_buffer_kind.c_str(), opt_fg_buffer_file.c_str(), opt_fg_buffer_size.c_str(), opt_fg_buffer_type.c_str());
             }
 
@@ -562,7 +572,7 @@ int main(int argc, char **argv) {
                 gl_buffer_sizes[i] = X_BUFFER_FROM_ZERO(GL_SHADER_STORAGE_BUFFER, GL_DYNAMIC_COPY, fg_node_count * sizeof(GLuint), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
 
             } else {
-                dief("Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
+                dief("4Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
                     opt_fg_buffer_kind.c_str(), opt_fg_buffer_file.c_str(), opt_fg_buffer_size.c_str(), opt_fg_buffer_type.c_str());
             }
 
@@ -767,8 +777,11 @@ int main(int argc, char **argv) {
                 data = new GLuint[size];
                 glGetBufferSubData(target, offset, size, static_cast<void *>(data));
                 
-                for (GLint i=0, n=size/sizeof(*data); i<n; ++i) {
-                    std::fprintf(stderr, "Atomic[%d] = %u\n", i, data[i]);
+                std::fprintf(stderr, "--- Atomics\n");
+                for (GLint i=0, n=opt_fg_atomic_count; i<n; ++i) {
+                    std::string &opt_fg_atomic_name = opt_fg_atomic_names[i];
+                    std::fprintf(stderr, "atomic %d \"%s\" = %u\n",
+                        i, opt_fg_atomic_name.c_str(), data[i]);
                 }
                 
             } else {

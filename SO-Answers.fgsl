@@ -1,0 +1,36 @@
+#pragma fg attribute(float X[N])
+#pragma fg attribute(float Y[N])
+#pragma fg attribute(uint When[E])
+
+#define AUG_01_2008 1217563200
+#define MAR_07_2016 1457326800
+
+#define JAN_01_2011 1293858000
+#define JAN_01_2012 1325394000
+#define JAN_01_2013 1357016400
+#define JAN_01_2014 1388552400
+#define JAN_01_2015 1420088400
+#define JAN_01_2016 1451624400
+
+#pragma fg shader(positional)
+float x = X[fg_NodeIndex];
+float y = Y[fg_NodeIndex];
+
+fg_NodePosition = vec3(x, y, 0.);
+
+
+#pragma fg shader(relational)
+#pragma fg scratch(uint node_when_min[N])
+
+const uint when = When[fg_EdgeIndex];
+
+atomicCompSwap(node_when_min[fg_SourceIndex], 0, when);
+atomicMin(node_when_min[fg_SourceIndex], when);
+
+atomicCompSwap(node_when_min[fg_TargetIndex], 0, when);
+atomicMin(node_when_min[fg_TargetIndex], when);
+
+#pragma fg shader(appearance)
+
+fg_FragColor = vec4(0.1);
+fg_FragColor.r = float(node_when_min[fg_SourceIndex] < JAN_01_2011);

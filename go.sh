@@ -242,6 +242,7 @@ go-fg() {
 go-fg-build() {
     exec make \
         -C "${fg_source:?}" \
+        build/fg \
         "$@" \
         ##
 }
@@ -249,6 +250,16 @@ go-fg-build() {
 go-fg-exec() {
     PATH=${fg_build:?}${PATH:+:${PATH:?}} \
     exec "$@"
+}
+
+
+#---
+
+go-graph() {
+    exec make \
+        -f "${root:?}/graph/Makefile" \
+        "$@" \
+        ##
 }
 
 
@@ -293,6 +304,16 @@ go-JS-Deps() {
         -f Date "${root:?}/JS-Deps,kind=node,name=date,type=u32.bin" \
         -f Devs "${root:?}/JS-Deps,kind=node,name=nmaintainers,type=u32.bin" \
         -f Vuln "${root:?}/JS-Deps,kind=node,name=cve,type=u32.bin" \
+        "$@" \
+        ##
+}
+
+go-SO-Answers() {
+    exec "${self:?}" python \
+    exec "${root:?}/SO-Answers.sh" \
+    "${root:?}/fg.py" \
+        -x "${root:?}/fg.sh" \
+        -i "${root:?}/SO-Answers.fgsl" \
         "$@" \
         ##
 }
