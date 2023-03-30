@@ -1,21 +1,31 @@
-#version 460 core
-precision mediump float;
-
-uniform float uTranslateX;
-uniform float uTranslateY;
-uniform float uScale;
-
 #pragma fg scratch(atomic_uint in_degree_max)
 #pragma fg scratch(atomic_uint out_degree_max)
+#pragma fg scratch(atomic_uint xmin)
+#pragma fg scratch(atomic_uint xmax)
+#pragma fg scratch(atomic_uint ymin)
+#pragma fg scratch(atomic_uint ymax)
+
 #pragma fg scratch(uint in_degree[N])
 #pragma fg scratch(uint out_degree[N])
 
-#pragma fg attribute(float x[N])
-#pragma fg attribute(float y[N])
-#pragma fg attribute(uint date[N])
+#pragma fg attribute(float X[N])
+#pragma fg attribute(float Y[N])
+#pragma fg attribute(uint Date[N])
 
 #pragma fg shader(positional)
-fg_NodePosition = vec3(x[fg_NodeIndex], y[fg_NodeIndex], 0.);
+float x = 10. + X[fg_NodeIndex];
+float y = 10. + Y[fg_NodeIndex];
+// float x = mod(float(fg_NodeIndex), 10000.) / 10000.;
+// float y = floor(float(fg_NodeIndex) / 10000.) / 10000.;
+
+atomicCounterMin(xmin, int(100000. * x));
+atomicCounterMax(xmax, int(100000. * x));
+
+atomicCounterMin(ymin, int(100000. * y));
+atomicCounterMax(ymax, int(100000. * y));
+
+fg_NodePosition = vec3(x, y, 0.5);
+
 
 #pragma fg shader(relational)
 uint od = 1 + atomicAdd(out_degree[fg_SourceIndex], 1);
@@ -25,4 +35,4 @@ uint id = 1 + atomicAdd(in_degree[fg_TargetIndex], 1);
 atomicCounterMax(in_degree_max, id);
 
 #pragma fg shader(appearance)
-fg_FragColor = vec4(1., 1., 1., 1.);
+fg_FragColor = vec4(1., 0., 1., 1.);

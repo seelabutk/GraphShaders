@@ -91,128 +91,48 @@ int main(int argc, char **argv) {
 
     // Configurable values
 
-#   define OPTION(PARSE, DEFAULT, FORMAT, ...)                                                                         \
+#   define X_OPTION(PARSE, FORMAT, ...)                                                                                \
     ({                                                                                                                 \
         char name[128];                                                                                                \
         std::snprintf(name, sizeof(name), FORMAT, ## __VA_ARGS__);                                                     \
         char *s = getenv(name);                                                                                        \
-        s ? PARSE(s) : (DEFAULT);                                                                                        \
+        if (!s) dief("Missing required option: %s", name);                                                             \
+        (PARSE)(s);                                                                                                    \
     })                                                                                                                 \
     /**/
 
-    GLsizei opt_resolution_x = OPTION(std::stoi, 256, "WIDTH");
-    GLsizei opt_resolution_y = OPTION(std::stoi, 256, "HEIGHT");
-    GLfloat opt_tile_x = OPTION(std::stof, 1.0f, "TILE_X");
-    GLfloat opt_tile_y = OPTION(std::stof, 1.0f, "TILE_Y");
-    GLfloat opt_tile_z = OPTION(std::stof, 2.0f, "TILE_Z");
-    std::string opt_output_file = OPTION(std::string, "out.jpg", "OUTPUT");
+    GLsizei opt_fg_tile_width = X_OPTION(std::stoi, "FG_TILE_WIDTH");
+    GLsizei opt_fg_tile_height = X_OPTION(std::stoi, "FG_TILE_HEIGHT");
+    GLfloat opt_fg_tile_x = X_OPTION(std::stof, "FG_TILE_X");
+    GLfloat opt_fg_tile_y = X_OPTION(std::stof, "FG_TILE_Y");
+    GLfloat opt_fg_tile_z = X_OPTION(std::stof, "FG_TILE_Z");
+    std::string opt_fg_output = X_OPTION(std::string, "FG_OUTPUT");
 
-    std::string opt_common_shader = OPTION(std::string, dief("opt_common_shader"), "FG_SHADER_COMMON");
+    std::string opt_fg_shader_common = X_OPTION(std::string, "FG_SHADER_COMMON");
+    std::string opt_fg_shader_vertex = X_OPTION(std::string, "FG_SHADER_VERTEX");
+    std::string opt_fg_shader_geometry = X_OPTION(std::string, "FG_SHADER_GEOMETRY");
+    std::string opt_fg_shader_fragment = X_OPTION(std::string, "FG_SHADER_FRAGMENT");
 
-    std::string opt_common_shader = OPTION(std::string, R"EOF(
-        #version 460 core
-        precision mediump float;
+    GLint opt_fg_buffer_count = X_OPTION(std::stoi, "FG_BUFFER_COUNT");
+    std::string opt_fg_buffer_kinds[opt_fg_buffer_count];
+    std::string opt_fg_buffer_names[opt_fg_buffer_count];
+    std::string opt_fg_buffer_files[opt_fg_buffer_count];
+    std::string opt_fg_buffer_sizes[opt_fg_buffer_count];
+    std::string opt_fg_buffer_types[opt_fg_buffer_count];
+    for (GLint i=0, n=opt_fg_buffer_count; i<n; ++i) {
+        opt_fg_buffer_kinds[i] = X_OPTION(std::string, "FG_BUFFER_KIND_%d", i);
+        opt_fg_buffer_names[i] = X_OPTION(std::string, "FG_BUFFER_NAME_%d", i);
+        opt_fg_buffer_files[i] = X_OPTION(std::string, "FG_BUFFER_FILE_%d", i);
+        opt_fg_buffer_sizes[i] = X_OPTION(std::string, "FG_BUFFER_SIZE_%d", i);
+        opt_fg_buffer_types[i] = X_OPTION(std::string, "FG_BUFFER_TYPE_%d", i);
+    }
 
-        uniform float uTranslateX;
-        uniform float uTranslateY;
-        uniform float uScale;
+#   undef X_OPTION
 
-        layout (binding=0, offset=0) uniform atomic_uint in_degree_max;
-        layout (binding=0, offset=4) uniform atomic_uint out_degree_max;
-
-        layout (std430, binding=0) buffer _fg_NodeX_Block {
-            float fg_NodeX[];
-        };
-
-        layout (std430, binding=1) buffer _fg_NodeY_Block {
-            float fg_NodeY[];
-        };
-
-        layout (std430, binding=2) buffer _fg_NodeDate_Block {
-            float fg_NodeDate[];
-        };
-
-        // layout (std430, binding=1) buffer InDegree {
-        //     uint in_degree[];
-        // };
-
-        // layout (std430, binding=2) buffer OutDegree {
-        //     uint out_degree[];
-        // };
-
-    )EOF", "COMMON");
-    std::string opt_vertex_shader = OPTION(std::string, R"EOF(
-        out uint i;
-
-        void main() {
-            float x = fg_NodeX[gl_VertexID];
-            float y = fg_NodeY[gl_VertexID];
-
-            gl_Position.xy = vec2(x, y);
-
-            // Apply tile transformations
-            gl_Position.xy *= uScale;
-            gl_Position.xy += vec2(uTranslateX, uTranslateY);
-
-            // Transform xy in [0, 1] to xy in [-1, 1]
-            gl_Position.xy *= 2.;
-            gl_Position.xy -= 1.;
-
-            i = uint(gl_VertexID);
-            gl_Position = vec4(gl_Position.xy, 0.0, 1.0);
-        }
-    )EOF", "VERTEX");
-    std::string opt_geometry_shader = OPTION(std::string, R"EOF(
-        layout (lines) in;
-        layout (line_strip, max_vertices=2) out;
-
-        in uint i[];
-
-        void main() {
-            // atomicCounterMax(out_degree_max, atomicAdd(out_degree[i[0]], 1));
-            // atomicCounterMax(in_degree_max, atomicAdd(in_degree[i[1]], 1));
-
-            gl_Position = gl_in[0].gl_Position;
-            gl_PrimitiveID = -(1 + int(i[0]));
-            EmitVertex();
-
-            gl_Position = gl_in[1].gl_Position;
-            EmitVertex();
-
-            EndPrimitive();
-
-            gl_Position = gl_in[0].gl_Position;
-            gl_PrimitiveID = +(1 + int(i[1]));
-            EmitVertex();
-
-            gl_Position = gl_in[1].gl_Position;
-            EmitVertex();
-
-            EndPrimitive();
-        }
-    )EOF", "GEOMETRY");
-    std::string opt_fragment_shader = OPTION(std::string, R"EOF(
-        out vec4 gl_FragColor;
-
-        void main() {
-            bool is_source = gl_PrimitiveID < 0;
-            bool is_target = gl_PrimitiveID > 0;
-            int i = is_source
-                ? -gl_PrimitiveID - 1
-                : +gl_PrimitiveID - 1;
-
-            // uint id = in_degree[i];
-            // uint od = out_degree[i];
-
-            // if (od < id) discard;
-            gl_FragColor = vec4(1., 1., 1., 1.);
-        }
-    )EOF", "FRAGMENT");
-    // GLsizei opt_node_attributes_count = OPTION(std::stoi, 0, "NODE_ATTRIBUTE_COUNT");
-    // for (GLsizei i=0, n=opt_node_attributes_count; i<n; ++i) {
-    // }
-
-#   undef OPTION
+    std::fprintf(stderr, "buffers[%d]:\n", opt_fg_buffer_count);
+    for (GLint i=0, n=opt_fg_buffer_count; i<n; ++i) {
+        std::fprintf(stderr, "  %d: kind=%s; name=%s\n", i, opt_fg_buffer_kinds[i].c_str(), opt_fg_buffer_names[i].c_str());
+    }
 
     //--- Setup EGL
 
@@ -378,8 +298,8 @@ int main(int argc, char **argv) {
     {
         GLint level = 0;
         GLint internalformat = GL_RGBA;
-        GLsizei width = opt_resolution_x;
-        GLsizei height = opt_resolution_y;
+        GLsizei width = opt_fg_tile_width;
+        GLsizei height = opt_fg_tile_height;
         GLint border = 0;
         GLenum format = GL_RGBA;
         GLenum type = GL_UNSIGNED_BYTE;
@@ -401,8 +321,8 @@ int main(int argc, char **argv) {
     {
         GLint level = 0;
         GLint internalformat = GL_DEPTH24_STENCIL8;
-        GLsizei width = opt_resolution_x;
-        GLsizei height = opt_resolution_y;
+        GLsizei width = opt_fg_tile_width;
+        GLsizei height = opt_fg_tile_height;
         GLint border = 0;
         GLenum format = GL_DEPTH_STENCIL;
         GLenum type = GL_UNSIGNED_INT_24_8;
@@ -463,8 +383,8 @@ int main(int argc, char **argv) {
     {
         GLint x = 0;
         GLint y = 0;
-        GLsizei width = opt_resolution_x;
-        GLsizei height = opt_resolution_y;
+        GLsizei width = opt_fg_tile_width;
+        GLsizei height = opt_fg_tile_height;
 
         glViewport(x, y, width, height);
 
@@ -481,115 +401,72 @@ int main(int argc, char **argv) {
 
     // Load node attributes
 
-#   define GL_BUFFER_FROM_FILE(TARGET, PATTERN, ...)                                                                   \
+#   define X_MAKE_BUFFER(TARGET)                                                                                       \
     ({                                                                                                                 \
-        char file_name[256];                                                                                           \
-        snprintf(file_name, sizeof(file_name), PATTERN, ## __VA_ARGS__);                                               \
+        GLuint buffer;                                                                                                 \
+        glGenBuffers(1, &buffer);                                                                                      \
                                                                                                                        \
-        std::fprintf(stderr, "Read from %s\n", file_name);                                                             \
+        GLenum target = (TARGET);                                                                      \
+        glBindBuffer(target, buffer);                                                                                  \
                                                                                                                        \
-        FILE *file_object = fopen(file_name, "rb");                                                                    \
-        if (!file_object) {                                                                                            \
-            dief("fopen: %s\n", file_name);                                                                            \
-        }                                                                                                              \
-                                                                                                                       \
-        int file_success;                                                                                              \
-        file_success = fseek(file_object, 0L, SEEK_END);                                                               \
-        if (file_success != 0) {                                                                                       \
-            dief("fseek: %s\n", file_name);                                                                            \
-        }                                                                                                              \
-                                                                                                                       \
-        long file_size;                                                                                                \
-        file_size = ftell(file_object);                                                                                \
-        if (file_size < 0) {                                                                                           \
-            dief("ftell: %s\n", file_name);                                                                            \
-        }                                                                                                              \
-                                                                                                                       \
-        file_success = fseek(file_object, 0L, SEEK_SET);                                                               \
-        if (file_success != 0) {                                                                                       \
-            dief("fseek: %s\n", file_name);                                                                            \
-        }                                                                                                              \
-                                                                                                                       \
-        void *file_data;                                                                                               \
-        file_data = new char[file_size];                                                                               \
-        if (file_data == nullptr) {                                                                                    \
-            dief("new: %ld\n", file_size);                                                                             \
-        }                                                                                                              \
-                                                                                                                       \
-        long file_read;                                                                                                \
-        file_read = fread(file_data, 1, file_size, file_object);                                                       \
-        if (file_read < file_size) {                                                                                   \
-            dief("fread: %s\n", file_name);                                                                            \
-        }                                                                                                              \
-                                                                                                                       \
-        GLuint gl_buffer;                                                                                              \
-        glGenBuffers(1, &gl_buffer);                                                                                   \
-        glBindBuffer(TARGET, gl_buffer);                                                                               \
-        glBufferData(TARGET, file_size, file_data, GL_STATIC_DRAW);                                                    \
-                                                                                                                       \
-        std::make_tuple(gl_buffer, file_size);                                                                         \
+        buffer;                                                                                                        \
     })                                                                                                                 \
-    /* GL_BUFFER_FROM_FILE */
+    /* X_MAKE_BUFFER */
 
-#   define DECLARE_BUFFER(PREFIX, TARGET, PATTERN, ...)                                                                \
-    GLuint PREFIX;                                                                                                     \
-    GLsizeiptr PREFIX ## _size;                                                                                        \
-    std::tie(PREFIX, PREFIX ## _size) = GL_BUFFER_FROM_FILE(TARGET, PATTERN, ## __VA_ARGS__);                          \
-    (void)0                                                                                                            \
-    /* DECLARE_BUFFER */
-
-    DECLARE_BUFFER(gl_buffer_node_x, GL_SHADER_STORAGE_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "node", "x", "f32");
-    DECLARE_BUFFER(gl_buffer_node_y, GL_SHADER_STORAGE_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "node", "y", "f32");
-    // DECLARE_BUFFER(gl_buffer_node_date, GL_SHADER_STORAGE_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "node", "date", "u32");
-    // DECLARE_BUFFER(gl_buffer_node_nmaintainers, GL_SHADER_STORAGE_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "node", "nmaintainers", "u32");
-    // DECLARE_BUFFER(gl_buffer_node_cve, GL_SHADER_STORAGE_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "node", "cve", "u32");
-    DECLARE_BUFFER(gl_buffer_edge_index, GL_ELEMENT_ARRAY_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "edge", "index", "2u32");
-
-#   undef DECLARE_BUFFER
-
-#   undef GL_BUFFER_FROM_FILE
-
-    
-    //--- Atomic Counter Buffers
-
-#   define X_MAKE_ATOMIC_COUNTER_BUFFER(SIZE, INTERNALFORMAT, FORMAT, TYPE)                                            \
+#   define X_BUFFER_FROM_FILE(TARGET, PATTERN, ...)                                                                    \
     ({                                                                                                                 \
-        GLuint gl_buffer;                                                                                              \
-        glGenBuffers(1, &gl_buffer);                                                                                   \
+        char name[256];                                                                                                \
+        snprintf(name, sizeof(name), PATTERN, ## __VA_ARGS__);                                                         \
                                                                                                                        \
-        GLenum target = GL_ATOMIC_COUNTER_BUFFER;                                                                      \
-        glBindBuffer(target, gl_buffer);                                                                               \
+        std::fprintf(stderr, "Read from %s\n", name);                                                                  \
                                                                                                                        \
-        GLsizeiptr size = 1024 * sizeof(GLuint);                                                                       \
-        GLvoid *data = nullptr;                                                                                        \
-        GLenum usage = GL_DYNAMIC_COPY;                                                                                \
-        glBufferData(target, size, data, usage);                                                                       \
+        FILE *file = fopen(name, "rb");                                                                                \
+        if (!file) {                                                                                                   \
+            dief("fopen: %s\n", name);                                                                                 \
+        }                                                                                                              \
                                                                                                                        \
-        GLenum internalformat = GL_R32UI;                                                                              \
-        GLenum format = GL_RED_INTEGER;                                                                                \
-        GLenum type = GL_UNSIGNED_INT;                                                                                 \
-        glClearBufferData(target, internalformat, format, type, data);                                                 \
+        int success;                                                                                                   \
+        success = fseek(file, 0L, SEEK_END);                                                                           \
+        if (success != 0) {                                                                                            \
+            dief("fseek: %s\n", name);                                                                                 \
+        }                                                                                                              \
                                                                                                                        \
-        gl_buffer;                                                                                                     \
+        long size;                                                                                                     \
+        size = ftell(file);                                                                                            \
+        if (size < 0) {                                                                                                \
+            dief("ftell: %s\n", name);                                                                                 \
+        }                                                                                                              \
+                                                                                                                       \
+        success = fseek(file, 0L, SEEK_SET);                                                                           \
+        if (success != 0) {                                                                                            \
+            dief("fseek: %s\n", name);                                                                                 \
+        }                                                                                                              \
+                                                                                                                       \
+        void *data;                                                                                                    \
+        data = new char[size];                                                                                         \
+        if (data == nullptr) {                                                                                         \
+            dief("new: %ld\n", size);                                                                                  \
+        }                                                                                                              \
+                                                                                                                       \
+        long nread;                                                                                                    \
+        nread = fread(data, 1, size, file);                                                                            \
+        if (nread < size) {                                                                                            \
+            dief("fread: %s\n", name);                                                                                 \
+        }                                                                                                              \
+                                                                                                                       \
+        GLenum target = (TARGET);                                                                                      \
+        glBufferData(target, size, data, GL_STATIC_DRAW);                                                              \
+                                                                                                                       \
+        size;                                                                                                          \
     })                                                                                                                 \
-    /* X_MAKE_ATOMIC_COUNTER_BUFFER */
+    /* X_BUFFER_FROM_FILE */
 
-    // GLuint gl_buffer_scratch = X_MAKE_ATOMIC_COUNTER_BUFFER(1024 * sizeof(GLuint), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
-
-
-    //--- Shader Storage Buffer Objects (SSBOs)
-
-#   define X_MAKE_SSBO(SIZE, INTERNALFORMAT, FORMAT, TYPE)                                                             \
+#   define X_BUFFER_FROM_ZERO(TARGET, USAGE, SIZE, INTERNALFORMAT, FORMAT, TYPE)                                       \
     ({                                                                                                                 \
-        GLuint gl_buffer;                                                                                              \
-        glGenBuffers(1, &gl_buffer);                                                                                   \
-                                                                                                                       \
-        GLenum target = GL_SHADER_STORAGE_BUFFER;                                                                      \
-        glBindBuffer(target, gl_buffer);                                                                               \
-                                                                                                                       \
+        GLenum target = (TARGET);                                                                                      \
         GLsizeiptr size = (SIZE);                                                                                      \
         GLvoid *data = nullptr;                                                                                        \
-        GLenum usage = GL_DYNAMIC_COPY;                                                                                \
+        GLenum usage = (USAGE);                                                                                        \
         glBufferData(target, size, data, usage);                                                                       \
                                                                                                                        \
         GLenum internalformat = (INTERNALFORMAT);                                                                      \
@@ -597,13 +474,121 @@ int main(int argc, char **argv) {
         GLenum type = (TYPE);                                                                                          \
         glClearBufferData(target, internalformat, format, type, data);                                                 \
                                                                                                                        \
-        gl_buffer;                                                                                                     \
+        size;                                                                                                          \
     })                                                                                                                 \
-    /* X_MAKE_SSBO */
+    /* X_BUFFER_FROM_ZERO */
 
-    // GLuint gl_buffer_in_degree = X_MAKE_SSBO(gl_buffer_node_x_size / sizeof(GLfloat) * sizeof(GLuint), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
+    GLsizeiptr fg_edge_count = 0;
+    GLsizeiptr fg_node_count = 0;
 
-#   undef X_MAKE_SSBO
+    GLuint gl_buffers[opt_fg_buffer_count];
+    GLsizeiptr gl_buffer_sizes[opt_fg_buffer_count];
+
+    for (GLint i=0, n=opt_fg_buffer_count; i<n; ++i) {
+        std::string &opt_fg_buffer_kind = opt_fg_buffer_kinds[i];
+        std::string &opt_fg_buffer_file = opt_fg_buffer_files[i];
+        std::string &opt_fg_buffer_size = opt_fg_buffer_sizes[i];
+        std::string &opt_fg_buffer_type = opt_fg_buffer_types[i];
+
+        if (opt_fg_buffer_kind == "ATTRIBUTE") {
+            gl_buffers[i] = X_MAKE_BUFFER(GL_SHADER_STORAGE_BUFFER);
+            gl_buffer_sizes[i] = X_BUFFER_FROM_FILE(GL_SHADER_STORAGE_BUFFER, "%s", opt_fg_buffer_file.c_str());
+
+            if (opt_fg_buffer_type == "GL_FLOAT" && opt_fg_buffer_size == "N") {
+                fg_node_count = gl_buffer_sizes[i] / sizeof(GLfloat);
+
+            } else if (opt_fg_buffer_type == "GL_UNSIGNED_INT" && opt_fg_buffer_size == "N") {
+                fg_node_count = gl_buffer_sizes[i] / sizeof(GLuint);
+
+            } else {
+                dief("Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
+                    opt_fg_buffer_kind.c_str(), opt_fg_buffer_file.c_str(), opt_fg_buffer_size.c_str(), opt_fg_buffer_type.c_str());
+            }
+
+        } else if (opt_fg_buffer_kind == "ELEMENT") {
+            gl_buffers[i] = X_MAKE_BUFFER(GL_ELEMENT_ARRAY_BUFFER);
+            gl_buffer_sizes[i] = X_BUFFER_FROM_FILE(GL_ELEMENT_ARRAY_BUFFER, "%s", opt_fg_buffer_file.c_str());
+
+            if (opt_fg_buffer_type == "GL_UNSIGNED_INT" && opt_fg_buffer_size == "2E") {
+                fg_edge_count = gl_buffer_sizes[i] / sizeof(GLuint) / 2;
+
+            } else {
+                dief("Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
+                    opt_fg_buffer_kind.c_str(), opt_fg_buffer_file.c_str(), opt_fg_buffer_size.c_str(), opt_fg_buffer_type.c_str());
+            }
+
+        }
+    }
+
+    if (fg_edge_count == 0) {
+        dief("Failed to read any edges");
+    }
+
+    if (fg_node_count == 0) {
+        dief("Failed to read any nodes");
+    }
+
+    for (GLint i=0, n=opt_fg_buffer_count; i<n; ++i) {
+        std::string &opt_fg_buffer_kind = opt_fg_buffer_kinds[i];
+        std::string &opt_fg_buffer_file = opt_fg_buffer_files[i];
+        std::string &opt_fg_buffer_size = opt_fg_buffer_sizes[i];
+        std::string &opt_fg_buffer_type = opt_fg_buffer_types[i];
+        std::string &opt_fg_buffer_name = opt_fg_buffer_names[i];
+
+        if (opt_fg_buffer_kind == "ATOMIC") {
+            gl_buffers[i] = X_MAKE_BUFFER(GL_ATOMIC_COUNTER_BUFFER);
+
+            if (opt_fg_buffer_type == "GL_UNSIGNED_INT") {
+                gl_buffer_sizes[i] = X_BUFFER_FROM_ZERO(GL_ATOMIC_COUNTER_BUFFER, GL_DYNAMIC_COPY, std::stoi(opt_fg_buffer_size), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
+
+            } else {
+                dief("Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
+                    opt_fg_buffer_kind.c_str(), opt_fg_buffer_file.c_str(), opt_fg_buffer_size.c_str(), opt_fg_buffer_type.c_str());
+            }
+
+        } else if (opt_fg_buffer_kind == "SCRATCH") {
+            gl_buffers[i] = X_MAKE_BUFFER(GL_SHADER_STORAGE_BUFFER);
+
+            if (opt_fg_buffer_type == "GL_UNSIGNED_INT" && opt_fg_buffer_size == "N") {
+                gl_buffer_sizes[i] = X_BUFFER_FROM_ZERO(GL_SHADER_STORAGE_BUFFER, GL_DYNAMIC_COPY, fg_node_count * sizeof(GLuint), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
+
+            } else {
+                dief("Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
+                    opt_fg_buffer_kind.c_str(), opt_fg_buffer_file.c_str(), opt_fg_buffer_size.c_str(), opt_fg_buffer_type.c_str());
+            }
+
+        }
+    }
+
+#   undef X_BUFFER_FROM_ZERO
+#   undef X_BUFFER_FROM_FILE
+#   undef X_MAKE_BUFFER
+
+
+    std::fprintf(stderr, "=== Buffer Stats\n");
+    std::fprintf(stderr, "Number of Buffers: %d\n", opt_fg_buffer_count);
+    std::fprintf(stderr, "Number of Nodes: %d\n", (int)fg_node_count);
+    std::fprintf(stderr, "Number of Edges: %d\n", (int)fg_edge_count);
+
+    for (GLint i=0, n=opt_fg_buffer_count; i<n; ++i) {
+        std::string &opt_fg_buffer_kind = opt_fg_buffer_kinds[i];
+        std::string &opt_fg_buffer_file = opt_fg_buffer_files[i];
+        std::string &opt_fg_buffer_size = opt_fg_buffer_sizes[i];
+        std::string &opt_fg_buffer_type = opt_fg_buffer_types[i];
+        std::string &opt_fg_buffer_name = opt_fg_buffer_names[i];
+
+        GLuint gl_buffer = gl_buffers[i];
+        GLsizeiptr gl_buffer_size = gl_buffer_sizes[i];
+
+        std::fprintf(stderr, "--- Buffer %d\n", i);
+        std::fprintf(stderr, "kind: %s\n", opt_fg_buffer_kind.c_str());
+        std::fprintf(stderr, "file: %s\n", opt_fg_buffer_file.c_str());
+        std::fprintf(stderr, "size: %s\n", opt_fg_buffer_size.c_str());
+        std::fprintf(stderr, "type: %s\n", opt_fg_buffer_type.c_str());
+        std::fprintf(stderr, "name: %s\n", opt_fg_buffer_name.c_str());
+        std::fprintf(stderr, "gl_buffer: %u\n", gl_buffer);
+        std::fprintf(stderr, "gl_buffer_size: %zu\n", gl_buffer_size);
+    }
 
 
     //--- Shaders
@@ -629,6 +614,9 @@ int main(int argc, char **argv) {
             GLchar *gl_shader_info_log = new GLchar[gl_shader_info_log_length];                                        \
             glGetShaderInfoLog(shader, gl_shader_info_log_length, &gl_shader_info_log_length, gl_shader_info_log);     \
                                                                                                                        \
+            for (GLint i=0, n=count; i<n; ++i) { \
+                std::fprintf(stderr, "%s", string[i]); \
+            } \
             dief("Failed to compile:%s: %s\n",                                                                         \
                 #SHADERTYPE, gl_shader_info_log);                                                                      \
         }                                                                                                              \
@@ -637,9 +625,9 @@ int main(int argc, char **argv) {
     })                                                                                                                 \
     /* X_MAKE_SHADER */
 
-    GLuint gl_shader_vertex = X_MAKE_SHADER(GL_VERTEX_SHADER, opt_common_shader.c_str(), opt_vertex_shader.c_str());
-    GLuint gl_shader_geometry = X_MAKE_SHADER(GL_GEOMETRY_SHADER, opt_common_shader.c_str(), opt_geometry_shader.c_str());
-    GLuint gl_shader_fragment = X_MAKE_SHADER(GL_FRAGMENT_SHADER, opt_common_shader.c_str(), opt_fragment_shader.c_str());
+    GLuint gl_shader_vertex = X_MAKE_SHADER(GL_VERTEX_SHADER, opt_fg_shader_common.c_str(), opt_fg_shader_vertex.c_str());
+    GLuint gl_shader_geometry = X_MAKE_SHADER(GL_GEOMETRY_SHADER, opt_fg_shader_common.c_str(), opt_fg_shader_geometry.c_str());
+    GLuint gl_shader_fragment = X_MAKE_SHADER(GL_FRAGMENT_SHADER, opt_fg_shader_common.c_str(), opt_fg_shader_fragment.c_str());
 
 #   undef X_MAKE_SHADER
 
@@ -692,69 +680,59 @@ int main(int argc, char **argv) {
     })                                                                                                                 \
     /* X_BIND_BUFFER */
 
-    X_BIND_BUFFER(gl_program, GL_SHADER_STORAGE_BLOCK, "_fg_NodeX_Block", GL_SHADER_STORAGE_BUFFER, gl_buffer_node_x);
-    X_BIND_BUFFER(gl_program, GL_SHADER_STORAGE_BLOCK, "_fg_NodeY_Block", GL_SHADER_STORAGE_BUFFER, gl_buffer_node_y);
+    for (GLint i=0, n=opt_fg_buffer_count; i<n; ++i) {
+        std::string &opt_fg_buffer_kind = opt_fg_buffer_kinds[i];
+        std::string &opt_fg_buffer_file = opt_fg_buffer_files[i];
+        std::string &opt_fg_buffer_size = opt_fg_buffer_sizes[i];
+        std::string &opt_fg_buffer_name = opt_fg_buffer_names[i];
+        std::string &opt_fg_buffer_type = opt_fg_buffer_types[i];
 
-#   undef X_BIND_SSBO
+        if (opt_fg_buffer_kind == "ATTRIBUTE") {
+            X_BIND_BUFFER(gl_program, GL_SHADER_STORAGE_BLOCK, opt_fg_buffer_name.c_str(), GL_SHADER_STORAGE_BUFFER, gl_buffers[i]);
 
+        } else if (opt_fg_buffer_kind == "SCRATCH") {
+            X_BIND_BUFFER(gl_program, GL_SHADER_STORAGE_BLOCK, opt_fg_buffer_name.c_str(), GL_SHADER_STORAGE_BUFFER, gl_buffers[i]);
 
-    //--- Vertex Attributes
+        } else if (opt_fg_buffer_kind == "ATOMIC") {
+            GLenum target = GL_ATOMIC_COUNTER_BUFFER;
+            GLuint index = 0;
+            GLuint buffer = gl_buffers[i];
+            glBindBufferBase(target, index, buffer);
 
-#   define GL_VERTEX_ATTRIBUTE(BUFFER, INDEX, TYPE)                                                                    \
-    ({                                                                                                                 \
-        GLenum target = GL_ARRAY_BUFFER;                                                                               \
-        GLuint buffer = BUFFER;                                                                                        \
-        glBindBuffer(target, buffer);                                                                                  \
-                                                                                                                       \
-        GLuint index = INDEX;                                                                                          \
-        GLint size = 1;                                                                                                \
-        GLenum type = TYPE;                                                                                            \
-        GLboolean normalized = GL_FALSE;                                                                               \
-        GLsizei stride = 0;                                                                                            \
-        GLvoid *pointer = 0;                                                                                           \
-        glVertexAttribPointer(index, size, type, normalized, stride, pointer);                                         \
-                                                                                                                       \
-        glEnableVertexAttribArray(index);                                                                              \
-    })                                                                                                                 \
-    /* GL_VERTEX_ATTRIBUTE */
+        }
+    }
 
-    // GL_VERTEX_ATTRIBUTE(gl_buffer_node_x, 0, GL_FLOAT);
-    // GL_VERTEX_ATTRIBUTE(gl_buffer_node_y, 1, GL_FLOAT);
-    // GL_VERTEX_ATTRIBUTE(gl_buffer_node_date, 2, GL_UNSIGNED_INT);
-    // GL_VERTEX_ATTRIBUTE(gl_buffer_node_nmaintainers, 3, GL_UNSIGNED_INT);
-    // GL_VERTEX_ATTRIBUTE(gl_buffer_node_cve, 4, GL_UNSIGNED_INT);
-
-#   undef GL_VERTEX_ATTRIBUTE
+#   undef X_BIND_BUFFER
 
 
     //--- Uniforms
 
-#   define X_UNIFORM(PROGRAM, NAME, SETTER, VALUE)                                                                     \
+#   define X_UNIFORM1F(PROGRAM, NAME, VALUE)                                                                     \
     ({                                                                                                                 \
         GLint location;                                                                                                \
         GLuint program = (PROGRAM);                                                                                    \
         const GLchar *name = (NAME);                                                                                   \
         location = glGetUniformLocation(program, name);                                                                \
                                                                                                                        \
-        (SETTER)(location, (VALUE));                                                                                   \
+        glUniform1f(location, (VALUE));                                                                                   \
     })                                                                                                                 \
     /* X_UNIFORM */
 
-    X_UNIFORM(gl_program, "uTranslateX", glUniform1f, -1.0f * opt_tile_x);
-    X_UNIFORM(gl_program, "uTranslateY", glUniform1f, -1.0f * opt_tile_y);
-    X_UNIFORM(gl_program, "uScale", glUniform1f, std::pow(2.0f, opt_tile_z));
+    X_UNIFORM1F(gl_program, "uTranslateX", -1.0f * opt_fg_tile_x);
+    X_UNIFORM1F(gl_program, "uTranslateY", -1.0f * opt_fg_tile_y);
+    X_UNIFORM1F(gl_program, "uScale", std::pow(2.0f, opt_fg_tile_z));
 
 #   undef X_UNIFORM
 
     //--- Render
 
     ({
-        GLenum target = GL_ELEMENT_ARRAY_BUFFER;
-        GLuint buffer = gl_buffer_edge_index;
-        glBindBuffer(target, buffer);
+        // GLenum target = GL_ELEMENT_ARRAY_BUFFER;
+        // GLuint buffer = gl_buffer_edge_index;
+        // glBindBuffer(target, buffer);
 
         GLenum mode = GL_LINES;
-        GLsizei count = gl_buffer_edge_index_size / sizeof(GLuint);
+        GLsizei count = fg_edge_count * 2;
         GLenum type = GL_UNSIGNED_INT;
         GLvoid *indices = 0;
         std::fprintf(stderr, "glDrawElements(0x%x, %u, 0x%x, %p)\n", mode, count, type, indices);
@@ -763,6 +741,37 @@ int main(int argc, char **argv) {
 
 
     //--- Query Buffers
+
+    for (GLint i=0, n=opt_fg_buffer_count; i<n; ++i) {
+        std::string &opt_fg_buffer_kind = opt_fg_buffer_kinds[i];
+        std::string &opt_fg_buffer_file = opt_fg_buffer_files[i];
+        std::string &opt_fg_buffer_size = opt_fg_buffer_sizes[i];
+        std::string &opt_fg_buffer_name = opt_fg_buffer_names[i];
+        std::string &opt_fg_buffer_type = opt_fg_buffer_types[i];
+
+        if (opt_fg_buffer_kind == "ATOMIC") {
+            if (opt_fg_buffer_type == "GL_UNSIGNED_INT") {
+                GLenum target = GL_ATOMIC_COUNTER_BUFFER;
+                GLenum buffer = gl_buffers[i];
+                glBindBuffer(target, buffer);
+
+                GLuint *data;
+                GLintptr offset = 0;
+                GLsizeiptr size = gl_buffer_sizes[i];
+                data = new GLuint[size];
+                glGetBufferSubData(target, offset, size, static_cast<void *>(data));
+                
+                for (GLint i=0, n=size/sizeof(*data); i<n; ++i) {
+                    std::fprintf(stderr, "Atomic[%d] = %u\n", i, data[i]);
+                }
+                
+            } else {
+                dief("can't query atomic");
+            }
+
+        }
+    }
+
 
     // ({
     //     GLenum target = GL_ATOMIC_COUNTER_BUFFER;
@@ -791,11 +800,11 @@ int main(int argc, char **argv) {
 
         GLint x = 0;
         GLint y = 0;
-        GLsizei width = opt_resolution_x;
-        GLsizei height = opt_resolution_y;
+        GLsizei width = opt_fg_tile_width;
+        GLsizei height = opt_fg_tile_height;
         GLenum format = GL_RGBA;
         GLenum type = GL_UNSIGNED_BYTE;
-        GLvoid *data = new GLchar[4 * opt_resolution_x * opt_resolution_y];
+        GLvoid *data = new GLchar[4 * opt_fg_tile_width * opt_fg_tile_height];
         glReadPixels(x, y, width, height, format, type, data);
 
         std::make_tuple(width, height, data);
@@ -836,13 +845,13 @@ int main(int argc, char **argv) {
     //--- Write JPEG to Disk
 
     ({
-        GLchar file_name[128];
-        snprintf(file_name, sizeof(file_name), "%s", opt_output_file.c_str());
+        GLchar name[128];
+        snprintf(name, sizeof(name), "%s", opt_fg_output.c_str());
 
-        FILE *file = fopen(file_name, "wb");
+        FILE *file = fopen(name, "wb");
         fwrite(jpeg.data(), 1, jpeg.size(), file);
 
-        fprintf(stderr, "Wrote %zu bytes to %s\n", jpeg.size(), file_name);
+        fprintf(stderr, "Wrote %zu bytes to %s\n", jpeg.size(), name);
     });
 
     return 0;
