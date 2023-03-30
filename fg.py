@@ -189,7 +189,7 @@ def main(
         for line in f:
             line = line.rstrip()
             LINE(line)
-    
+
     if g._scratch_atomic_exists:
         APPEND('FG_BUFFER',
             KIND='ATOMIC',

@@ -660,7 +660,7 @@ int main(int argc, char **argv) {
         gl_program;
     });
 
-    
+
     //--- Node SSBOs
 
 #   define X_BIND_BUFFER(PROGRAM, INTERFACE, NAME, TARGET, BUFFER)                                                     \
