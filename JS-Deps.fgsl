@@ -1,0 +1,28 @@
+#version 460 core
+precision mediump float;
+
+uniform float uTranslateX;
+uniform float uTranslateY;
+uniform float uScale;
+
+#pragma fg scratch(atomic_uint in_degree_max)
+#pragma fg scratch(atomic_uint out_degree_max)
+#pragma fg scratch(uint in_degree[N])
+#pragma fg scratch(uint out_degree[N])
+
+#pragma fg attribute(float x[N])
+#pragma fg attribute(float y[N])
+#pragma fg attribute(uint date[N])
+
+#pragma fg shader(positional)
+fg_NodePosition = vec3(x[fg_NodeIndex], y[fg_NodeIndex], 0.);
+
+#pragma fg shader(relational)
+uint od = 1 + atomicAdd(out_degree[fg_SourceIndex], 1);
+atomicCounterMax(out_degree_max, od);
+
+uint id = 1 + atomicAdd(in_degree[fg_TargetIndex], 1);
+atomicCounterMax(in_degree_max, id);
+
+#pragma fg shader(appearance)
+fg_FragColor = vec4(1., 1., 1., 1.);

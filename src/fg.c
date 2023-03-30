@@ -91,12 +91,12 @@ int main(int argc, char **argv) {
 
     // Configurable values
 
-#   define OPTION(parse, default, format, ...)                                                                         \
+#   define OPTION(PARSE, DEFAULT, FORMAT, ...)                                                                         \
     ({                                                                                                                 \
         char name[128];                                                                                                \
-        std::snprintf(name, sizeof(name), format, ## __VA_ARGS__);                                                     \
+        std::snprintf(name, sizeof(name), FORMAT, ## __VA_ARGS__);                                                     \
         char *s = getenv(name);                                                                                        \
-        s ? parse(s) : default;                                                                                        \
+        s ? PARSE(s) : (DEFAULT);                                                                                        \
     })                                                                                                                 \
     /**/
 
@@ -106,6 +106,9 @@ int main(int argc, char **argv) {
     GLfloat opt_tile_y = OPTION(std::stof, 1.0f, "TILE_Y");
     GLfloat opt_tile_z = OPTION(std::stof, 2.0f, "TILE_Z");
     std::string opt_output_file = OPTION(std::string, "out.jpg", "OUTPUT");
+
+    std::string opt_common_shader = OPTION(std::string, dief("opt_common_shader"), "FG_SHADER_COMMON");
+
     std::string opt_common_shader = OPTION(std::string, R"EOF(
         #version 460 core
         precision mediump float;
@@ -117,25 +120,34 @@ int main(int argc, char **argv) {
         layout (binding=0, offset=0) uniform atomic_uint in_degree_max;
         layout (binding=0, offset=4) uniform atomic_uint out_degree_max;
 
-        layout (std430, binding=1) buffer InDegree {
-            uint in_degree[];
+        layout (std430, binding=0) buffer _fg_NodeX_Block {
+            float fg_NodeX[];
         };
 
-        layout (std430, binding=2) buffer OutDegree {
-            uint out_degree[];
+        layout (std430, binding=1) buffer _fg_NodeY_Block {
+            float fg_NodeY[];
         };
+
+        layout (std430, binding=2) buffer _fg_NodeDate_Block {
+            float fg_NodeDate[];
+        };
+
+        // layout (std430, binding=1) buffer InDegree {
+        //     uint in_degree[];
+        // };
+
+        // layout (std430, binding=2) buffer OutDegree {
+        //     uint out_degree[];
+        // };
 
     )EOF", "COMMON");
     std::string opt_vertex_shader = OPTION(std::string, R"EOF(
-        layout (location=0) in float x;
-        layout (location=1) in float y;
-        layout (location=2) in uint date;
-        layout (location=3) in uint nmaintainers;
-        layout (location=4) in uint cve;
-
         out uint i;
 
         void main() {
+            float x = fg_NodeX[gl_VertexID];
+            float y = fg_NodeY[gl_VertexID];
+
             gl_Position.xy = vec2(x, y);
 
             // Apply tile transformations
@@ -157,8 +169,8 @@ int main(int argc, char **argv) {
         in uint i[];
 
         void main() {
-            atomicCounterMax(out_degree_max, atomicAdd(out_degree[i[0]], 1));
-            atomicCounterMax(in_degree_max, atomicAdd(in_degree[i[1]], 1));
+            // atomicCounterMax(out_degree_max, atomicAdd(out_degree[i[0]], 1));
+            // atomicCounterMax(in_degree_max, atomicAdd(in_degree[i[1]], 1));
 
             gl_Position = gl_in[0].gl_Position;
             gl_PrimitiveID = -(1 + int(i[0]));
@@ -189,10 +201,10 @@ int main(int argc, char **argv) {
                 ? -gl_PrimitiveID - 1
                 : +gl_PrimitiveID - 1;
 
-            uint id = in_degree[i];
-            uint od = out_degree[i];
+            // uint id = in_degree[i];
+            // uint od = out_degree[i];
 
-            if (od < id) discard;
+            // if (od < id) discard;
             gl_FragColor = vec4(1., 1., 1., 1.);
         }
     )EOF", "FRAGMENT");
@@ -244,17 +256,23 @@ int main(int argc, char **argv) {
 
     // Print out EGL constants
 
-#   define X(var, constant)                                                                                            \
-    char const *var;                                                                                                   \
-    var = eglQueryString(egl_display, constant);                                                                       \
-    std::fprintf(stderr, #constant ": %s\n", var)
+#   define X_QUERY(DISPLAY, NAME)                                                                                      \
+    ({                                                                                                                 \
+        char const *string;                                                                                            \
+        EGLDisplay display = (DISPLAY);                                                                                \
+        EGLint name = (NAME);                                                                                          \
+        string = eglQueryString(display, name);                                                                        \
+        std::fprintf(stderr, "%s: %s\n",                                                                               \
+            #NAME, string);                                                                                            \
+    })                                                                                                                 \
+    /* X_QUERY */
 
-    X(egl_version, EGL_VERSION);
-    X(egl_vendor, EGL_VENDOR);
-    X(egl_client_apis, EGL_CLIENT_APIS);
-    X(egl_extensions, EGL_EXTENSIONS);
+    X_QUERY(egl_display, EGL_VERSION);
+    X_QUERY(egl_display, EGL_VENDOR);
+    X_QUERY(egl_display, EGL_CLIENT_APIS);
+    X_QUERY(egl_display, EGL_EXTENSIONS);
 
-#   undef X
+#   undef X_QUERY
 
 
     // We have to tell EGL that we'll be using OpenGL and not GLES
@@ -301,17 +319,22 @@ int main(int argc, char **argv) {
 
     // Print out OpenGL constants
 
-#   define X(var, constant)                                                                                            \
-    const GLubyte *var;                                                                                                \
-    var = glGetString(constant);                                                                                       \
-    std::fprintf(stderr, #constant ": %s\n", var)
+#   define X_QUERY(NAME)                                                                                               \
+    ({                                                                                                                 \
+        const GLubyte *string;                                                                                         \
+        GLenum name = (NAME);                                                                                          \
+        string = glGetString(name);                                                                                    \
+        std::fprintf(stderr, "%s: %s\n",                                                                               \
+            #NAME, string);                                                                                            \
+    })                                                                                                                 \
+    /* X_QUERY */
 
-    X(gl_vendor, GL_VENDOR);
-    X(gl_version, GL_VERSION);
-    X(gl_renderer, GL_RENDERER);
-    X(gl_shading_language_version, GL_SHADING_LANGUAGE_VERSION);
+    X_QUERY(GL_VENDOR);
+    X_QUERY(GL_VERSION);
+    X_QUERY(GL_RENDERER);
+    X_QUERY(GL_SHADING_LANGUAGE_VERSION);
 
-#   undef X
+#   undef X_QUERY
 
 
     // We should print out any debugging information
@@ -515,11 +538,11 @@ int main(int argc, char **argv) {
     (void)0                                                                                                            \
     /* DECLARE_BUFFER */
 
-    DECLARE_BUFFER(gl_buffer_node_x, GL_ARRAY_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "node", "x", "f32");
-    DECLARE_BUFFER(gl_buffer_node_y, GL_ARRAY_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "node", "y", "f32");
-    DECLARE_BUFFER(gl_buffer_node_date, GL_ARRAY_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "node", "date", "u32");
-    DECLARE_BUFFER(gl_buffer_node_nmaintainers, GL_ARRAY_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "node", "nmaintainers", "u32");
-    DECLARE_BUFFER(gl_buffer_node_cve, GL_ARRAY_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "node", "cve", "u32");
+    DECLARE_BUFFER(gl_buffer_node_x, GL_SHADER_STORAGE_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "node", "x", "f32");
+    DECLARE_BUFFER(gl_buffer_node_y, GL_SHADER_STORAGE_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "node", "y", "f32");
+    // DECLARE_BUFFER(gl_buffer_node_date, GL_SHADER_STORAGE_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "node", "date", "u32");
+    // DECLARE_BUFFER(gl_buffer_node_nmaintainers, GL_SHADER_STORAGE_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "node", "nmaintainers", "u32");
+    // DECLARE_BUFFER(gl_buffer_node_cve, GL_SHADER_STORAGE_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "node", "cve", "u32");
     DECLARE_BUFFER(gl_buffer_edge_index, GL_ELEMENT_ARRAY_BUFFER, "%s,kind=%s,name=%s,type=%s.bin", "JS-Deps", "edge", "index", "2u32");
 
 #   undef DECLARE_BUFFER
@@ -529,91 +552,96 @@ int main(int argc, char **argv) {
     
     //--- Atomic Counter Buffers
 
-    GLuint gl_buffer_atomic_counter = ({
-        GLuint gl_buffer;
-        glGenBuffers(1, &gl_buffer);
+#   define X_MAKE_ATOMIC_COUNTER_BUFFER(SIZE, INTERNALFORMAT, FORMAT, TYPE)                                            \
+    ({                                                                                                                 \
+        GLuint gl_buffer;                                                                                              \
+        glGenBuffers(1, &gl_buffer);                                                                                   \
+                                                                                                                       \
+        GLenum target = GL_ATOMIC_COUNTER_BUFFER;                                                                      \
+        glBindBuffer(target, gl_buffer);                                                                               \
+                                                                                                                       \
+        GLsizeiptr size = 1024 * sizeof(GLuint);                                                                       \
+        GLvoid *data = nullptr;                                                                                        \
+        GLenum usage = GL_DYNAMIC_COPY;                                                                                \
+        glBufferData(target, size, data, usage);                                                                       \
+                                                                                                                       \
+        GLenum internalformat = GL_R32UI;                                                                              \
+        GLenum format = GL_RED_INTEGER;                                                                                \
+        GLenum type = GL_UNSIGNED_INT;                                                                                 \
+        glClearBufferData(target, internalformat, format, type, data);                                                 \
+                                                                                                                       \
+        gl_buffer;                                                                                                     \
+    })                                                                                                                 \
+    /* X_MAKE_ATOMIC_COUNTER_BUFFER */
 
-        GLenum target = GL_ATOMIC_COUNTER_BUFFER;
-        glBindBuffer(target, gl_buffer);
-
-        GLsizeiptr size = 1024 * sizeof(GLuint);
-        GLvoid *data = nullptr;
-        GLenum usage = GL_DYNAMIC_COPY;
-        glBufferData(target, size, data, usage);
-
-        GLenum internalformat = GL_R32UI;
-        GLenum format = GL_RED_INTEGER;
-        GLenum type = GL_UNSIGNED_INT;
-        glClearBufferData(target, internalformat, format, type, data);
-
-        GLuint index = 0;
-        glBindBufferBase(target, index, gl_buffer);
-
-        gl_buffer;
-    });
+    // GLuint gl_buffer_scratch = X_MAKE_ATOMIC_COUNTER_BUFFER(1024 * sizeof(GLuint), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
 
 
     //--- Shader Storage Buffer Objects (SSBOs)
 
-    GLuint gl_buffer_in_degree = ({
-        GLuint gl_buffer;
-        glGenBuffers(1, &gl_buffer);
+#   define X_MAKE_SSBO(SIZE, INTERNALFORMAT, FORMAT, TYPE)                                                             \
+    ({                                                                                                                 \
+        GLuint gl_buffer;                                                                                              \
+        glGenBuffers(1, &gl_buffer);                                                                                   \
+                                                                                                                       \
+        GLenum target = GL_SHADER_STORAGE_BUFFER;                                                                      \
+        glBindBuffer(target, gl_buffer);                                                                               \
+                                                                                                                       \
+        GLsizeiptr size = (SIZE);                                                                                      \
+        GLvoid *data = nullptr;                                                                                        \
+        GLenum usage = GL_DYNAMIC_COPY;                                                                                \
+        glBufferData(target, size, data, usage);                                                                       \
+                                                                                                                       \
+        GLenum internalformat = (INTERNALFORMAT);                                                                      \
+        GLenum format = (FORMAT);                                                                                      \
+        GLenum type = (TYPE);                                                                                          \
+        glClearBufferData(target, internalformat, format, type, data);                                                 \
+                                                                                                                       \
+        gl_buffer;                                                                                                     \
+    })                                                                                                                 \
+    /* X_MAKE_SSBO */
 
-        GLenum target = GL_SHADER_STORAGE_BUFFER;
-        glBindBuffer(target, gl_buffer);
+    // GLuint gl_buffer_in_degree = X_MAKE_SSBO(gl_buffer_node_x_size / sizeof(GLfloat) * sizeof(GLuint), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
 
-        GLsizeiptr size = gl_buffer_node_x_size / sizeof(GLfloat) * sizeof(GLuint);
-        GLvoid *data = nullptr;
-        GLenum usage = GL_DYNAMIC_COPY;
-        glBufferData(target, size, data, usage);
-
-        GLenum internalformat = GL_R32UI;
-        GLenum format = GL_RED_INTEGER;
-        GLenum type = GL_UNSIGNED_INT;
-        glClearBufferData(target, internalformat, format, type, data);
-
-        GLuint index = 1;
-        glBindBufferBase(target, index, gl_buffer);
-
-        gl_buffer;
-    });
+#   undef X_MAKE_SSBO
 
 
     //--- Shaders
 
-#   define GL_SHADER_FROM_STRINGS(TYPE, SOURCE, ...)                                                                   \
+#   define X_MAKE_SHADER(SHADERTYPE, SOURCE, ...)                                                                      \
     ({                                                                                                                 \
-        GLuint gl_shader;                                                                                              \
-                                                                                                                       \
-        gl_shader = glCreateShader(TYPE);                                                                              \
+        GLuint shader;                                                                                                 \
+        GLenum shadertype = (SHADERTYPE);                                                                              \
+        shader = glCreateShader(shadertype);                                                                           \
                                                                                                                        \
         const GLchar *string[] = { SOURCE, ## __VA_ARGS__ };                                                           \
         GLsizei count = sizeof(string) / sizeof(*string);                                                              \
         GLint *length = nullptr;                                                                                       \
-        glShaderSource(gl_shader, count, string, length);                                                              \
-        glCompileShader(gl_shader);                                                                                    \
+        glShaderSource(shader, count, string, length);                                                                 \
+        glCompileShader(shader);                                                                                       \
                                                                                                                        \
         GLint gl_shader_success;                                                                                       \
-        glGetShaderiv(gl_shader, GL_COMPILE_STATUS, &gl_shader_success);                                               \
+        glGetShaderiv(shader, GL_COMPILE_STATUS, &gl_shader_success);                                                  \
         if (gl_shader_success == GL_FALSE) {                                                                           \
             GLint gl_shader_info_log_length;                                                                           \
-            glGetShaderiv(gl_shader, GL_INFO_LOG_LENGTH, &gl_shader_info_log_length);                                  \
+            glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &gl_shader_info_log_length);                                     \
                                                                                                                        \
             GLchar *gl_shader_info_log = new GLchar[gl_shader_info_log_length];                                        \
-            glGetShaderInfoLog(gl_shader, gl_shader_info_log_length, &gl_shader_info_log_length, gl_shader_info_log);  \
+            glGetShaderInfoLog(shader, gl_shader_info_log_length, &gl_shader_info_log_length, gl_shader_info_log);     \
                                                                                                                        \
-            dief("Failed to compile:%s: %s\n", #TYPE, gl_shader_info_log);                                             \
+            dief("Failed to compile:%s: %s\n",                                                                         \
+                #SHADERTYPE, gl_shader_info_log);                                                                      \
         }                                                                                                              \
                                                                                                                        \
-        gl_shader;                                                                                                     \
+        shader;                                                                                                        \
     })                                                                                                                 \
-    /* GL_SHADER_FROM_STRING */
+    /* X_MAKE_SHADER */
 
-    GLuint gl_shader_vertex = GL_SHADER_FROM_STRINGS(GL_VERTEX_SHADER, opt_common_shader.c_str(), opt_vertex_shader.c_str());
-    GLuint gl_shader_geometry = GL_SHADER_FROM_STRINGS(GL_GEOMETRY_SHADER, opt_common_shader.c_str(), opt_geometry_shader.c_str());
-    GLuint gl_shader_fragment = GL_SHADER_FROM_STRINGS(GL_FRAGMENT_SHADER, opt_common_shader.c_str(), opt_fragment_shader.c_str());
+    GLuint gl_shader_vertex = X_MAKE_SHADER(GL_VERTEX_SHADER, opt_common_shader.c_str(), opt_vertex_shader.c_str());
+    GLuint gl_shader_geometry = X_MAKE_SHADER(GL_GEOMETRY_SHADER, opt_common_shader.c_str(), opt_geometry_shader.c_str());
+    GLuint gl_shader_fragment = X_MAKE_SHADER(GL_FRAGMENT_SHADER, opt_common_shader.c_str(), opt_fragment_shader.c_str());
 
-#   undef GL_SHADER_FROM_STRING
+#   undef X_MAKE_SHADER
 
 
     //--- Shader Program
@@ -644,6 +672,31 @@ int main(int argc, char **argv) {
         gl_program;
     });
 
+    
+    //--- Node SSBOs
+
+#   define X_BIND_BUFFER(PROGRAM, INTERFACE, NAME, TARGET, BUFFER)                                                     \
+    ({                                                                                                                 \
+        GLuint program = (PROGRAM);                                                                                    \
+        GLenum interface = (INTERFACE);                                                                                \
+        const GLchar *name = (NAME);                                                                                   \
+        GLuint index = glGetProgramResourceIndex(program, interface, name);                                            \
+        std::fprintf(stderr, "X_BIND_BUFFER: %u = glGetProgramResourceIndex(%u, 0x%x, \"%s\")\n",                      \
+            index, program, interface, name);                                                                          \
+                                                                                                                       \
+        GLenum target = (TARGET);                                                                                      \
+        GLuint buffer = (BUFFER);                                                                                      \
+        glBindBufferBase(target, index, buffer);                                                                       \
+        std::fprintf(stderr, "X_BIND_BUFFER: glBindBufferBase(0x%x, %u, %u)\n",                                        \
+            target, index, buffer);                                                                                    \
+    })                                                                                                                 \
+    /* X_BIND_BUFFER */
+
+    X_BIND_BUFFER(gl_program, GL_SHADER_STORAGE_BLOCK, "_fg_NodeX_Block", GL_SHADER_STORAGE_BUFFER, gl_buffer_node_x);
+    X_BIND_BUFFER(gl_program, GL_SHADER_STORAGE_BLOCK, "_fg_NodeY_Block", GL_SHADER_STORAGE_BUFFER, gl_buffer_node_y);
+
+#   undef X_BIND_SSBO
+
 
     //--- Vertex Attributes
 
@@ -665,25 +718,33 @@ int main(int argc, char **argv) {
     })                                                                                                                 \
     /* GL_VERTEX_ATTRIBUTE */
 
-    GL_VERTEX_ATTRIBUTE(gl_buffer_node_x, 0, GL_FLOAT);
-    GL_VERTEX_ATTRIBUTE(gl_buffer_node_y, 1, GL_FLOAT);
-    GL_VERTEX_ATTRIBUTE(gl_buffer_node_date, 2, GL_UNSIGNED_INT);
-    GL_VERTEX_ATTRIBUTE(gl_buffer_node_nmaintainers, 3, GL_UNSIGNED_INT);
-    GL_VERTEX_ATTRIBUTE(gl_buffer_node_cve, 4, GL_UNSIGNED_INT);
+    // GL_VERTEX_ATTRIBUTE(gl_buffer_node_x, 0, GL_FLOAT);
+    // GL_VERTEX_ATTRIBUTE(gl_buffer_node_y, 1, GL_FLOAT);
+    // GL_VERTEX_ATTRIBUTE(gl_buffer_node_date, 2, GL_UNSIGNED_INT);
+    // GL_VERTEX_ATTRIBUTE(gl_buffer_node_nmaintainers, 3, GL_UNSIGNED_INT);
+    // GL_VERTEX_ATTRIBUTE(gl_buffer_node_cve, 4, GL_UNSIGNED_INT);
 
 #   undef GL_VERTEX_ATTRIBUTE
 
 
     //--- Uniforms
 
-    GLint gl_uniform_translate_x = glGetUniformLocation(gl_program, "uTranslateX");
-    GLint gl_uniform_translate_y = glGetUniformLocation(gl_program, "uTranslateY");
-    GLint gl_uniform_scale = glGetUniformLocation(gl_program, "uScale");
+#   define X_UNIFORM(PROGRAM, NAME, SETTER, VALUE)                                                                     \
+    ({                                                                                                                 \
+        GLint location;                                                                                                \
+        GLuint program = (PROGRAM);                                                                                    \
+        const GLchar *name = (NAME);                                                                                   \
+        location = glGetUniformLocation(program, name);                                                                \
+                                                                                                                       \
+        (SETTER)(location, (VALUE));                                                                                   \
+    })                                                                                                                 \
+    /* X_UNIFORM */
 
-    glUniform1f(gl_uniform_translate_x, -1.0f * opt_tile_x);
-    glUniform1f(gl_uniform_translate_y, -1.0f * opt_tile_y);
-    glUniform1f(gl_uniform_scale, std::pow(2.0f, opt_tile_z));
+    X_UNIFORM(gl_program, "uTranslateX", glUniform1f, -1.0f * opt_tile_x);
+    X_UNIFORM(gl_program, "uTranslateY", glUniform1f, -1.0f * opt_tile_y);
+    X_UNIFORM(gl_program, "uScale", glUniform1f, std::pow(2.0f, opt_tile_z));
 
+#   undef X_UNIFORM
 
     //--- Render
 
@@ -703,18 +764,18 @@ int main(int argc, char **argv) {
 
     //--- Query Buffers
 
-    ({
-        GLenum target = GL_ATOMIC_COUNTER_BUFFER;
-        glBindBuffer(target, gl_buffer_atomic_counter);
+    // ({
+    //     GLenum target = GL_ATOMIC_COUNTER_BUFFER;
+    //     glBindBuffer(target, gl_buffer_scratch);
 
-        GLuint in_degree_max;
+    //     GLuint in_degree_max;
 
-        GLintptr offset = 0;
-        GLsizeiptr size = sizeof(GLuint);
-        glGetBufferSubData(target, offset, size, static_cast<void *>(&in_degree_max));
+    //     GLintptr offset = 0;
+    //     GLsizeiptr size = sizeof(GLuint);
+    //     glGetBufferSubData(target, offset, size, static_cast<void *>(&in_degree_max));
         
-        std::fprintf(stderr, "in_degree_max: %u\n", in_degree_max);
-    });
+    //     std::fprintf(stderr, "in_degree_max: %u\n", in_degree_max);
+    // });
 
 
     //--- Read RGBA Colors
