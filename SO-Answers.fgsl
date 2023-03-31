@@ -12,25 +12,66 @@
 #define JAN_01_2015 1420088400
 #define JAN_01_2016 1451624400
 
-#pragma fg shader(positional)
-float x = X[fg_NodeIndex];
-float y = Y[fg_NodeIndex];
+// #define LAYOUT 1
+#define LAYOUT 2
 
-fg_NodePosition = vec3(x, y, 0.);
+#pragma fg shader(positional)
+void main() {
+    float x = X[fg_NodeIndex];
+    float y = Y[fg_NodeIndex];
+
+    fg_NodePosition = vec3(x, y, 0.);
+}
 
 
 #pragma fg shader(relational)
-#pragma fg scratch(uint node_when_min[N])
+void main() {
+    const uint when = When[fg_EdgeIndex];
 
-const uint when = When[fg_EdgeIndex];
+    #pragma fg scratch(uint FirstContribution[N])
 
-atomicCompSwap(node_when_min[fg_SourceIndex], 0, when);
-atomicMin(node_when_min[fg_SourceIndex], when);
+    atomicCompSwap(FirstContribution[fg_SourceIndex], 0, when);
+    atomicMin(FirstContribution[fg_SourceIndex], when);
 
-atomicCompSwap(node_when_min[fg_TargetIndex], 0, when);
-atomicMin(node_when_min[fg_TargetIndex], when);
+    atomicCompSwap(FirstContribution[fg_TargetIndex], 0, when);
+    atomicMin(FirstContribution[fg_TargetIndex], when);
+
+    #pragma fg scratch(uint LastContribution[N])
+
+    atomicCompSwap(LastContribution[fg_SourceIndex], 0, when);
+    atomicMax(LastContribution[fg_SourceIndex], when);
+
+    atomicCompSwap(LastContribution[fg_TargetIndex], 0, when);
+    atomicMax(LastContribution[fg_TargetIndex], when);
+
+    #pragma fg scratch(uint CommentsReceived[N])
+    #pragma fg scratch(atomic_uint MaxCommentsReceived)
+    uint cr = 1 + atomicAdd(CommentsReceived[fg_TargetIndex], 1);
+    atomicCounterMax(MaxCommentsReceived, cr);
+
+    #pragma fg scratch(uint CommentsPosted[N])
+    #pragma fg scratch(atomic_uint MaxCommentsPosted)
+    uint cp = 1 + atomicAdd(CommentsPosted[fg_TargetIndex], 1);
+    atomicCounterMax(MaxCommentsPosted, cp);
+
+    if (LAYOUT == 2) {
+        fg_SourcePosition.x = float(FirstContribution[fg_SourceIndex] - AUG_01_2008) / float(MAR_07_2016 - AUG_01_2008);
+        fg_SourcePosition.y = 1. - float(LastContribution[fg_SourceIndex] - AUG_01_2008) / float(MAR_07_2016 - AUG_01_2008);
+
+        fg_TargetPosition.x = float(FirstContribution[fg_TargetIndex] - AUG_01_2008) / float(MAR_07_2016 - AUG_01_2008);
+        fg_TargetPosition.y = 1. - float(LastContribution[fg_TargetIndex] - AUG_01_2008) / float(MAR_07_2016 - AUG_01_2008);
+    }
+}
 
 #pragma fg shader(appearance)
+void main() {
+    bool b1 = CommentsPosted[fg_SourceIndex] >= CommentsReceived[fg_SourceIndex] / 32;
+    
+    const uint sourceSpan = LastContribution[fg_SourceIndex] - FirstContribution[fg_SourceIndex];
+    const uint targetSpan = LastContribution[fg_TargetIndex] - FirstContribution[fg_TargetIndex];
+    bool b2 = targetSpan >= sourceSpan;
 
-fg_FragColor = vec4(0.1);
-fg_FragColor.r = float(node_when_min[fg_SourceIndex] < JAN_01_2011);
+    fg_FragColor = vec4(0.1);
+    fg_FragColor.r = float(b1 || b2);
+    fg_FragColor.g = float(b1 && b2);
+}

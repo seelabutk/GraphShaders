@@ -257,14 +257,6 @@ void main() {{
 
     gl_Position = vec4(fg_NodePosition.xyz, 1.);
 
-    // Apply tile transformations
-    gl_Position.xy *= uScale;
-    gl_Position.xy += vec2(uTranslateX, uTranslateY);
-
-    // Transform xy in [0, 1] to xy in [-1, 1]
-    gl_Position.xy *= 2.;
-    gl_Position.xy -= 1.;
-
     _fg_NodeIndex = fg_NodeIndex;
 }}
     '''
@@ -287,6 +279,22 @@ void main() {{
     vec4 fg_TargetPosition = gl_in[1].gl_Position;
 
 {g.fg_shaders['relational']}
+
+    // Apply tile transformations
+    fg_SourcePosition.xy *= uScale;
+    fg_SourcePosition.xy += vec2(uTranslateX, uTranslateY);
+
+    // Transform xy in [0, 1] to xy in [-1, 1]
+    fg_SourcePosition.xy *= 2.;
+    fg_SourcePosition.xy -= 1.;
+
+    // Apply tile transformations
+    fg_TargetPosition.xy *= uScale;
+    fg_TargetPosition.xy += vec2(uTranslateX, uTranslateY);
+
+    // Transform xy in [0, 1] to xy in [-1, 1]
+    fg_TargetPosition.xy *= 2.;
+    fg_TargetPosition.xy -= 1.;
 
     gl_PrimitiveID = fg_EdgeIndex;
     gl_Position = fg_SourcePosition;
