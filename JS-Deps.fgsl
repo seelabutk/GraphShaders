@@ -1,13 +1,25 @@
+// JS-Deps: Node Package Manager Dependency Graph
+//
+// Nodes are packages. Edges are directed from a package to its dependencies.
+
+// Layout calculated with ForceAtlas2.
 #pragma fg attribute(float X[N])
 #pragma fg attribute(float Y[N])
+
+// Date is the unix timestamp of the latest release.
 #pragma fg attribute(uint Date[N])
+
+// Each package has a number of maintainers listed.
 #pragma fg attribute(uint Devs[N])
+
+// Each package has a boolean for if a CVE is recorded for it.
 #pragma fg attribute(uint Vuln[N])
 
-
+// The earliest and latest recorded dates in the graph.
 #define NOV_09_2010 1289278800
 #define MAR_22_2016 1458619200
 
+// Some helpful unix timestamps.
 #define JAN_01_2011 1293858000
 #define JAN_01_2012 1325394000
 #define JAN_01_2013 1357016400
@@ -19,17 +31,29 @@
 #pragma fg shader(positional)
 float x = X[fg_NodeIndex];
 float y = Y[fg_NodeIndex];
+
+// Normalize date from 0 to 1.
 float date = float(Date[fg_NodeIndex] - NOV_09_2010) / float(MAR_22_2016 - NOV_09_2010);
 
+// Newest packages rendered on top of older packages.
 fg_NodePosition = vec3(x, y, -date);
 
 
 #pragma fg shader(relational)
-#pragma fg scratch(atomic_uint in_degree_max)
-#pragma fg scratch(atomic_uint out_degree_max)
+
+// We want to calculate the in-degree (number of packages depending on me) and
+// the out-degree (number of packages I depend on) for each package.
 #pragma fg scratch(uint in_degree[N])
+
 #pragma fg scratch(uint out_degree[N])
 
+// We also want to know some summary statistics.
+#pragma fg scratch(atomic_uint in_degree_max)
+    // = 79,037
+#pragma fg scratch(atomic_uint out_degree_max)
+    // = 389
+
+// Update in- and out-degree buffers.
 uint od = 1 + atomicAdd(out_degree[fg_SourceIndex], 1);
 atomicCounterMax(out_degree_max, od);
 
@@ -38,22 +62,27 @@ atomicCounterMax(in_degree_max, id);
 
 #pragma fg shader(appearance)
 
-// if ( ((gl_PrimitiveID + 100) % 1000 ) < 0) {
-//     discard;
-// }
+#pragma fg scratch(atomic_uint fragments)
+    // = 321,136,033
+atomicCounterAdd(fragments, 1);
+    // = 319,365,700
 
-#pragma fg scratch(atomic_uint d1)
-if (Date[fg_SourceIndex] < JAN_01_2011) {
-    atomicCounterAdd(d1, 1);
-    discard;
-}
+// A package is probably important if I have many dependents and my dependencies
+// have few dependents.
 
-#pragma fg scratch(atomic_uint d2)
-if (Date[fg_SourceIndex] > JAN_01_2012) {
-    atomicCounterAdd(d2, 1);
+const uint depends_on_source = in_degree[fg_SourceIndex];
+const uint depends_on_target = in_degree[fg_TargetIndex];
+
+#pragma fg scratch(atomic_uint d3)
+if (depends_on_source < depends_on_target) {
+    atomicCounterAdd(d3, 1);
     discard;
 }
 
 fg_FragColor = vec4(0.1);
+
+// Red: I have more devs than my dependency.
 fg_FragColor.r = float(Devs[fg_SourceIndex] > Devs[fg_TargetIndex]);
+
+// Green: I have more vulnerabilities than my dependency.
 fg_FragColor.g = float(Vuln[fg_SourceIndex] > Vuln[fg_TargetIndex]);

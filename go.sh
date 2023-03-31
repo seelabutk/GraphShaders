@@ -265,13 +265,25 @@ go-graph() {
 
 #---
 
+go-Large() {
+    "${self:?}" \
+        "${1:?}" \
+        -e FG_TILE_WIDTH 2048 \
+        -e FG_TILE_HEIGHT 2048 \
+        -e FG_TILE_Z 0 \
+        -e FG_TILE_X 0 \
+        -e FG_TILE_Y 0 \
+        "${@:2}" \
+        ##
+}
+
 go-Stitch() {
     dsts=()
 
     for z in 1; do
     for x in 0 1; do
     for y in 0 1; do
-        dst=${root:?}/z${z:?}x${x:?}y${y:?}.jpg
+        dst=${root:?}/${1:?}.z${z:?}x${x:?}y${y:?}.jpg
 
         "${self:?}" \
             "${1:?}" \
@@ -304,6 +316,7 @@ go-JS-Deps() {
         -f Date "${root:?}/JS-Deps,kind=node,name=date,type=u32.bin" \
         -f Devs "${root:?}/JS-Deps,kind=node,name=nmaintainers,type=u32.bin" \
         -f Vuln "${root:?}/JS-Deps,kind=node,name=cve,type=u32.bin" \
+        -e FG_OUTPUT "${root:?}/JS-Deps.jpg" \
         "$@" \
         ##
 }
