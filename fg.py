@@ -164,6 +164,18 @@ def main(
         
         line = match.group('line')
         PRAGMA(line)
+    
+    @specialize(LINE)
+    def LINE(line):
+        match = re.match(r'^\s*void\s+main\s*\(\s*\)\s*\{\s*$', line)
+        assert match is not None
+
+        pass # do nothing
+    
+    @specialize(LINE)
+    def LINE(line):
+        assert line == '}'
+        pass # do nothing
 
     @specialize(ERROR)
     def PRAGMA(line):

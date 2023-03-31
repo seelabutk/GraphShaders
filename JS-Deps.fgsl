@@ -29,60 +29,65 @@
 
 
 #pragma fg shader(positional)
-float x = X[fg_NodeIndex];
-float y = Y[fg_NodeIndex];
+void main() {
+    float x = X[fg_NodeIndex];
+    float y = Y[fg_NodeIndex];
 
-// Normalize date from 0 to 1.
-float date = float(Date[fg_NodeIndex] - NOV_09_2010) / float(MAR_22_2016 - NOV_09_2010);
+    // Normalize date from 0 to 1.
+    float date = float(Date[fg_NodeIndex] - NOV_09_2010) / float(MAR_22_2016 - NOV_09_2010);
 
-// Newest packages rendered on top of older packages.
-fg_NodePosition = vec3(x, y, -date);
+    // Newest packages rendered on top of older packages.
+    fg_NodePosition = vec3(x, y, -date);
+}
 
 
 #pragma fg shader(relational)
+void main() {
+    // We want to calculate the in-degree (number of packages depending on me) and
+    // the out-degree (number of packages I depend on) for each package.
+    #pragma fg scratch(uint in_degree[N])
 
-// We want to calculate the in-degree (number of packages depending on me) and
-// the out-degree (number of packages I depend on) for each package.
-#pragma fg scratch(uint in_degree[N])
+    #pragma fg scratch(uint out_degree[N])
 
-#pragma fg scratch(uint out_degree[N])
+    // We also want to know some summary statistics.
+    #pragma fg scratch(atomic_uint in_degree_max)
+        // = 79,037
+    #pragma fg scratch(atomic_uint out_degree_max)
+        // = 389
 
-// We also want to know some summary statistics.
-#pragma fg scratch(atomic_uint in_degree_max)
-    // = 79,037
-#pragma fg scratch(atomic_uint out_degree_max)
-    // = 389
+    // Update in- and out-degree buffers.
+    uint od = 1 + atomicAdd(out_degree[fg_SourceIndex], 1);
+    atomicCounterMax(out_degree_max, od);
 
-// Update in- and out-degree buffers.
-uint od = 1 + atomicAdd(out_degree[fg_SourceIndex], 1);
-atomicCounterMax(out_degree_max, od);
-
-uint id = 1 + atomicAdd(in_degree[fg_TargetIndex], 1);
-atomicCounterMax(in_degree_max, id);
-
-#pragma fg shader(appearance)
-
-#pragma fg scratch(atomic_uint fragments)
-    // = 321,136,033
-atomicCounterAdd(fragments, 1);
-    // = 319,365,700
-
-// A package is probably important if I have many dependents and my dependencies
-// have few dependents.
-
-const uint depends_on_source = in_degree[fg_SourceIndex];
-const uint depends_on_target = in_degree[fg_TargetIndex];
-
-#pragma fg scratch(atomic_uint d3)
-if (depends_on_source < depends_on_target) {
-    atomicCounterAdd(d3, 1);
-    discard;
+    uint id = 1 + atomicAdd(in_degree[fg_TargetIndex], 1);
+    atomicCounterMax(in_degree_max, id);
 }
 
-fg_FragColor = vec4(0.1);
 
-// Red: I have more devs than my dependency.
-fg_FragColor.r = float(Devs[fg_SourceIndex] > Devs[fg_TargetIndex]);
+#pragma fg shader(appearance)
+void main() {
+    #pragma fg scratch(atomic_uint fragments)
+        // = 321,136,033
+    atomicCounterAdd(fragments, 1);
+        // = 319,365,700
 
-// Green: I have more vulnerabilities than my dependency.
-fg_FragColor.g = float(Vuln[fg_SourceIndex] > Vuln[fg_TargetIndex]);
+    // A package is probably important if I have many dependents and my dependencies
+    // have few dependents.
+
+    const uint depends_on_source = in_degree[fg_SourceIndex];
+    const uint depends_on_target = in_degree[fg_TargetIndex];
+
+    #pragma fg scratch(atomic_uint d3)
+    if (depends_on_source < depends_on_target) {
+        atomicCounterAdd(d3, 1);
+        discard;
+    }
+
+    fg_FragColor = vec4(0.1);
+
+    // Red: I have more devs than my dependency.
+    fg_FragColor.r = float(Devs[fg_SourceIndex] > Devs[fg_TargetIndex]);
+
+    // Green: I have more vulnerabilities than my dependency.
+    fg_FragColor.g = float(Vuln[fg_SourceIndex] > Vuln[fg_TargetIndex]);
+}

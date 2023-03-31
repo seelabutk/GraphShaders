@@ -143,7 +143,7 @@ go-csv2bin-JS-Deps-cve() {
 
 go-csv2bin-JS-Deps-index() {
     python3 csv2bin.py \
-        --input=data/JS-Deps-filtered/edges.csv \
+        --input=sorted.csv \
         --column=src \
         --column=tgt \
         --transform=int \
@@ -262,6 +262,78 @@ go-graph() {
         ##
 }
 
+go-Sort() {
+    "${FUNCNAME[0]:?}-$@"
+}
+
+go-Sort-JS-Deps() {
+    >sorted.csv \
+    awk \
+        '
+            BEGIN{ FS=OFS="," }
+
+            # Like NR (num records), but NF (num files)
+            BEGIN { NF = 0 }
+            FNR == 1 { ++NF }
+
+            # N (node count)
+            BEGIN{ N=1 }
+            NF==1 && FNR>1 {
+                X[N] = 0+$1;
+                Y[N] = 0+$2;
+                DATE[N] = 0+$3;
+                DEVS[N] = 0+$4;
+                VULN[N] = 0+$5;
+                ++N;
+            }
+
+            # E (edge count)
+            BEGIN{ E=1 }
+            NF==2 && FNR>2 {
+                SRC[E] = 0+$1;
+                TGT[E] = 0+$2;
+                ++E;
+            }
+
+            function compare(a_edge_index, _v1, b_edge_index, _v2,   a_src_date, a_tgt_date, b_src_date, b_tgt_date) {
+                a_src_date = DATE[SRC[a_edge_index]];
+                a_tgt_date = DATE[TGT[a_edge_index]];
+
+                b_src_date = DATE[SRC[b_edge_index]];
+                b_tgt_date = DATE[TGT[b_edge_index]];
+
+                if (a_src_date < b_src_date) return -1;
+                else if (a_src_date > b_src_date) return 1;
+                else if (a_tgt_date < b_tgt_date) return -1;
+                else if (a_tgt_date > b_tgt_date) return 1;
+                else if (a_edge_index < b_edge_index) return -1;
+                else if (a_edge_index > b_edge_index) return 1;
+                else return 0;
+            }
+
+            END {
+                n = asorti(SRC, INDICES, "compare");
+                print "src", "tgt";
+                for (i=1; i<E; ++i) {
+                    print SRC[INDICES[i]], TGT[INDICES[i]];
+                }
+            }
+        ' \
+        data/JS-Deps-filtered/nodes.csv \
+        data/JS-Deps-filtered/edges.csv \
+        ##
+}
+
+go-Sort-SO-Answers() {
+    >SO-Answers.edges.sort_by_when.csv \
+    awk '
+        NR==1{ print; next }
+        { print | "sort -t, -k3n" }
+    ' \
+        "${root:?}/data/SO-Answers-edgetime/edges.csv" \
+        ##
+}
+
 
 #---
 
@@ -327,6 +399,7 @@ go-SO-Answers() {
     "${root:?}/fg.py" \
         -x "${root:?}/fg.sh" \
         -i "${root:?}/SO-Answers.fgsl" \
+        -e FG_OUTPUT "${root:?}/SO-Answers.jpg" \
         "$@" \
         ##
 }

@@ -836,6 +836,7 @@ int main(int argc, char **argv) {
 
     ({
         jpeg.clear();
+        jpeg.reserve(1000000);
 
         void *context = static_cast<void *>(&jpeg);
         int width = rgba_width;
@@ -847,7 +848,9 @@ int main(int argc, char **argv) {
             // std::fprintf(stderr, "Writing %zu bytes\n", (size_t)size);
             std::vector<uint8_t> &jpeg = *static_cast<std::vector<uint8_t> *>(context);
             uint8_t *bytes = static_cast<uint8_t *>(data);
-            jpeg.reserve(jpeg.size() + size);
+            if (jpeg.capacity() < jpeg.size() + size) {
+                jpeg.reserve(jpeg.capacity() + 10000);
+            }
             std::copy(bytes, bytes + size, std::back_inserter(jpeg));
         };
 
