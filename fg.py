@@ -204,6 +204,37 @@ def main(
 
         name = match.group('name')
         SHADER(name)
+
+    @specialize(ERROR)
+    def DEFINE(name, default: Optional[str]):
+        assert default is not None
+
+        d = { x[0]: x[1] for x in envs }
+
+        value = default
+        if name in d:
+            value = d[name]
+        
+        EMIT(f'#define {name} {value}', shader='common')
+    
+    @specialize(DEFINE)
+    def DEFINE(name, default: Literal[None]):
+        assert default is None
+
+        d = { x[0]: x[1] for x in envs }
+        
+        if name in d:
+            EMIT(f'#define {name} {d[name]}', shader='common')
+
+    @specialize(PRAGMA)
+    def PRAGMA(line):
+        match = re.match(r'define\s*\((?P<name>\S+)\s*(?:(?P<default>.+?))?\s*\)', line)
+        assert match is not None
+
+        name = match.group('name')
+        default = match.group('default')
+        print(f'DEFINE({name!r}, {default!r})')
+        DEFINE(name, default)
     
     APPEND('FG_BUFFER',
         KIND='ELEMENT',

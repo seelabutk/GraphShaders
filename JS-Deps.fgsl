@@ -27,6 +27,11 @@
 #define JAN_01_2015 1420088400
 #define JAN_01_2016 1451624400
 
+// Some controls
+#pragma fg define(USE_COLOR)
+#pragma fg define(USE_FILTER)
+#pragma fg define(USE_RELATIONAL)
+
 
 #pragma fg shader(positional)
 void main() {
@@ -43,6 +48,8 @@ void main() {
 
 #pragma fg shader(relational)
 void main() {
+
+#ifdef USE_RELATIONAL
     // We want to calculate the in-degree (number of packages depending on me) and
     // the out-degree (number of packages I depend on) for each package.
     #pragma fg scratch(uint in_degree[N])
@@ -61,6 +68,8 @@ void main() {
 
     uint id = 1 + atomicAdd(in_degree[fg_TargetIndex], 1);
     atomicCounterMax(in_degree_max, id);
+#endif
+
 }
 
 
@@ -70,6 +79,8 @@ void main() {
         // = 321,136,033
     atomicCounterAdd(fragments, 1);
         // = 319,365,700
+
+#ifdef USE_RELATIONAL
 
     // A package is probably important if I have many dependents and my dependencies
     // have few dependents.
@@ -82,12 +93,33 @@ void main() {
         atomicCounterAdd(d3, 1);
         discard;
     }
+#endif
+
+#ifdef USE_FILTER
+#define LO JAN_01_2014
+#define HI JAN_01_2015
+
+    if (!((LO <= Date[fg_SourceIndex]) && (Date[fg_SourceIndex] <= HI))) {
+        #pragma fg scratch(atomic_uint discard_because_source_date)
+        atomicCounterAdd(discard_because_source_date, 1);
+        discard;
+    }
+
+    if (!((LO <= Date[fg_TargetIndex]) && (Date[fg_TargetIndex] <= HI))) {
+        #pragma fg scratch(atomic_uint discard_because_target_date)
+        atomicCounterAdd(discard_because_target_date, 1);
+        discard;
+    }
+#endif
 
     fg_FragColor = vec4(0.1);
 
+#ifdef USE_COLOR
     // Red: I have more devs than my dependency.
     fg_FragColor.r = float(Devs[fg_SourceIndex] > Devs[fg_TargetIndex]);
 
     // Green: I have more vulnerabilities than my dependency.
     fg_FragColor.g = float(Vuln[fg_SourceIndex] > Vuln[fg_TargetIndex]);
+#endif
+
 }

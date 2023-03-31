@@ -342,9 +342,9 @@ go-Large() {
         "${1:?}" \
         -e FG_TILE_WIDTH 2048 \
         -e FG_TILE_HEIGHT 2048 \
-        -e FG_TILE_Z 0 \
-        -e FG_TILE_X 0 \
-        -e FG_TILE_Y 0 \
+        -e FG_TILE_Z 1 \
+        -e FG_TILE_X 0.5 \
+        -e FG_TILE_Y 0.5 \
         "${@:2}" \
         ##
 }
