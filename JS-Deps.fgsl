@@ -89,15 +89,16 @@ void main() {
     const uint depends_on_target = in_degree[fg_TargetIndex];
 
     #pragma fg scratch(atomic_uint d3)
-    if (depends_on_source < depends_on_target) {
+    bool risky = depends_on_source > depends_on_target - 100;
+    if (!risky) {
         atomicCounterAdd(d3, 1);
         discard;
     }
 #endif
 
 #ifdef USE_FILTER
-#define LO JAN_01_2014
-#define HI JAN_01_2015
+#pragma fg define(LO JAN_01_2014)
+#pragma fg define(HI JAN_01_2016)
 
     if (!((LO <= Date[fg_SourceIndex]) && (Date[fg_SourceIndex] <= HI))) {
         #pragma fg scratch(atomic_uint discard_because_source_date)

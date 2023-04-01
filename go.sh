@@ -393,6 +393,52 @@ go-JS-Deps() {
         ##
 }
 
+go-JS-Deps-1() {
+    exec "${self:?}" JS-Deps \
+        -e FG_OUTPUT "${root:?}/JS-Deps-1.jpg" \
+        -e USE_COLOR 1 \
+        "$@" \
+        ##
+}
+
+go-JS-Deps-2() {
+    exec "${self:?}" JS-Deps \
+        -e FG_OUTPUT "${root:?}/JS-Deps-2.jpg" \
+        -e USE_COLOR 1 \
+        -e USE_FILTER 1 \
+        "$@" \
+        ##
+}
+
+go-JS-Deps-3() {
+    exec "${self:?}" JS-Deps \
+        -e FG_OUTPUT "${root:?}/${FUNCNAME[0]#go-}.jpg" \
+        -e USE_COLOR 1 \
+        -e USE_FILTER 1 \
+        -e USE_RELATIONAL 1 \
+        -e FG_TILE_WIDTH 2048 \
+        -e FG_TILE_HEIGHT 2048 \
+        -e FG_TILE_Z 1 \
+        -e FG_TILE_X 0.5 \
+        -e FG_TILE_Y 0.5 \
+        "$@" \
+        ##
+}
+
+go-JS-Deps-Grid() {
+    "${self:?}" JS-Deps-2 \
+        -e FG_OUTPUT "${root:?}/${FUNCNAME[0]#go-}-${1:?}.jpg" \
+        -e LO JAN_01_$(( ${1:?} + 0 )) \
+        -e HI JAN_01_$(( ${1:?} + 1 )) \
+        -e FG_TILE_WIDTH 2048 \
+        -e FG_TILE_HEIGHT 2048 \
+        -e FG_TILE_Z 1 \
+        -e FG_TILE_X 0.5 \
+        -e FG_TILE_Y 0.5 \
+        "${@:2}" \
+        ##
+}
+
 go-SO-Answers() {
     exec "${self:?}" python \
     exec "${root:?}/SO-Answers.sh" \
@@ -402,6 +448,51 @@ go-SO-Answers() {
         -e FG_OUTPUT "${root:?}/SO-Answers.jpg" \
         "$@" \
         ##
+}
+
+go-SO-Answers-1() {
+    exec "${self:?}" SO-Answers \
+        -e FG_OUTPUT "${root:?}/SO-Answers-1.jpg" \
+        -e LAYOUT 1 \
+        "$@" \
+        ##
+}
+
+go-SO-Answers-2() {
+    exec "${self:?}" SO-Answers \
+        -e FG_OUTPUT "${root:?}/SO-Answers-2.jpg" \
+        -e LAYOUT 2 \
+        "$@" \
+        ##
+}
+
+go-NBER-Patents() {
+    exec "${self:?}" python \
+    exec "${root:?}/NBER-Patents.sh" \
+    "${root:?}/fg.py" \
+        -x "${root:?}/fg.sh" \
+        -i "${root:?}/NBER-Patents.fgsl" \
+        -e FG_OUTPUT "${root:?}/${FUNCNAME[0]#go-}.jpg" \
+        -e FG_TILE_WIDTH 2048 \
+        -e FG_TILE_HEIGHT 2048 \
+        -e FG_TILE_Z 1 \
+        -e FG_TILE_X 0.25 \
+        -e FG_TILE_Y 0.5 \
+        "$@" \
+        ##
+}
+
+go-Time() {
+    local i n
+    >"${root:?}/times.txt"
+    for ((i=0, n=100; i<n; ++i)); do
+        /usr/bin/time \
+            --format=%e,%S,%U \
+            --output="${root:?}/times.txt" \
+            --append \
+            "$@" \
+            ##
+    done
 }
 
 go-exec() {

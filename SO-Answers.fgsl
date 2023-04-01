@@ -12,8 +12,7 @@
 #define JAN_01_2015 1420088400
 #define JAN_01_2016 1451624400
 
-#define LAYOUT 1
-// #define LAYOUT 2
+#pragma fg define(LAYOUT 1)
 
 #pragma fg shader(positional)
 void main() {

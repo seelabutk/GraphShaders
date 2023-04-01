@@ -571,6 +571,9 @@ int main(int argc, char **argv) {
             if (opt_fg_buffer_type == "GL_UNSIGNED_INT" && opt_fg_buffer_size == "N") {
                 gl_buffer_sizes[i] = X_BUFFER_FROM_ZERO(GL_SHADER_STORAGE_BUFFER, GL_DYNAMIC_COPY, fg_node_count * sizeof(GLuint), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
 
+            } else if (opt_fg_buffer_type == "GL_UNSIGNED_INT" && opt_fg_buffer_size == "E") {
+                gl_buffer_sizes[i] = X_BUFFER_FROM_ZERO(GL_SHADER_STORAGE_BUFFER, GL_DYNAMIC_COPY, fg_edge_count * sizeof(GLuint), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
+
             } else {
                 dief("4Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
                     opt_fg_buffer_kind.c_str(), opt_fg_buffer_file.c_str(), opt_fg_buffer_size.c_str(), opt_fg_buffer_type.c_str());

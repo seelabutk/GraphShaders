@@ -62,8 +62,8 @@ def main(
     g.env['FG_TILE_HEIGHT'] = '256'
     g.env['FG_BUFFER_COUNT'] = '0'
     g.env['FG_ATOMIC_COUNT'] = '0'
-    g.env['FG_TILE_Z'] = '1'
-    g.env['FG_TILE_X'] = '1'
+    g.env['FG_TILE_Z'] = '0'
+    g.env['FG_TILE_X'] = '0'
     g.env['FG_TILE_Y'] = '0'
     g.env['FG_OUTPUT'] = 'out.jpg'
     g.current_shader = None
@@ -89,7 +89,7 @@ def main(
         if shader is None:
             shader = g.current_shader
         g.fg_shaders[shader].append(line)
-    
+
     @specialize(ERROR)
     def APPEND(prefix, **kwargs):
         assert prefix in ['FG_BUFFER', 'FG_ATOMIC']
@@ -98,7 +98,7 @@ def main(
         g.env[f'{prefix}_COUNT'] = str(count + 1)
         for key, value in kwargs.items():
             g.env[f'{prefix}_{key}_{count}'] = str(value)
-    
+
     g._scratch_atomic_exists = False
     g._scratch_atomic_binding = 0
     g._scratch_atomic_offset = 0
@@ -116,7 +116,7 @@ def main(
 
         g._scratch_atomic_exists = True
         g._scratch_atomic_offset += 4
-        
+
     g._ssbo_binding = 0
     @specialize(SCRATCH)
     def SCRATCH(type, name, count, line):
@@ -135,7 +135,7 @@ def main(
         )
 
         g._ssbo_binding += 1
-    
+
     def ATTRIBUTE(type, name, count, line):
         assert type in ['float', 'uint']
         assert count in ['N', 'E']
@@ -345,6 +345,7 @@ layout(location=1) in flat uint fg_TargetIndex;
 layout(location=0) out vec4 fg_FragColor;
 
 void main() {{
+    int fg_EdgeIndex = gl_PrimitiveID;
 {g.fg_shaders['appearance']}
 }}
     '''
