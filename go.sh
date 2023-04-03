@@ -201,25 +201,78 @@ go---docker() {
 
 #--- gs
 
-gs_source=${root:?}
-gs_build=${root:?}/build
+gs_source_path=${root:?}
+gs_build_path=${root:?}/build
+gs_stage_path=${root:?}/stage
+gs_configure=(
+    -L
+    -DCMAKE_BUILD_TYPE:STRING=Debug
+)
+gs_build=(
+    --verbose
+)
+gs_install=(
+    --verbose
+)
 
+go---gs() {
+    exec "${self:?}" gs \
+    exec "${self:?}" "$@"
+}
 
 go-gs() {
     "${FUNCNAME[0]:?}-$@"
 }
 
+go-gs-clean() {
+    rm -rfv -- \
+        "${gs_build_path:?}" \
+        "${gs_stage_path:?}" \
+        ##
+}
+
+go-gs-configure() {
+    exec cmake \
+        -H"${gs_source_path:?}" \
+        -B"${gs_build_path:?}" \
+        -DCMAKE_INSTALL_PREFIX:PATH="${gs_stage_path:?}" \
+        "${gs_configure[@]}" \
+        "$@" \
+        ##
+}
+
 go-gs-build() {
-    exec make \
-        -C "${gs_source:?}" \
-        build/gs \
+    exec cmake \
+        --build "${gs_build_path:?}" \
+        "${gs_build[@]}" \
+        "$@" \
+        ##
+}
+
+go-gs-install() {
+    exec cmake \
+        --install "${gs_build_path:?}" \
+        "${gs_install[@]}" \
         "$@" \
         ##
 }
 
 go-gs-exec() {
-    PATH=${gs_build:?}${PATH:+:${PATH:?}} \
+    PATH=${gs_stage_path:?}/bin${PATH:+:${PATH:?}} \
     exec "$@"
+}
+
+
+#---
+
+go-examples() {
+    "${FUNCNAME[0]:?}-$@"
+}
+
+go-examples-JS-Deps() {
+    exec "${root:?}/examples/JS-Deps/JS-Deps.sh" \
+        "$@" \
+        ##
 }
 
 

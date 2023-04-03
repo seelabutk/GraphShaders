@@ -1,5 +1,6 @@
 /build
 /env.sh
+/examples/*/data
 layouts
 __pycache__/*
 rc_*
