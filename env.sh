@@ -1,23 +1,34 @@
-case "${HOSTNAME:-unset}" in
-(accona|sinai|kavir|gobi|thar|sahara)
-    go-python-exec() {
-        PATH=/home/pprovins/opt/python-3.8.1/bin${PATH:+:${PATH:?}} \
-        exec "$@"
-    }
+#--- Seelab Machines
 
-    docker_run+=(
-        --mount="type=bind,src=/mnt/seenas2/data,dst=/mnt/seenas2/data"
-    )
-    ;;
+case "${HOSTNAME:-unset}" in (accona|sinai|kavir|gobi|thar|sahara)
 
-esac
 
-if [ "${USER:-}" = "thobson2" ]; then
-    #port=9334
-    port=8080
-else
-    port=8223
-fi
-# replicas=1
-# PATH=${PATH:+${PATH:?}:}/home/pprovins/opt/python-3.8.1/bin
-# cache=/mnt/seenas2/data${root:?}/cache
+# Some data is kept on the NAS, so make the whole NAS accessible.
+
+docker_run+=(
+    --mount="type=bind,src=/mnt/seenas2/data,dst=/mnt/seenas2/data"
+)
+
+# We need some utilities to help package up data for others.
+
+go-Package-Data-Directories() {
+    if [ $# -eq 0 ]; then
+        set -- JS-Deps SO-Answers NBER-Patents
+    fi
+
+    for arg; do
+        tar \
+            --create \
+            --file "${root:?}/${arg:?}.data.tar.gz" \
+            --gzip \
+            --verbose \
+            --directory "${root:?}/examples/${arg:?}" \
+            --dereference \
+            data \
+            ##
+    done
+}
+
+
+
+;; esac  # case "${HOSTNAME}" in
