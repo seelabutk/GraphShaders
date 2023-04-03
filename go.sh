@@ -395,35 +395,46 @@ go-JS-Deps() {
 
 go-JS-Deps-1() {
     exec "${self:?}" JS-Deps \
-        -e FG_OUTPUT "${root:?}/JS-Deps-1.jpg" \
-        -e USE_COLOR 1 \
+        -e FG_TILE_WIDTH 2048 \
+        -e FG_TILE_HEIGHT 2048 \
+        -e FG_TILE_Z 1 \
+        -e FG_TILE_X 0.5 \
+        -e FG_TILE_Y 0.5 \
+        -e FG_OUTPUT "${root:?}/${FUNCNAME[0]#go-}.jpg" \
+        -e FILTER_BY_DATE 0 \
+        -e USE_RELATIONAL 0 \
         "$@" \
         ##
 }
 
 go-JS-Deps-2() {
     exec "${self:?}" JS-Deps \
-        -e FG_OUTPUT "${root:?}/JS-Deps-2.jpg" \
-        -e USE_COLOR 1 \
-        -e USE_FILTER 1 \
+        -e FG_TILE_WIDTH 2048 \
+        -e FG_TILE_HEIGHT 2048 \
+        -e FG_TILE_Z 1 \
+        -e FG_TILE_X 0.5 \
+        -e FG_TILE_Y 0.5 \
+        -e FG_OUTPUT "${root:?}/${FUNCNAME[0]#go-}.jpg" \
+        -e FILTER_BY_DATE 0 \
+        -e USE_RELATIONAL 1 \
         "$@" \
         ##
 }
 
 go-JS-Deps-3() {
     exec "${self:?}" JS-Deps \
-        -e FG_OUTPUT "${root:?}/${FUNCNAME[0]#go-}.jpg" \
-        -e USE_COLOR 1 \
-        -e USE_FILTER 1 \
-        -e USE_RELATIONAL 1 \
         -e FG_TILE_WIDTH 2048 \
         -e FG_TILE_HEIGHT 2048 \
         -e FG_TILE_Z 1 \
         -e FG_TILE_X 0.5 \
         -e FG_TILE_Y 0.5 \
+        -e FG_OUTPUT "${root:?}/${FUNCNAME[0]#go-}.jpg" \
+        -e FILTER_BY_DATE 1 \
+        -e USE_RELATIONAL 1 \
         "$@" \
         ##
 }
+
 
 go-JS-Deps-Grid() {
     "${self:?}" JS-Deps-2 \

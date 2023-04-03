@@ -2,24 +2,15 @@
 //
 // Nodes are packages. Edges are directed from a package to its dependencies.
 
-// Layout calculated with ForceAtlas2.
 #pragma fg attribute(float X[N])
 #pragma fg attribute(float Y[N])
-
-// Date is the unix timestamp of the latest release.
 #pragma fg attribute(uint Date[N])
-
-// Each package has a number of maintainers listed.
 #pragma fg attribute(uint Devs[N])
-
-// Each package has a boolean for if a CVE is recorded for it.
 #pragma fg attribute(uint Vuln[N])
 
-// The earliest and latest recorded dates in the graph.
 #define NOV_09_2010 1289278800
 #define MAR_22_2016 1458619200
 
-// Some helpful unix timestamps.
 #define JAN_01_2011 1293858000
 #define JAN_01_2012 1325394000
 #define JAN_01_2013 1357016400
@@ -38,89 +29,102 @@ void main() {
     float x = X[fg_NodeIndex];
     float y = Y[fg_NodeIndex];
 
-    // Normalize date from 0 to 1.
-    float date = float(Date[fg_NodeIndex] - NOV_09_2010) / float(MAR_22_2016 - NOV_09_2010);
-
-    // Newest packages rendered on top of older packages.
-    fg_NodePosition = vec3(x, y, -date);
+    fg_NodePosition = vec3(x, y, 0);
 }
 
 
 #pragma fg shader(relational)
 void main() {
-
-#ifdef USE_RELATIONAL
-    // We want to calculate the in-degree (number of packages depending on me) and
-    // the out-degree (number of packages I depend on) for each package.
     #pragma fg scratch(uint in_degree[N])
-
     #pragma fg scratch(uint out_degree[N])
-
-    // We also want to know some summary statistics.
     #pragma fg scratch(atomic_uint in_degree_max)
-        // = 79,037
     #pragma fg scratch(atomic_uint out_degree_max)
-        // = 389
 
-    // Update in- and out-degree buffers.
+    #pragma fg define(USE_RELATIONAL 1)
+    #if USE_RELATIONAL
     uint od = 1 + atomicAdd(out_degree[fg_SourceIndex], 1);
     atomicCounterMax(out_degree_max, od);
 
     uint id = 1 + atomicAdd(in_degree[fg_TargetIndex], 1);
     atomicCounterMax(in_degree_max, id);
-#endif
-
+    #endif /* USE_RELATIONAL */
 }
 
 
 #pragma fg shader(appearance)
 void main() {
-    #pragma fg scratch(atomic_uint fragments)
-        // = 321,136,033
-    atomicCounterAdd(fragments, 1);
-        // = 319,365,700
+    #pragma fg scratch(uint Seen[E])
+    bool first = 0 == atomicAdd(Seen[fg_EdgeIndex], 1);
+    bool d = false;
 
-#ifdef USE_RELATIONAL
+    #pragma fg scratch(atomic_uint total)
+    if (first) atomicCounterAdd(total, 1);
 
-    // A package is probably important if I have many dependents and my dependencies
-    // have few dependents.
+    #pragma fg define(FILTER_BY_DATE 1)
+    #if FILTER_BY_DATE
+    #pragma fg define(LO JAN_01_2014)
+    #pragma fg define(HI JAN_01_2015)
 
+    if (Date[fg_SourceIndex] < LO) {
+        d = true;
+        #pragma fg scratch(atomic_uint source_date_too_lo)
+        if (first) atomicCounterAdd(source_date_too_lo, 1);
+    }
+
+    if (Date[fg_SourceIndex] > HI) {
+        d = true;
+        #pragma fg scratch(atomic_uint source_date_too_hi)
+        if (first) atomicCounterAdd(source_date_too_hi, 1);
+    }
+
+    if (Date[fg_TargetIndex] < LO) {
+        d = true;
+        #pragma fg scratch(atomic_uint target_date_too_lo)
+        if (first) atomicCounterAdd(target_date_too_lo, 1);
+    }
+
+    if (Date[fg_TargetIndex] > HI) {
+        d = true;
+        #pragma fg scratch(atomic_uint target_date_too_hi)
+        if (first) atomicCounterAdd(target_date_too_hi, 1);
+    }
+    #endif /* FILTER_BY_DATE */
+
+    if (d) {
+        #pragma fg scratch(atomic_uint discarded)
+        if (first) atomicCounterAdd(discarded, 1);
+        discard;
+    } else {
+        #pragma fg scratch(atomic_uint kept)
+        if (first) atomicCounterAdd(kept, 1);
+    }
+
+    bool vuln = bool(Vuln[fg_SourceIndex]) || bool(Vuln[fg_TargetIndex]);
+    bool risky = Devs[fg_SourceIndex] > Devs[fg_TargetIndex];
+
+    #if USE_RELATIONAL
     const uint depends_on_source = in_degree[fg_SourceIndex];
     const uint depends_on_target = in_degree[fg_TargetIndex];
 
-    #pragma fg scratch(atomic_uint d3)
-    bool risky = depends_on_source > depends_on_target - 100;
-    if (!risky) {
-        atomicCounterAdd(d3, 1);
-        discard;
-    }
-#endif
+    risky = depends_on_source + depends_on_target > 100 * Devs[fg_TargetIndex];
+    #endif /* USE_RELATIONAL */
 
-#ifdef USE_FILTER
-#pragma fg define(LO JAN_01_2014)
-#pragma fg define(HI JAN_01_2016)
-
-    if (!((LO <= Date[fg_SourceIndex]) && (Date[fg_SourceIndex] <= HI))) {
-        #pragma fg scratch(atomic_uint discard_because_source_date)
-        atomicCounterAdd(discard_because_source_date, 1);
-        discard;
+    if (risky) {
+        #pragma fg scratch(atomic_uint total_risky)
+        if (first) atomicCounterAdd(total_risky, 1);
     }
 
-    if (!((LO <= Date[fg_TargetIndex]) && (Date[fg_TargetIndex] <= HI))) {
-        #pragma fg scratch(atomic_uint discard_because_target_date)
-        atomicCounterAdd(discard_because_target_date, 1);
-        discard;
+    if (risky && vuln) {
+        #pragma fg scratch(atomic_uint total_vuln_and_risky)
+        if (first) atomicCounterAdd(total_vuln_and_risky, 1);
     }
-#endif
+
+    if (vuln) {
+        #pragma fg scratch(atomic_uint total_vuln)
+        if (first) atomicCounterAdd(total_vuln, 1);
+    }
 
     fg_FragColor = vec4(0.1);
-
-#ifdef USE_COLOR
-    // Red: I have more devs than my dependency.
-    fg_FragColor.r = float(Devs[fg_SourceIndex] > Devs[fg_TargetIndex]);
-
-    // Green: I have more vulnerabilities than my dependency.
-    fg_FragColor.g = float(Vuln[fg_SourceIndex] > Vuln[fg_TargetIndex]);
-#endif
-
+    fg_FragColor.r = float(vuln);
+    fg_FragColor.b = float(risky);
 }
