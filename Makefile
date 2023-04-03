@@ -21,7 +21,7 @@ INC:=-I/usr/include -Isrc
 LIB:=-L/usr/lib/x86_64-linux-gnu
 
 .PHONY: all
-all: build/fg
+all: build/gs
 
 .PHONY: clean
 clean:
@@ -50,8 +50,8 @@ src/shaders/%.h: src/shaders/%
 
 build/base64.o:
 
-build/fg.o:
-build/fg.o: src/fg.h
+build/gs.o:
+build/gs.o: src/gs.h
 
 build/glad.o: CFLAGS += $(dl_CFLAGS)
 build/glad.o: src/glad/glad.h
@@ -61,12 +61,12 @@ build/glad_egl.o: src/glad/glad_egl.h
 
 build/MAB/log.o: src/MAB/log.h
 
-build/fg: CFLAGS += $(libmicrohttpd_CFLAGS) $(zlib_CFLAGS)
-build/fg: LDLIBS += $(libmicrohttpd_LDLIBS) $(zlib_LDLIBS) $(egl_LDLIBS) $(dl_LDLIBS) $(m_LDLIBS) -pthread
-build/fg: build/glad.o
-build/fg: build/glad_egl.o
-build/fg: build/base64.o
+build/gs: CFLAGS += $(libmicrohttpd_CFLAGS) $(zlib_CFLAGS)
+build/gs: LDLIBS += $(libmicrohttpd_LDLIBS) $(zlib_LDLIBS) $(egl_LDLIBS) $(dl_LDLIBS) $(m_LDLIBS) -pthread
+build/gs: build/glad.o
+build/gs: build/glad_egl.o
+build/gs: build/base64.o
 
-build/fg: LDLIBS += -luuid
-build/fg: LDFLAGS += -pthread
-build/fg:
+build/gs: LDLIBS += -luuid
+build/gs: LDFLAGS += -pthread
+build/gs:

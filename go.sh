@@ -9,8 +9,8 @@ project=${root##*/}
 #---
 
 
-# tag=fg_$USER:latest
-# name=fg_$USER
+# tag=gs_$USER:latest
+# name=gs_$USER
 # target=
 # data='/mnt/seenas2/data/snap'
 # cache=
@@ -26,7 +26,7 @@ project=${root##*/}
 # port=8889
 # constraint=
 # runtime=
-# network=fg_$USER
+# network=gs_$USER
 # cap_add=SYS_PTRACE
 # replicas=1
 # tty=1
@@ -229,26 +229,26 @@ go---docker() {
 }
 
 
-#--- fg
+#--- gs
 
-fg_source=${root:?}
-fg_build=${root:?}/build
+gs_source=${root:?}
+gs_build=${root:?}/build
 
 
-go-fg() {
+go-gs() {
     "${FUNCNAME[0]:?}-$@"
 }
 
-go-fg-build() {
+go-gs-build() {
     exec make \
-        -C "${fg_source:?}" \
-        build/fg \
+        -C "${gs_source:?}" \
+        build/gs \
         "$@" \
         ##
 }
 
-go-fg-exec() {
-    PATH=${fg_build:?}${PATH:+:${PATH:?}} \
+go-gs-exec() {
+    PATH=${gs_build:?}${PATH:+:${PATH:?}} \
     exec "$@"
 }
 
@@ -340,11 +340,11 @@ go-Sort-SO-Answers() {
 go-Large() {
     "${self:?}" \
         "${1:?}" \
-        -e FG_TILE_WIDTH 2048 \
-        -e FG_TILE_HEIGHT 2048 \
-        -e FG_TILE_Z 1 \
-        -e FG_TILE_X 0.5 \
-        -e FG_TILE_Y 0.5 \
+        -e GS_TILE_WIDTH 2048 \
+        -e GS_TILE_HEIGHT 2048 \
+        -e GS_TILE_Z 1 \
+        -e GS_TILE_X 0.5 \
+        -e GS_TILE_Y 0.5 \
         "${@:2}" \
         ##
 }
@@ -359,10 +359,10 @@ go-Stitch() {
 
         "${self:?}" \
             "${1:?}" \
-            -e FG_TILE_Z "${z:?}" \
-            -e FG_TILE_X "${x:?}" \
-            -e FG_TILE_Y "${y:?}" \
-            -e FG_OUTPUT "${dst:?}" \
+            -e GS_TILE_Z "${z:?}" \
+            -e GS_TILE_X "${x:?}" \
+            -e GS_TILE_Y "${y:?}" \
+            -e GS_OUTPUT "${dst:?}" \
             "${@:2}" \
             ##
         
@@ -379,28 +379,28 @@ go-Stitch() {
 
 go-JS-Deps() {
     exec "${self:?}" python \
-    exec "${root:?}/fg.py" \
-        -x "${root:?}/fg.sh" \
-        -i "${root:?}/JS-Deps.fgsl" \
+    exec "${root:?}/gs.py" \
+        -x "${root:?}/gs.sh" \
+        -i "${root:?}/JS-Deps.gsp" \
         -f element "${root:?}/JS-Deps,kind=edge,name=index,type=2u32.bin" \
         -f X "${root:?}/JS-Deps,kind=node,name=x,type=f32.bin" \
         -f Y "${root:?}/JS-Deps,kind=node,name=y,type=f32.bin" \
         -f Date "${root:?}/JS-Deps,kind=node,name=date,type=u32.bin" \
         -f Devs "${root:?}/JS-Deps,kind=node,name=nmaintainers,type=u32.bin" \
         -f Vuln "${root:?}/JS-Deps,kind=node,name=cve,type=u32.bin" \
-        -e FG_OUTPUT "${root:?}/JS-Deps.jpg" \
+        -e GS_OUTPUT "${root:?}/JS-Deps.jpg" \
         "$@" \
         ##
 }
 
 go-JS-Deps-1() {
     exec "${self:?}" JS-Deps \
-        -e FG_TILE_WIDTH 2048 \
-        -e FG_TILE_HEIGHT 2048 \
-        -e FG_TILE_Z 1 \
-        -e FG_TILE_X 0.5 \
-        -e FG_TILE_Y 0.5 \
-        -e FG_OUTPUT "${root:?}/${FUNCNAME[0]#go-}.jpg" \
+        -e GS_TILE_WIDTH 2048 \
+        -e GS_TILE_HEIGHT 2048 \
+        -e GS_TILE_Z 1 \
+        -e GS_TILE_X 0.5 \
+        -e GS_TILE_Y 0.5 \
+        -e GS_OUTPUT "${root:?}/${FUNCNAME[0]#go-}.jpg" \
         -e FILTER_BY_DATE 0 \
         -e USE_RELATIONAL 0 \
         "$@" \
@@ -409,12 +409,12 @@ go-JS-Deps-1() {
 
 go-JS-Deps-2() {
     exec "${self:?}" JS-Deps \
-        -e FG_TILE_WIDTH 2048 \
-        -e FG_TILE_HEIGHT 2048 \
-        -e FG_TILE_Z 1 \
-        -e FG_TILE_X 0.5 \
-        -e FG_TILE_Y 0.5 \
-        -e FG_OUTPUT "${root:?}/${FUNCNAME[0]#go-}.jpg" \
+        -e GS_TILE_WIDTH 2048 \
+        -e GS_TILE_HEIGHT 2048 \
+        -e GS_TILE_Z 1 \
+        -e GS_TILE_X 0.5 \
+        -e GS_TILE_Y 0.5 \
+        -e GS_OUTPUT "${root:?}/${FUNCNAME[0]#go-}.jpg" \
         -e FILTER_BY_DATE 0 \
         -e USE_RELATIONAL 1 \
         "$@" \
@@ -423,12 +423,12 @@ go-JS-Deps-2() {
 
 go-JS-Deps-3() {
     exec "${self:?}" JS-Deps \
-        -e FG_TILE_WIDTH 2048 \
-        -e FG_TILE_HEIGHT 2048 \
-        -e FG_TILE_Z 1 \
-        -e FG_TILE_X 0.5 \
-        -e FG_TILE_Y 0.5 \
-        -e FG_OUTPUT "${root:?}/${FUNCNAME[0]#go-}.jpg" \
+        -e GS_TILE_WIDTH 2048 \
+        -e GS_TILE_HEIGHT 2048 \
+        -e GS_TILE_Z 1 \
+        -e GS_TILE_X 0.5 \
+        -e GS_TILE_Y 0.5 \
+        -e GS_OUTPUT "${root:?}/${FUNCNAME[0]#go-}.jpg" \
         -e FILTER_BY_DATE 1 \
         -e USE_RELATIONAL 1 \
         "$@" \
@@ -438,14 +438,14 @@ go-JS-Deps-3() {
 
 go-JS-Deps-Grid() {
     "${self:?}" JS-Deps-2 \
-        -e FG_OUTPUT "${root:?}/${FUNCNAME[0]#go-}-${1:?}.jpg" \
+        -e GS_OUTPUT "${root:?}/${FUNCNAME[0]#go-}-${1:?}.jpg" \
         -e LO JAN_01_$(( ${1:?} + 0 )) \
         -e HI JAN_01_$(( ${1:?} + 1 )) \
-        -e FG_TILE_WIDTH 2048 \
-        -e FG_TILE_HEIGHT 2048 \
-        -e FG_TILE_Z 1 \
-        -e FG_TILE_X 0.5 \
-        -e FG_TILE_Y 0.5 \
+        -e GS_TILE_WIDTH 2048 \
+        -e GS_TILE_HEIGHT 2048 \
+        -e GS_TILE_Z 1 \
+        -e GS_TILE_X 0.5 \
+        -e GS_TILE_Y 0.5 \
         "${@:2}" \
         ##
 }
@@ -453,17 +453,17 @@ go-JS-Deps-Grid() {
 go-SO-Answers() {
     exec "${self:?}" python \
     exec "${root:?}/SO-Answers.sh" \
-    "${root:?}/fg.py" \
-        -x "${root:?}/fg.sh" \
-        -i "${root:?}/SO-Answers.fgsl" \
-        -e FG_OUTPUT "${root:?}/SO-Answers.jpg" \
+    "${root:?}/gs.py" \
+        -x "${root:?}/gs.sh" \
+        -i "${root:?}/SO-Answers.gsp" \
+        -e GS_OUTPUT "${root:?}/SO-Answers.jpg" \
         "$@" \
         ##
 }
 
 go-SO-Answers-1() {
     exec "${self:?}" SO-Answers \
-        -e FG_OUTPUT "${root:?}/SO-Answers-1.jpg" \
+        -e GS_OUTPUT "${root:?}/SO-Answers-1.jpg" \
         -e LAYOUT 1 \
         "$@" \
         ##
@@ -471,7 +471,7 @@ go-SO-Answers-1() {
 
 go-SO-Answers-2() {
     exec "${self:?}" SO-Answers \
-        -e FG_OUTPUT "${root:?}/SO-Answers-2.jpg" \
+        -e GS_OUTPUT "${root:?}/SO-Answers-2.jpg" \
         -e LAYOUT 2 \
         "$@" \
         ##
@@ -480,15 +480,15 @@ go-SO-Answers-2() {
 go-NBER-Patents() {
     exec "${self:?}" python \
     exec "${root:?}/NBER-Patents.sh" \
-    "${root:?}/fg.py" \
-        -x "${root:?}/fg.sh" \
-        -i "${root:?}/NBER-Patents.fgsl" \
-        -e FG_OUTPUT "${root:?}/${FUNCNAME[0]#go-}.jpg" \
-        -e FG_TILE_WIDTH 2048 \
-        -e FG_TILE_HEIGHT 2048 \
-        -e FG_TILE_Z 1 \
-        -e FG_TILE_X 0.25 \
-        -e FG_TILE_Y 0.5 \
+    "${root:?}/gs.py" \
+        -x "${root:?}/gs.sh" \
+        -i "${root:?}/NBER-Patents.gsp" \
+        -e GS_OUTPUT "${root:?}/${FUNCNAME[0]#go-}.jpg" \
+        -e GS_TILE_WIDTH 2048 \
+        -e GS_TILE_HEIGHT 2048 \
+        -e GS_TILE_Z 1 \
+        -e GS_TILE_X 0.25 \
+        -e GS_TILE_Y 0.5 \
         "$@" \
         ##
 }

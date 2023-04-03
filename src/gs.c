@@ -101,23 +101,23 @@ int main(int argc, char **argv) {
     })                                                                                                                 \
     /**/
 
-    GLfloat opt_fg_background_r = X_OPTION(std::stof, "FG_BACKGROUND_R");
-    GLfloat opt_fg_background_g = X_OPTION(std::stof, "FG_BACKGROUND_G");
-    GLfloat opt_fg_background_b = X_OPTION(std::stof, "FG_BACKGROUND_B");
-    GLfloat opt_fg_background_a = X_OPTION(std::stof, "FG_BACKGROUND_A");
-    GLsizei opt_fg_tile_width = X_OPTION(std::stoi, "FG_TILE_WIDTH");
-    GLsizei opt_fg_tile_height = X_OPTION(std::stoi, "FG_TILE_HEIGHT");
-    GLfloat opt_fg_tile_x = X_OPTION(std::stof, "FG_TILE_X");
-    GLfloat opt_fg_tile_y = X_OPTION(std::stof, "FG_TILE_Y");
-    GLfloat opt_fg_tile_z = X_OPTION(std::stof, "FG_TILE_Z");
-    std::string opt_fg_output = X_OPTION(std::string, "FG_OUTPUT");
+    GLfloat opt_fg_background_r = X_OPTION(std::stof, "GS_BACKGROUND_R");
+    GLfloat opt_fg_background_g = X_OPTION(std::stof, "GS_BACKGROUND_G");
+    GLfloat opt_fg_background_b = X_OPTION(std::stof, "GS_BACKGROUND_B");
+    GLfloat opt_fg_background_a = X_OPTION(std::stof, "GS_BACKGROUND_A");
+    GLsizei opt_fg_tile_width = X_OPTION(std::stoi, "GS_TILE_WIDTH");
+    GLsizei opt_fg_tile_height = X_OPTION(std::stoi, "GS_TILE_HEIGHT");
+    GLfloat opt_fg_tile_x = X_OPTION(std::stof, "GS_TILE_X");
+    GLfloat opt_fg_tile_y = X_OPTION(std::stof, "GS_TILE_Y");
+    GLfloat opt_fg_tile_z = X_OPTION(std::stof, "GS_TILE_Z");
+    std::string opt_fg_output = X_OPTION(std::string, "GS_OUTPUT");
 
-    std::string opt_fg_shader_common = X_OPTION(std::string, "FG_SHADER_COMMON");
-    std::string opt_fg_shader_vertex = X_OPTION(std::string, "FG_SHADER_VERTEX");
-    std::string opt_fg_shader_geometry = X_OPTION(std::string, "FG_SHADER_GEOMETRY");
-    std::string opt_fg_shader_fragment = X_OPTION(std::string, "FG_SHADER_FRAGMENT");
+    std::string opt_fg_shader_common = X_OPTION(std::string, "GS_SHADER_COMMON");
+    std::string opt_fg_shader_vertex = X_OPTION(std::string, "GS_SHADER_VERTEX");
+    std::string opt_fg_shader_geometry = X_OPTION(std::string, "GS_SHADER_GEOMETRY");
+    std::string opt_fg_shader_fragment = X_OPTION(std::string, "GS_SHADER_FRAGMENT");
 
-    GLint opt_fg_buffer_count = X_OPTION(std::stoi, "FG_BUFFER_COUNT");
+    GLint opt_fg_buffer_count = X_OPTION(std::stoi, "GS_BUFFER_COUNT");
     std::string opt_fg_buffer_kinds[opt_fg_buffer_count];
     std::string opt_fg_buffer_names[opt_fg_buffer_count];
     std::string opt_fg_buffer_files[opt_fg_buffer_count];
@@ -125,18 +125,18 @@ int main(int argc, char **argv) {
     std::string opt_fg_buffer_types[opt_fg_buffer_count];
     std::string opt_fg_buffer_binds[opt_fg_buffer_count];
     for (GLint i=0, n=opt_fg_buffer_count; i<n; ++i) {
-        opt_fg_buffer_kinds[i] = X_OPTION(std::string, "FG_BUFFER_KIND_%d", i);
-        opt_fg_buffer_names[i] = X_OPTION(std::string, "FG_BUFFER_NAME_%d", i);
-        opt_fg_buffer_files[i] = X_OPTION(std::string, "FG_BUFFER_FILE_%d", i);
-        opt_fg_buffer_sizes[i] = X_OPTION(std::string, "FG_BUFFER_SIZE_%d", i);
-        opt_fg_buffer_types[i] = X_OPTION(std::string, "FG_BUFFER_TYPE_%d", i);
-        opt_fg_buffer_binds[i] = X_OPTION(std::string, "FG_BUFFER_BIND_%d", i);
+        opt_fg_buffer_kinds[i] = X_OPTION(std::string, "GS_BUFFER_KIND_%d", i);
+        opt_fg_buffer_names[i] = X_OPTION(std::string, "GS_BUFFER_NAME_%d", i);
+        opt_fg_buffer_files[i] = X_OPTION(std::string, "GS_BUFFER_FILE_%d", i);
+        opt_fg_buffer_sizes[i] = X_OPTION(std::string, "GS_BUFFER_SIZE_%d", i);
+        opt_fg_buffer_types[i] = X_OPTION(std::string, "GS_BUFFER_TYPE_%d", i);
+        opt_fg_buffer_binds[i] = X_OPTION(std::string, "GS_BUFFER_BIND_%d", i);
     }
 
-    GLint opt_fg_atomic_count = X_OPTION(std::stoi, "FG_ATOMIC_COUNT");
+    GLint opt_fg_atomic_count = X_OPTION(std::stoi, "GS_ATOMIC_COUNT");
     std::string opt_fg_atomic_names[opt_fg_atomic_count];
     for (GLint i=0, n=opt_fg_atomic_count; i<n; ++i) {
-        opt_fg_atomic_names[i] = X_OPTION(std::string, "FG_ATOMIC_NAME_%d", i);
+        opt_fg_atomic_names[i] = X_OPTION(std::string, "GS_ATOMIC_NAME_%d", i);
     }
 
 
@@ -494,8 +494,8 @@ int main(int argc, char **argv) {
     })                                                                                                                 \
     /* X_BUFFER_FROM_ZERO */
 
-    GLsizeiptr fg_edge_count = 0;
-    GLsizeiptr fg_node_count = 0;
+    GLsizeiptr gs_edge_count = 0;
+    GLsizeiptr gs_node_count = 0;
 
     GLuint gl_buffers[opt_fg_buffer_count];
     GLsizeiptr gl_buffer_sizes[opt_fg_buffer_count];
@@ -511,13 +511,13 @@ int main(int argc, char **argv) {
             gl_buffer_sizes[i] = X_BUFFER_FROM_FILE(GL_SHADER_STORAGE_BUFFER, "%s", opt_fg_buffer_file.c_str());
 
             if (opt_fg_buffer_type == "GL_FLOAT" && opt_fg_buffer_size == "N") {
-                fg_node_count = gl_buffer_sizes[i] / sizeof(GLfloat);
+                gs_node_count = gl_buffer_sizes[i] / sizeof(GLfloat);
 
             } else if (opt_fg_buffer_type == "GL_UNSIGNED_INT" && opt_fg_buffer_size == "N") {
-                fg_node_count = gl_buffer_sizes[i] / sizeof(GLuint);
+                gs_node_count = gl_buffer_sizes[i] / sizeof(GLuint);
 
             } else if (opt_fg_buffer_type == "GL_UNSIGNED_INT" && opt_fg_buffer_size == "E") {
-                fg_edge_count = gl_buffer_sizes[i] / sizeof(GLuint);
+                gs_edge_count = gl_buffer_sizes[i] / sizeof(GLuint);
 
             } else {
                 dief("2Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
@@ -529,7 +529,7 @@ int main(int argc, char **argv) {
             gl_buffer_sizes[i] = X_BUFFER_FROM_FILE(GL_ELEMENT_ARRAY_BUFFER, "%s", opt_fg_buffer_file.c_str());
 
             if (opt_fg_buffer_type == "GL_UNSIGNED_INT" && opt_fg_buffer_size == "2E") {
-                fg_edge_count = gl_buffer_sizes[i] / sizeof(GLuint) / 2;
+                gs_edge_count = gl_buffer_sizes[i] / sizeof(GLuint) / 2;
 
             } else {
                 dief("1Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
@@ -539,11 +539,11 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (fg_edge_count == 0) {
+    if (gs_edge_count == 0) {
         dief("Failed to read any edges");
     }
 
-    if (fg_node_count == 0) {
+    if (gs_node_count == 0) {
         dief("Failed to read any nodes");
     }
 
@@ -569,10 +569,10 @@ int main(int argc, char **argv) {
             gl_buffers[i] = X_MAKE_BUFFER(GL_SHADER_STORAGE_BUFFER);
 
             if (opt_fg_buffer_type == "GL_UNSIGNED_INT" && opt_fg_buffer_size == "N") {
-                gl_buffer_sizes[i] = X_BUFFER_FROM_ZERO(GL_SHADER_STORAGE_BUFFER, GL_DYNAMIC_COPY, fg_node_count * sizeof(GLuint), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
+                gl_buffer_sizes[i] = X_BUFFER_FROM_ZERO(GL_SHADER_STORAGE_BUFFER, GL_DYNAMIC_COPY, gs_node_count * sizeof(GLuint), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
 
             } else if (opt_fg_buffer_type == "GL_UNSIGNED_INT" && opt_fg_buffer_size == "E") {
-                gl_buffer_sizes[i] = X_BUFFER_FROM_ZERO(GL_SHADER_STORAGE_BUFFER, GL_DYNAMIC_COPY, fg_edge_count * sizeof(GLuint), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
+                gl_buffer_sizes[i] = X_BUFFER_FROM_ZERO(GL_SHADER_STORAGE_BUFFER, GL_DYNAMIC_COPY, gs_edge_count * sizeof(GLuint), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
 
             } else {
                 dief("4Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
@@ -589,8 +589,8 @@ int main(int argc, char **argv) {
 
     std::fprintf(stderr, "=== Buffer Stats\n");
     std::fprintf(stderr, "Number of Buffers: %d\n", opt_fg_buffer_count);
-    std::fprintf(stderr, "Number of Nodes: %d\n", (int)fg_node_count);
-    std::fprintf(stderr, "Number of Edges: %d\n", (int)fg_edge_count);
+    std::fprintf(stderr, "Number of Nodes: %d\n", (int)gs_node_count);
+    std::fprintf(stderr, "Number of Edges: %d\n", (int)gs_edge_count);
 
     for (GLint i=0, n=opt_fg_buffer_count; i<n; ++i) {
         std::string &opt_fg_buffer_kind = opt_fg_buffer_kinds[i];
@@ -751,7 +751,7 @@ int main(int argc, char **argv) {
         // glBindBuffer(target, buffer);
 
         GLenum mode = GL_LINES;
-        GLsizei count = fg_edge_count * 2;
+        GLsizei count = gs_edge_count * 2;
         GLenum type = GL_UNSIGNED_INT;
         GLvoid *indices = 0;
         std::fprintf(stderr, "glDrawElements(0x%x, %u, 0x%x, %p)\n", mode, count, type, indices);

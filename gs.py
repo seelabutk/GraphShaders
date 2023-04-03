@@ -54,21 +54,21 @@ def main(
     g = dotdict()
     # g.env = copy.copy(os.environ)
     g.env = {}
-    g.env['FG_BACKGROUND_R'] = '1.0'
-    g.env['FG_BACKGROUND_G'] = '1.0'
-    g.env['FG_BACKGROUND_B'] = '1.0'
-    g.env['FG_BACKGROUND_A'] = '1.0'
-    g.env['FG_TILE_WIDTH'] = '256'
-    g.env['FG_TILE_HEIGHT'] = '256'
-    g.env['FG_BUFFER_COUNT'] = '0'
-    g.env['FG_ATOMIC_COUNT'] = '0'
-    g.env['FG_TILE_Z'] = '0'
-    g.env['FG_TILE_X'] = '0'
-    g.env['FG_TILE_Y'] = '0'
-    g.env['FG_OUTPUT'] = 'out.jpg'
+    g.env['GS_BACKGROUND_R'] = '1.0'
+    g.env['GS_BACKGROUND_G'] = '1.0'
+    g.env['GS_BACKGROUND_B'] = '1.0'
+    g.env['GS_BACKGROUND_A'] = '1.0'
+    g.env['GS_TILE_WIDTH'] = '256'
+    g.env['GS_TILE_HEIGHT'] = '256'
+    g.env['GS_BUFFER_COUNT'] = '0'
+    g.env['GS_ATOMIC_COUNT'] = '0'
+    g.env['GS_TILE_Z'] = '0'
+    g.env['GS_TILE_X'] = '0'
+    g.env['GS_TILE_Y'] = '0'
+    g.env['GS_OUTPUT'] = 'out.jpg'
     g.current_shader = None
-    g.fg_shaders = {}
-    g.fg_scratch = []
+    g.gs_shaders = {}
+    g.gs_scratch = []
 
     g._scratch_current_binding = 0
     g._scratch_current_offset = 0
@@ -88,11 +88,11 @@ def main(
     def EMIT(line, *, shader=None):
         if shader is None:
             shader = g.current_shader
-        g.fg_shaders[shader].append(line)
+        g.gs_shaders[shader].append(line)
 
     @specialize(ERROR)
     def APPEND(prefix, **kwargs):
-        assert prefix in ['FG_BUFFER', 'FG_ATOMIC']
+        assert prefix in ['GS_BUFFER', 'GS_ATOMIC']
         count = int(g.env[f'{prefix}_COUNT'])
 
         g.env[f'{prefix}_COUNT'] = str(count + 1)
@@ -110,7 +110,7 @@ def main(
         EMIT(f'layout (binding={g._scratch_atomic_binding}, offset={g._scratch_atomic_offset}) uniform {type} {name}; // {line}',
             shader='common')
 
-        APPEND('FG_ATOMIC',
+        APPEND('GS_ATOMIC',
             NAME=name,
         )
 
@@ -125,7 +125,7 @@ def main(
 
         EMIT(f'layout (std430, binding={g._ssbo_binding}) buffer _{name} {{ {type} {name}[]; }}; // {line}',
             shader='common')
-        APPEND('FG_BUFFER',
+        APPEND('GS_BUFFER',
             KIND='SCRATCH',
             NAME=f'_{name}',
             TYPE=OPENGL(type),
@@ -142,7 +142,7 @@ def main(
 
         EMIT(f'layout (std430, binding={g._ssbo_binding}) buffer _{name} {{ {type} {name}[]; }}; // {line}',
             shader='common')
-        APPEND('FG_BUFFER',
+        APPEND('GS_BUFFER',
             KIND='ATTRIBUTE',
             NAME=f'_{name}',
             TYPE=OPENGL(type),
@@ -155,11 +155,11 @@ def main(
     
     def SHADER(name):
         g.current_shader = name
-        g.fg_shaders[name] = []
+        g.gs_shaders[name] = []
     
     @specialize(EMIT)
     def LINE(line):
-        match = re.match(r'^\s*#\s*pragma\s+fg\s+(?P<line>.+?)\s*$', line)
+        match = re.match(r'^\s*#\s*pragma\s+gs\s+(?P<line>.+?)\s*$', line)
         assert match is not None
         
         line = match.group('line')
@@ -236,7 +236,7 @@ def main(
         print(f'DEFINE({name!r}, {default!r})')
         DEFINE(name, default)
     
-    APPEND('FG_BUFFER',
+    APPEND('GS_BUFFER',
         KIND='ELEMENT',
         NAME='<NONE>',
         TYPE=OPENGL('uint'),
@@ -252,7 +252,7 @@ def main(
             LINE(line)
 
     if g._scratch_atomic_exists:
-        APPEND('FG_BUFFER',
+        APPEND('GS_BUFFER',
             KIND='ATOMIC',
             NAME='<NONE>',
             TYPE=OPENGL('uint'),
@@ -261,92 +261,92 @@ def main(
             BIND='0',
         )
 
-    g.fg_shaders['common'] = "\n".join(g.fg_shaders['common'])
-    g.fg_shaders['positional'] = "\n".join(g.fg_shaders['positional'])
-    g.fg_shaders['relational'] = "\n".join(g.fg_shaders['relational'])
-    g.fg_shaders['appearance'] = "\n".join(g.fg_shaders['appearance'])
+    g.gs_shaders['common'] = "\n".join(g.gs_shaders['common'])
+    g.gs_shaders['positional'] = "\n".join(g.gs_shaders['positional'])
+    g.gs_shaders['relational'] = "\n".join(g.gs_shaders['relational'])
+    g.gs_shaders['appearance'] = "\n".join(g.gs_shaders['appearance'])
 
-    g.env['FG_SHADER_COMMON'] = f'''
+    g.env['GS_SHADER_COMMON'] = f'''
 #version 460 core
 precision mediump float;
 
 uniform float uTranslateX;
 uniform float uTranslateY;
 uniform float uScale;
-{g.fg_shaders['common']}
+{g.gs_shaders['common']}
     '''
 
-    g.env['FG_SHADER_VERTEX'] = f'''
+    g.env['GS_SHADER_VERTEX'] = f'''
 
 layout(location=0) out uint _fg_NodeIndex;
 
 void main() {{
-    const int fg_NodeIndex = gl_VertexID;
-    vec3 fg_NodePosition = vec3(0., 0., 0.);
+    const int gs_NodeIndex = gl_VertexID;
+    vec3 gs_NodePosition = vec3(0., 0., 0.);
 
-{g.fg_shaders['positional']}
+{g.gs_shaders['positional']}
 
-    gl_Position = vec4(fg_NodePosition.xyz, 1.);
+    gl_Position = vec4(gs_NodePosition.xyz, 1.);
 
-    _fg_NodeIndex = fg_NodeIndex;
+    _fg_NodeIndex = gs_NodeIndex;
 }}
     '''
 
-    g.env['FG_SHADER_GEOMETRY'] = f'''
+    g.env['GS_SHADER_GEOMETRY'] = f'''
 layout (lines) in;
 layout (line_strip, max_vertices=2) out;
 
 layout(location=0) in uint _fg_NodeIndex[];
 
-layout(location=0) out flat uint fg_SourceIndex;
-layout(location=1) out flat uint fg_TargetIndex;
+layout(location=0) out flat uint gs_SourceIndex;
+layout(location=1) out flat uint gs_TargetIndex;
 
 void main() {{
-    fg_SourceIndex = _fg_NodeIndex[0];
-    fg_TargetIndex = _fg_NodeIndex[1];
+    gs_SourceIndex = _fg_NodeIndex[0];
+    gs_TargetIndex = _fg_NodeIndex[1];
 
-    int fg_EdgeIndex = gl_PrimitiveIDIn;
-    vec4 fg_SourcePosition = gl_in[0].gl_Position;
-    vec4 fg_TargetPosition = gl_in[1].gl_Position;
+    int gs_EdgeIndex = gl_PrimitiveIDIn;
+    vec4 gs_SourcePosition = gl_in[0].gl_Position;
+    vec4 gs_TargetPosition = gl_in[1].gl_Position;
 
-{g.fg_shaders['relational']}
-
-    // Apply tile transformations
-    fg_SourcePosition.xy *= uScale;
-    fg_SourcePosition.xy += vec2(uTranslateX, uTranslateY);
-
-    // Transform xy in [0, 1] to xy in [-1, 1]
-    fg_SourcePosition.xy *= 2.;
-    fg_SourcePosition.xy -= 1.;
+{g.gs_shaders['relational']}
 
     // Apply tile transformations
-    fg_TargetPosition.xy *= uScale;
-    fg_TargetPosition.xy += vec2(uTranslateX, uTranslateY);
+    gs_SourcePosition.xy *= uScale;
+    gs_SourcePosition.xy += vec2(uTranslateX, uTranslateY);
 
     // Transform xy in [0, 1] to xy in [-1, 1]
-    fg_TargetPosition.xy *= 2.;
-    fg_TargetPosition.xy -= 1.;
+    gs_SourcePosition.xy *= 2.;
+    gs_SourcePosition.xy -= 1.;
 
-    gl_PrimitiveID = fg_EdgeIndex;
-    gl_Position = fg_SourcePosition;
+    // Apply tile transformations
+    gs_TargetPosition.xy *= uScale;
+    gs_TargetPosition.xy += vec2(uTranslateX, uTranslateY);
+
+    // Transform xy in [0, 1] to xy in [-1, 1]
+    gs_TargetPosition.xy *= 2.;
+    gs_TargetPosition.xy -= 1.;
+
+    gl_PrimitiveID = gs_EdgeIndex;
+    gl_Position = gs_SourcePosition;
     EmitVertex();
 
-    gl_Position = fg_TargetPosition;
+    gl_Position = gs_TargetPosition;
     EmitVertex();
 
     EndPrimitive();
 }}
     '''
 
-    g.env['FG_SHADER_FRAGMENT'] = f'''
-layout(location=0) in flat uint fg_SourceIndex;
-layout(location=1) in flat uint fg_TargetIndex;
+    g.env['GS_SHADER_FRAGMENT'] = f'''
+layout(location=0) in flat uint gs_SourceIndex;
+layout(location=1) in flat uint gs_TargetIndex;
 
-layout(location=0) out vec4 fg_FragColor;
+layout(location=0) out vec4 gs_FragColor;
 
 void main() {{
-    int fg_EdgeIndex = gl_PrimitiveID;
-{g.fg_shaders['appearance']}
+    int gs_EdgeIndex = gl_PrimitiveID;
+{g.gs_shaders['appearance']}
 }}
     '''
 
@@ -370,7 +370,7 @@ def cli():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--input', '-i', dest='input_filename', type=Path, required=True)
-    parser.add_argument('--executable', '-x', dest='executable', default=Path('fg'))
+    parser.add_argument('--executable', '-x', dest='executable', default=Path('gs'))
     parser.add_argument('--file', '-f', dest='datafiles', action='append', nargs=2, default=[])
     parser.add_argument('--env', '-e', dest='envs', action='append', nargs=2, default=[])
     args = vars(parser.parse_args())
