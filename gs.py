@@ -233,7 +233,7 @@ def main(
 
         name = match.group('name')
         default = match.group('default')
-        print(f'DEFINE({name!r}, {default!r})')
+        # print(f'DEFINE({name!r}, {default!r})', file=sys.stderr)
         DEFINE(name, default)
     
     APPEND('GS_BUFFER',
@@ -358,9 +358,9 @@ void main() {{
     file = executable
     arg0 = f'{executable} <{input_filename.name}>'
     env = g.env
-    print(f'os.execlpe({file!r}, {arg0!r}, env)')
-    for k, v in env.items():
-        print(f'env[{k}]:\n---8<---\n{v}\n--->8---')
+    # print(f'os.execlpe({file!r}, {arg0!r}, env)', file=sys.stderr)
+    # for k, v in env.items():
+    #     print(f'env[{k}]:\n---8<---\n{v}\n--->8---, file=sys.stderr')
 
     os.execlpe(executable, arg0, env)
 

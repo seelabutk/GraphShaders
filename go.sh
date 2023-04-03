@@ -6,35 +6,6 @@ self=${BASH_SOURCE[0]:?}
 project=${root##*/}
 
 
-#---
-
-
-# tag=gs_$USER:latest
-# name=gs_$USER
-# target=
-# data='/mnt/seenas2/data/snap'
-# cache=
-# registry= #accona.eecs.utk.edu:5000
-# xauth=
-# entrypoint=
-# ipc=
-# net=
-# user=1
-# cwd=1
-# interactive=1
-# script=
-# port=8889
-# constraint=
-# runtime=
-# network=gs_$USER
-# cap_add=SYS_PTRACE
-# replicas=1
-# tty=1
-# declare -A urls
-
-# test -f "${root:?}/env.sh" && source "${_:?}"
-
-
 #--- Python
 
 go-python() {
@@ -215,7 +186,6 @@ go-docker-exec() {
     exec docker exec \
         --interactive \
         --detach-keys="ctrl-q,ctrl-q" \
-        --tty \
         --user "$(id -u):$(id -g)" \
         --workdir "${PWD:?}" \
         --env USER \

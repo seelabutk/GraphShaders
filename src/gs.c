@@ -781,12 +781,22 @@ int main(int argc, char **argv) {
                 glGetBufferSubData(target, offset, size, static_cast<void *>(data));
                 
                 std::fprintf(stderr, "--- Atomics\n");
+                std::fprintf(stdout, "{\n");
+                std::fprintf(stdout, "  \"metadata\": {\n");
+                std::fprintf(stdout, "     \"nodes\": %zu,\n", gs_node_count);
+                std::fprintf(stdout, "     \"edges\": %zu\n", gs_edge_count);
+                std::fprintf(stdout, "  },\n");
+                std::fprintf(stdout, "  \"atomics\": {\n");
                 for (GLint i=0, n=opt_fg_atomic_count; i<n; ++i) {
                     std::string &opt_fg_atomic_name = opt_fg_atomic_names[i];
                     std::fprintf(stderr, "atomic %d \"%s\" = %u\n",
                         i, opt_fg_atomic_name.c_str(), data[i]);
+                    std::fprintf(stdout, "    \"%s\": %u%s\n",
+                        opt_fg_atomic_name.c_str(), data[i], i<n-1 ? "," : "");
                 }
-                
+                std::fprintf(stdout, "  }\n");
+                std::fprintf(stdout, "}\n");
+
             } else {
                 dief("can't query atomic");
             }
