@@ -62,3 +62,15 @@ $ ./go.sh docker exec ./go.sh gs exec ./examples/NBER-Patents/NBER-Patents.sh
 
 Otherwise, you should make sure that GraphShaderEngine and
 GraphShaderTranspiler.py are within your path.
+
+### Example: JS-Deps
+
+![](examples/JS-Deps/JS-Deps.example.jpg)
+
+### Example: SO-Answers
+
+![](examples/SO-Answers/SO-Answers.example.jpg)
+
+### Example: NBER-Patents
+
+![](examples/NBER-Patents/NBER-Patents.example.jpg)
