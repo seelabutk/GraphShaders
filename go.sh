@@ -139,7 +139,6 @@ docker_name=${project:?}
 docker_build=(
 )
 docker_run=(
-    --mount="type=bind,src=/mnt/seenas2/data/snap,dst=/mnt/seenas2/data/snap"
     --cap-add=SYS_PTRACE
 )
 

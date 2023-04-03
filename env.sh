@@ -4,6 +4,10 @@ case "${HOSTNAME:-unset}" in
         PATH=/home/pprovins/opt/python-3.8.1/bin${PATH:+:${PATH:?}} \
         exec "$@"
     }
+
+    docker_run+=(
+        --mount="type=bind,src=/mnt/seenas2/data,dst=/mnt/seenas2/data"
+    )
     ;;
 
 esac

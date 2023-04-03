@@ -1,6 +1,7 @@
 /build
 /env.sh
 /examples/*/data
+/examples/*/*.jpg
 layouts
 __pycache__/*
 rc_*
@@ -18,3 +19,4 @@ logs/*.log
 /*.mp4
 /*.log
 /*.json
+/stage

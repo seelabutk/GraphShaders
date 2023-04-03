@@ -1,4 +1,6 @@
 go.sh
-env.sh
-Dockerfile
-src/fg.c
+src/GraphShaderEngine.cpp
+src/GraphShaderTranspiler.py
+examples/JS-Deps/JS-Deps.gsp
+examples/SO-Answers/SO-Answers.gsp
+examples/NBER-Patents/NBER-Patents.gsp

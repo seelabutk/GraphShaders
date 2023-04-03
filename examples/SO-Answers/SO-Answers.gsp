@@ -50,7 +50,7 @@ void main() {
 
     #pragma gs scratch(uint CommentsPosted[N])
     #pragma gs scratch(atomic_uint MaxCommentsPosted)
-    uint cp = 1 + atomicAdd(CommentsPosted[gs_TargetIndex], 1);
+    uint cp = 1 + atomicAdd(CommentsPosted[gs_SourceIndex], 1);
     atomicCounterMax(MaxCommentsPosted, cp);
 
     if (LAYOUT == 2) {
