@@ -10,57 +10,31 @@ import logging.config
 from pathlib import Path
 from subprocess import run, PIPE, DEVNULL
 from base64 import b64decode
-from threading import Lock
+from threading import BoundedSemaphore
 
 from flask import Flask, request
 from flask_cors import CORS
 
 
-#--- Custom Logging
+#--- Tidy up URLs for printing
 
-class TidyRequestFormatter(logging.Formatter):
-    def format(self, record):
-        from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
-        from hashlib import md5
+def tidy(url):
+    from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+    from hashlib import md5
 
-        print(f'{record=!r}')
+    scheme, netloc, path, query, fragment = urlsplit(url)
+    query = parse_qsl(query)
 
-        if hasattr(record, "url"):
-            url = record.url
+    for i, (k, v) in enumerate(query[:]):
+        if k == 'shader':
+            v = v.encode('utf-8')
+            v = md5(v).hexdigest()
+            query[i] = (k, v)
 
-            # Split the URL into components
-            scheme, netloc, path, query, fragment = urlsplit(url)
-            query = parse_sql(query)
+    query = urlencode(query)
+    url = urlunsplit((scheme, netloc, path, query, fragment))
 
-            for i, (k, v) in enumerate(query[:]):
-                print(f'{k=!r}: {v=!r}')
-                if k == 'shader':
-                    v = v.encode('utf-8')
-                    v = md5(v).hexdigest()
-                    query[i] = (k, v)
-
-            query = urlencode(query)
-            url = urlunsplit((scheme, netloc, path, query, fragment))
-            
-            record.url = url
-
-        return super().format(record)
-
-logging.config.dictConfig({
-    'version': 1,
-    'formatters': {'default': {
-        'format': '[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
-    }},
-    'handlers': {'wsgi': {
-        'class': 'logging.StreamHandler',
-        'stream': 'ext://flask.logging.wsgi_errors_stream',
-        'formatter': 'default'
-    }},
-    'root': {
-        'level': 'INFO',
-        'handlers': ['wsgi']
-    }
-})
+    return url
 
 
 #--- Global Variables
@@ -71,7 +45,7 @@ CORS(app)
 _g_index_path: Path = None
 _g_graph_shader_transpiler_executable: str = None
 _g_graph_shader_engine_executable: str = None
-_g_lock: Lock = Lock()
+_g_renderer_limit: Semaphore = None
 _g_shader_path: Path = None
 
 
@@ -93,7 +67,7 @@ class RenderingRequest:
     shader: bytes
 
     def __call__(self):
-        with _g_lock:
+        with _g_renderer_limit:
             process = run([
                 '/usr/bin/env',
                 _g_graph_shader_transpiler_executable,
@@ -126,7 +100,7 @@ def index():
         return f.read(), 200, { 'Content-Type': 'text/html' }
 
 
-@app.route('/graph/<int:z>/<int:x>/<int:y>/<int:w>x<int:h>.jpg')
+@app.route('/api/graph/<int:z>/<int:x>/<int:y>/<int:w>x<int:h>.jpg')
 def graph(z, x, y, w, h):
     shader: 'base64' = request.args.get('shader')
     shader: bytes = b64decode(shader)
@@ -161,17 +135,21 @@ def main(
     global _g_graph_shader_engine_executable
     _g_graph_shader_engine_executable = graph_shader_engine_executable
 
-    # from werkzeug._internal import _log
-    # _log('info', 'dummy')
+    global _g_renderer_limit
+    _g_renderer_limit = BoundedSemaphore(4)
 
-    # logger = logging.getLogger('werkzeug')
-    # formatter = TidyRequestFormatter(
-    #     "[%(asctime)s] %(levelname)s in %(module)s: %(message)s"
-    # )
-    # for handler in logger.handlers:
-    #     handler.setFormatter(formatter)
+    from werkzeug.serving import make_server
 
-    app.run(host='0.0.0.0', port=8080, debug=False)
+    server = make_server(
+        host='0.0.0.0',
+        port=8080,
+        app=app,
+        threaded=True,
+        processes=1,
+    )
+    server.log_startup()
+
+    server.serve_forever()
 
 
 def cli():

@@ -134,11 +134,18 @@ void main() {
     gs_FragColor.b = float(risky);
 }
 </textarea>
-<img id="image">
-<script type="module">
-const code = source.value;
-const encoded = btoa(code);
-const url = new URL(`/graph/1/0/0/256x256.jpg`, window.location);
-url.searchParams.set('shader', encoded);
-image.src = url;
+<p><button id="render">Render</button>
+<p><img id="image">
+<script>
+
+render.addEventListener('click', RENDER);
+RENDER();
+
+function RENDER() {
+    const code = source.value;
+    const encoded = btoa(code);
+    const url = new URL(`api/graph/1/0/0/256x256.jpg`, window.location);
+    url.searchParams.set('shader', encoded);
+    image.src = url;
+}
 </script>
