@@ -3,13 +3,16 @@
 This repository contains the code to visualize large graphs using Graph Shader
 Programs (`.GSP`).
 
-The Graph Shaders (GS) system architecture is comprised of two main pieces:
+The Graph Shaders (GS) system architecture is comprised of three main pieces:
 
 - The GS Engine is a C++ program that loads graph data from disk and configures
   OpenGL to render specially designed shaders.
 
 - The GS Transpiler is a Python program that parses `.GSP` programs and is
   configured using `#pragma` statements.
+
+- The GS Server is a Python program that provides an HTTP API to render graphs
+  from a web browser.
 
 The remainder of this repository is a set of example scripts.
 
@@ -74,3 +77,35 @@ GraphShaderTranspiler.py are within your path.
 ### Example: NBER-Patents
 
 ![](examples/NBER-Patents/NBER-Patents.example.jpg)
+
+
+## Running the GS Server
+
+The GS Server requires the `flask` and `flask-cors` libraries to be installed.
+
+These can be installed using:
+
+```console
+$ ./go.sh docker exec ./go.sh gs exec python3 -m virtualenv venv
+$ ./go.sh docker exec ./go.sh gs exec venv/bin/python3 -m pip install flask flask-cors
+```
+
+The server is designed to only load one dataset at a time. This functionality is
+based on replacing the GS Transpiler executable that the server calls, to a
+shell script that calls the GS Transpiler with some file paths.
+
+```console
+$ ./go.sh docker exec ./go.sh gs exec venv/bin/python3 -u src/GraphShaderServer.py --gst-executable ./examples/JS-Deps/JS-Deps.sh
+```
+
+Running the server outside of a Docker environment is left as an exercise to the
+reader 😅
+
+Two frontends are provided for the GS Server.
+
+- A very simplistic HTML page in `src/index.html` that renders a single image
+  tile at a time from the text box on the page.
+
+- A more advanced library in the ObservableHQ notebook environment that supports
+  stitching multiple tiles into a single image.
+  [Available here](https://observablehq.com/@player1537/graph-shaders)

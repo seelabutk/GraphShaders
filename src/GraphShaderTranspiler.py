@@ -354,6 +354,17 @@ void main() {{
     for x in envs:
         k = x[0]
         v = x[1]
+
+        # Just a touch of security, as a treat :)
+        #
+        # I'm mostly thinking about how someone could set $PATH or $LD_PRELOAD
+        # or other dangerous environment variables. This is only really a
+        # problem when exposing the transpiler to the outside world, such as
+        # with the GS Server.
+
+        if not k.startswith('GS_'):
+            continue
+
         g.env[k] = v
 
     file = executable

@@ -134,12 +134,13 @@ go-csv2bin.py() {
 #--- Docker
 
 docker_source=${root:?}
-docker_tag=${project:?}:latest
-docker_name=${project:?}
+docker_tag=${project,,}:latest
+docker_name=${project,,}
 docker_build=(
 )
 docker_run=(
     --cap-add=SYS_PTRACE
+    --net=host
 )
 
 go-docker() {
@@ -184,6 +185,7 @@ go-docker-stop() {
 go-docker-exec() {
     exec docker exec \
         --interactive \
+        --tty \
         --detach-keys="ctrl-q,ctrl-q" \
         --user "$(id -u):$(id -g)" \
         --workdir "${PWD:?}" \
@@ -272,6 +274,24 @@ go-examples-JS-Deps() {
     exec "${root:?}/examples/JS-Deps/JS-Deps.sh" \
         "$@" \
         ##
+}
+
+
+#--- Server
+
+go-Server() {
+    "${FUNCNAME[0]:?}-$@"
+}
+
+go-Server-JS-Deps() {
+    exec "${self:?}" docker \
+    exec "${self:?}" gs \
+    exec "${root:?}/venv/bin/python3" \
+        -u \
+        "${root:?}/src/GraphShaderServer.py" \
+            --gst-executable "${root:?}/examples/JS-Deps/JS-Deps.sh" \
+            "$@" \
+            ##
 }
 
 
