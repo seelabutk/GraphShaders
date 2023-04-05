@@ -277,6 +277,24 @@ go-examples-JS-Deps() {
 }
 
 
+#--- Server
+
+go-Server() {
+    "${FUNCNAME[0]:?}-$@"
+}
+
+go-Server-JS-Deps() {
+    exec "${self:?}" docker \
+    exec "${self:?}" gs \
+    exec "${root:?}/venv/bin/python3" \
+        -u \
+        "${root:?}/src/GraphShaderServer.py" \
+            --gst-executable "${root:?}/examples/JS-Deps/JS-Deps.sh" \
+            "$@" \
+            ##
+}
+
+
 #---
 
 go-graph() {
