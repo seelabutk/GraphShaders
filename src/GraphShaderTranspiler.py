@@ -45,7 +45,7 @@ class ScratchList:
 
 def main(
     *,
-    input_filename: Path,
+    inpfile: Path,
     executable: Path,
     datafiles: List[Tuple[str, str]],
     envs: List[Tuple[str, str]],
@@ -247,10 +247,9 @@ def main(
     )
 
     SHADER('common')
-    with open(input_filename, 'rt') as f:
-        for line in f:
-            line = line.rstrip()
-            LINE(line)
+    for line in inpfile:
+        line = line.rstrip()
+        LINE(line)
 
     if g._scratch_atomic_exists:
         APPEND('GS_BUFFER',
@@ -368,7 +367,7 @@ void main() {{
         g.env[k] = v
 
     file = executable
-    arg0 = f'{executable} <{input_filename.name}>'
+    arg0 = f'{executable} <{getattr(inpfile, "name", "unknown filename")}>'
     env = g.env
     print(f'os.execlpe({file!r}, {arg0!r}, env)', file=sys.stderr)
     # for k, v in env.items():
@@ -378,10 +377,10 @@ void main() {{
 
 
 def cli():
-    import argparse
+    import argparse, sys
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input', '-i', dest='input_filename', type=Path, required=True)
+    parser.add_argument('--input', '-i', dest='inpfile', type=argparse.FileType('rt'), default=sys.stdin)
     parser.add_argument('--executable', '-x', dest='executable', default='GraphShaderEngine')
     parser.add_argument('--file', '-f', dest='datafiles', action='append', nargs=2, default=[])
     parser.add_argument('--env', '-e', dest='envs', action='append', nargs=2, default=[])

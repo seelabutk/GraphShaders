@@ -520,9 +520,9 @@ int main(int argc, char **argv) {
         dief("Failed to read any edges");
     }
 
-    if (gs_node_count == 0) {
-        dief("Failed to read any nodes");
-    }
+    // if (gs_node_count == 0) {
+    //     dief("Failed to read any nodes");
+    // }
 
     for (GLint i=0, n=opt_gs_buffer_count; i<n; ++i) {
         std::string &opt_gs_buffer_kind = opt_gs_buffer_kinds[i];

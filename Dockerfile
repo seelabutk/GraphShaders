@@ -23,9 +23,10 @@ RUN apt-get update && \
         libtool \
         texinfo \
         git \
-        python3.8 \
+        python3.10 \
         python3-pip \
-        python3.8-dev \
+        python3-dev \
+        python3-venv \
         pkg-config \
         # vim's needed for xxd
         vim \

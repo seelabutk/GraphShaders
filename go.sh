@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-
 die() { printf $'Error: %s\n' "$*" >&2; exit 1; }
+pexec() { >&2 printf exec; >&2 printf ' %q' "$@"; >&2 printf '\n'; exec "$@"; }
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)
 self=${BASH_SOURCE[0]:?}
 project=${root##*/}
+#---
 
 
 #--- Python
@@ -139,6 +140,8 @@ docker_name=${project,,}
 docker_build=(
 )
 docker_run=(
+    --runtime=nvidia
+    --gpus all
     --cap-add=SYS_PTRACE
     --net=host
 )
@@ -148,7 +151,7 @@ go-docker() {
 }
 
 go-docker-build() {
-    exec docker buildx build \
+    pexec docker buildx build \
         --rm=false \
         --tag "${docker_tag:?}" \
         "${docker_build[@]}" \
@@ -157,7 +160,7 @@ go-docker-build() {
 }
 
 go-docker-run() {
-    exec docker run \
+    pexec docker run \
         --rm \
         --detach \
         --name "${docker_name:?}" \
@@ -165,6 +168,7 @@ go-docker-run() {
         --mount "type=bind,src=/etc/group,dst=/etc/group,ro" \
         --mount "type=bind,src=${HOME:?},dst=${HOME:?},ro" \
         --mount "type=bind,src=${root:?},dst=${root:?}" \
+        --mount="type=bind,src=${PWD:?},dst=${PWD:?}" \
         "${docker_run[@]}" \
         "${docker_tag:?}" \
         "$@" \
@@ -177,15 +181,20 @@ go-docker-start() {
 }
 
 go-docker-stop() {
-    exec docker stop \
+    pexec docker stop \
         --time 0 \
         "${docker_name:?}"
 }
 
 go-docker-exec() {
-    exec docker exec \
+    local tty
+    if [ -t 0 ]; then
+        tty=
+    fi
+
+    pexec docker exec \
         --interactive \
-        --tty \
+        ${tty+--tty} \
         --detach-keys="ctrl-q,ctrl-q" \
         --user "$(id -u):$(id -g)" \
         --workdir "${PWD:?}" \
