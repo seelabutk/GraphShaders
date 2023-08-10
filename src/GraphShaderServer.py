@@ -123,6 +123,8 @@ def graph(z, x, y, w, h):
 
 def main(
     *,
+    bind: str,
+    port: int,
     graph_shader_transpiler_executable: str,
     graph_shader_engine_executable: str,
 ):
@@ -141,8 +143,8 @@ def main(
     from werkzeug.serving import make_server
 
     server = make_server(
-        host='0.0.0.0',
-        port=8080,
+        host=bind,
+        port=port,
         app=app,
         threaded=True,
         processes=1,
@@ -156,6 +158,8 @@ def cli():
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--bind', default='0.0.0.0')
+    parser.add_argument('--port', type=int, default=8080)
     parser.add_argument('--gst-executable', dest='graph_shader_transpiler_executable', default='GraphShaderTranspiler.py')
     parser.add_argument('--gse-executable', dest='graph_shader_engine_executable', default='GraphShaderEngine')
     args = vars(parser.parse_args())

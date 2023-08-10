@@ -183,9 +183,14 @@ go-docker-stop() {
 }
 
 go-docker-exec() {
+    local tty
+    if [ -t 0 ]; then
+        tty=
+    fi
+
     exec docker exec \
         --interactive \
-        --tty \
+        ${tty+--tty} \
         --detach-keys="ctrl-q,ctrl-q" \
         --user "$(id -u):$(id -g)" \
         --workdir "${PWD:?}" \

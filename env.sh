@@ -1,5 +1,15 @@
 #--- Seelab Machines
 
+case "${HOSTNAME:-unset}" in (kavir)
+
+# Kavir has a GPU: let's use it
+docker_run+=(
+    --runtime=nvidia
+)
+
+;; esac  # case "${HOSTNAME}" in
+
+
 case "${HOSTNAME:-unset}" in (accona|sinai|kavir|gobi|thar|sahara)
 
 

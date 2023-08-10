@@ -25,6 +25,7 @@ RUN apt-get update && \
         git \
         python3.8 \
         python3-pip \
+        python3-virtualenv \
         python3.8-dev \
         pkg-config \
         # vim's needed for xxd
