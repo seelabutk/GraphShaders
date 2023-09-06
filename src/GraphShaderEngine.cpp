@@ -69,12 +69,66 @@ static void die(const char *msg) {
 /* X_OPTION */
 
 
-//--- Main Entrypoint
+namespace gs {
 
-int main(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
+struct EGL {
+    void init();
+    void done();
+};
 
+struct GL : public EGL {
+    GLsizei opt_gs_tile_width;
+    GLsizei opt_gs_tile_height;
+
+    GLuint app_gl_framebuffer;
+
+    void init();
+    void done();
+};
+
+struct Data : public GL {
+    GLint opt_gs_buffer_count;
+    std::vector<std::string> opt_gs_buffer_kinds;
+    std::vector<std::string> opt_gs_buffer_names;
+    std::vector<std::string> opt_gs_buffer_files;
+    std::vector<std::string> opt_gs_buffer_sizes;
+    std::vector<std::string> opt_gs_buffer_types;
+    std::vector<std::string> opt_gs_buffer_binds;
+
+    std::vector<GLuint> app_gl_buffers;
+    std::vector<GLsizeiptr> app_gl_buffer_sizes;
+    GLsizeiptr app_gs_edge_count;
+    GLsizeiptr app_gs_node_count;
+
+    void init();
+    void done();
+};
+
+struct Shader : public Data {
+    std::string opt_gs_shader_common;
+    std::string opt_gs_shader_vertex;
+    std::string opt_gs_shader_geometry;
+    std::string opt_gs_shader_fragment;
+
+    GLuint app_gl_program;
+
+    void init();
+    void done();
+};
+
+struct Render : public Shader {
+    GLfloat opt_gs_tile_x;
+    GLfloat opt_gs_tile_y;
+    GLfloat opt_gs_tile_z;
+
+    void init();
+    void done();
+};
+
+using Application = Render;
+
+
+void EGL::init() {
 
     //--- Setup EGL
 
@@ -167,7 +221,9 @@ int main(int argc, char **argv) {
     if (egl_success == EGL_FALSE) {
         dief("Failed to make current");
     }
+} /* EGL::init */
 
+void GL::init() {
 
     //--- Setup OpenGL
 
@@ -234,9 +290,6 @@ int main(int argc, char **argv) {
 
     // We need somewhere to store the color data from our framebuffer
 
-    GLsizei opt_gs_tile_width;
-    GLsizei opt_gs_tile_height;
-
     opt_gs_tile_width = X_OPTION(std::stoi, "GS_TILE_WIDTH");
     opt_gs_tile_height = X_OPTION(std::stoi, "GS_TILE_HEIGHT");
 
@@ -282,56 +335,39 @@ int main(int argc, char **argv) {
 
     // We need a framebuffer
 
-    GLuint gl_framebuffer;
-    glGenFramebuffers(1, &gl_framebuffer);
-    glBindFramebuffer(GL_FRAMEBUFFER, gl_framebuffer);
-    {
-        GLenum attachment = GL_COLOR_ATTACHMENT0;
-        GLuint textarget = GL_TEXTURE_2D;
-        GLuint texture = gl_framebuffer_texture_color;
-        GLint level = 0;
-        glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, textarget, texture, level);
-    }
-    {
+    app_gl_framebuffer = ({
+        GLuint gl_framebuffer;
+        glGenFramebuffers(1, &gl_framebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, gl_framebuffer);
+        {
+            GLenum attachment = GL_COLOR_ATTACHMENT0;
+            GLuint textarget = GL_TEXTURE_2D;
+            GLuint texture = gl_framebuffer_texture_color;
+            GLint level = 0;
+            glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, textarget, texture, level);
+        }
+
+        gl_framebuffer;
+    });
+
+    ({
         GLenum attachment = GL_DEPTH_STENCIL_ATTACHMENT;
         GLuint textarget = GL_TEXTURE_2D;
         GLuint texture = gl_framebuffer_texture_depth_and_stencil;
         GLint level = 0;
         glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, textarget, texture, level);
-    }
+    });
 
-    {
+    ({
         GLenum status;
         status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE) {
             dief("Failed to complete framebuffer");
         }
-    }
+    });
 
 
-    //--- We need a Vertex Array Object (VAO)
-
-    GLuint gl_vertex_array;
-    glGenVertexArrays(1, &gl_vertex_array);
-    glBindVertexArray(gl_vertex_array);
-
-
-    //--- Clear buffers
-
-    GLfloat opt_gs_background_r;
-    GLfloat opt_gs_background_g;
-    GLfloat opt_gs_background_b;
-    GLfloat opt_gs_background_a;
-
-    opt_gs_background_r = X_OPTION(std::stof, "GS_BACKGROUND_R");
-    opt_gs_background_g = X_OPTION(std::stof, "GS_BACKGROUND_G");
-    opt_gs_background_b = X_OPTION(std::stof, "GS_BACKGROUND_B");
-    opt_gs_background_a = X_OPTION(std::stof, "GS_BACKGROUND_A");
-
-    glClearColor(opt_gs_background_r, opt_gs_background_g, opt_gs_background_b, opt_gs_background_a);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glFlush();
-
+    //--- Configure Features
 
     glDisable(GL_DEPTH_TEST);
 
@@ -358,7 +394,16 @@ int main(int argc, char **argv) {
             dief("Failed to set viewport correctly: expected (%d, %d, %d, %d); got (%d, %d, %d, %d)", x, y, (int)width, (int)height, viewport[0], viewport[1], viewport[2], viewport[3]);
         }
     }
+} /* GL::init */
 
+
+void Data::init() {
+
+    //--- We need a Vertex Array Object (VAO)
+
+    GLuint gl_vertex_array;
+    glGenVertexArrays(1, &gl_vertex_array);
+    glBindVertexArray(gl_vertex_array);
 
     // Load node attributes
 
@@ -439,14 +484,6 @@ int main(int argc, char **argv) {
     })                                                                                                                 \
     /* X_BUFFER_FROM_ZERO */
 
-    GLint opt_gs_buffer_count;
-    std::vector<std::string> opt_gs_buffer_kinds;
-    std::vector<std::string> opt_gs_buffer_names;
-    std::vector<std::string> opt_gs_buffer_files;
-    std::vector<std::string> opt_gs_buffer_sizes;
-    std::vector<std::string> opt_gs_buffer_types;
-    std::vector<std::string> opt_gs_buffer_binds;
-
     opt_gs_buffer_count = X_OPTION(std::stoi, "GS_BUFFER_COUNT");
     opt_gs_buffer_kinds.resize(opt_gs_buffer_count);
     opt_gs_buffer_names.resize(opt_gs_buffer_count);
@@ -463,11 +500,11 @@ int main(int argc, char **argv) {
         opt_gs_buffer_binds[i] = X_OPTION(std::string, "GS_BUFFER_BIND_%d", i);
     }
 
-    GLuint gl_buffers[opt_gs_buffer_count];
-    GLsizeiptr gl_buffer_sizes[opt_gs_buffer_count];
+    app_gl_buffers.resize(opt_gs_buffer_count);
+    app_gl_buffer_sizes.resize(opt_gs_buffer_count);
 
-    GLsizeiptr gs_edge_count = 0;
-    GLsizeiptr gs_node_count = 0;
+    app_gs_edge_count = 0;
+    app_gs_node_count = 0;
     for (GLint i=0, n=opt_gs_buffer_count; i<n; ++i) {
         std::string &opt_gs_buffer_kind = opt_gs_buffer_kinds[i];
         std::string &opt_gs_buffer_file = opt_gs_buffer_files[i];
@@ -475,17 +512,17 @@ int main(int argc, char **argv) {
         std::string &opt_gs_buffer_type = opt_gs_buffer_types[i];
 
         if (opt_gs_buffer_kind == "ATTRIBUTE") {
-            gl_buffers[i] = X_MAKE_BUFFER(GL_SHADER_STORAGE_BUFFER);
-            gl_buffer_sizes[i] = X_BUFFER_FROM_FILE(GL_SHADER_STORAGE_BUFFER, "%s", opt_gs_buffer_file.c_str());
+            app_gl_buffers[i] = X_MAKE_BUFFER(GL_SHADER_STORAGE_BUFFER);
+            app_gl_buffer_sizes[i] = X_BUFFER_FROM_FILE(GL_SHADER_STORAGE_BUFFER, "%s", opt_gs_buffer_file.c_str());
 
             if (opt_gs_buffer_type == "GL_FLOAT" && opt_gs_buffer_size == "N") {
-                gs_node_count = gl_buffer_sizes[i] / sizeof(GLfloat);
+                app_gs_node_count = app_gl_buffer_sizes[i] / sizeof(GLfloat);
 
             } else if (opt_gs_buffer_type == "GL_UNSIGNED_INT" && opt_gs_buffer_size == "N") {
-                gs_node_count = gl_buffer_sizes[i] / sizeof(GLuint);
+                app_gs_node_count = app_gl_buffer_sizes[i] / sizeof(GLuint);
 
             } else if (opt_gs_buffer_type == "GL_UNSIGNED_INT" && opt_gs_buffer_size == "E") {
-                gs_edge_count = gl_buffer_sizes[i] / sizeof(GLuint);
+                app_gs_edge_count = app_gl_buffer_sizes[i] / sizeof(GLuint);
 
             } else {
                 dief("2Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
@@ -493,11 +530,11 @@ int main(int argc, char **argv) {
             }
 
         } else if (opt_gs_buffer_kind == "ELEMENT") {
-            gl_buffers[i] = X_MAKE_BUFFER(GL_ELEMENT_ARRAY_BUFFER);
-            gl_buffer_sizes[i] = X_BUFFER_FROM_FILE(GL_ELEMENT_ARRAY_BUFFER, "%s", opt_gs_buffer_file.c_str());
+            app_gl_buffers[i] = X_MAKE_BUFFER(GL_ELEMENT_ARRAY_BUFFER);
+            app_gl_buffer_sizes[i] = X_BUFFER_FROM_FILE(GL_ELEMENT_ARRAY_BUFFER, "%s", opt_gs_buffer_file.c_str());
 
             if (opt_gs_buffer_type == "GL_UNSIGNED_INT" && opt_gs_buffer_size == "2E") {
-                gs_edge_count = gl_buffer_sizes[i] / sizeof(GLuint) / 2;
+                app_gs_edge_count = app_gl_buffer_sizes[i] / sizeof(GLuint) / 2;
 
             } else {
                 dief("1Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
@@ -507,11 +544,11 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (gs_edge_count == 0) {
+    if (app_gs_edge_count == 0) {
         dief("Failed to read any edges");
     }
 
-    if (gs_node_count == 0) {
+    if (app_gs_node_count == 0) {
         dief("Failed to read any nodes");
     }
 
@@ -523,10 +560,10 @@ int main(int argc, char **argv) {
         std::string &opt_gs_buffer_name = opt_gs_buffer_names[i];
 
         if (opt_gs_buffer_kind == "ATOMIC") {
-            gl_buffers[i] = X_MAKE_BUFFER(GL_ATOMIC_COUNTER_BUFFER);
+            app_gl_buffers[i] = X_MAKE_BUFFER(GL_ATOMIC_COUNTER_BUFFER);
 
             if (opt_gs_buffer_type == "GL_UNSIGNED_INT") {
-                gl_buffer_sizes[i] = X_BUFFER_FROM_ZERO(GL_ATOMIC_COUNTER_BUFFER, GL_DYNAMIC_COPY, std::stoi(opt_gs_buffer_size), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
+                app_gl_buffer_sizes[i] = X_BUFFER_FROM_ZERO(GL_ATOMIC_COUNTER_BUFFER, GL_DYNAMIC_COPY, std::stoi(opt_gs_buffer_size), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
 
             } else {
                 dief("3Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
@@ -534,13 +571,13 @@ int main(int argc, char **argv) {
             }
 
         } else if (opt_gs_buffer_kind == "SCRATCH") {
-            gl_buffers[i] = X_MAKE_BUFFER(GL_SHADER_STORAGE_BUFFER);
+            app_gl_buffers[i] = X_MAKE_BUFFER(GL_SHADER_STORAGE_BUFFER);
 
             if (opt_gs_buffer_type == "GL_UNSIGNED_INT" && opt_gs_buffer_size == "N") {
-                gl_buffer_sizes[i] = X_BUFFER_FROM_ZERO(GL_SHADER_STORAGE_BUFFER, GL_DYNAMIC_COPY, gs_node_count * sizeof(GLuint), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
+                app_gl_buffer_sizes[i] = X_BUFFER_FROM_ZERO(GL_SHADER_STORAGE_BUFFER, GL_DYNAMIC_COPY, app_gs_node_count * sizeof(GLuint), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
 
             } else if (opt_gs_buffer_type == "GL_UNSIGNED_INT" && opt_gs_buffer_size == "E") {
-                gl_buffer_sizes[i] = X_BUFFER_FROM_ZERO(GL_SHADER_STORAGE_BUFFER, GL_DYNAMIC_COPY, gs_edge_count * sizeof(GLuint), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
+                app_gl_buffer_sizes[i] = X_BUFFER_FROM_ZERO(GL_SHADER_STORAGE_BUFFER, GL_DYNAMIC_COPY, app_gs_edge_count * sizeof(GLuint), GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT);
 
             } else {
                 dief("4Unrecognized buffer: kind=%s; file=%s; size=%s; type=%s",
@@ -557,8 +594,8 @@ int main(int argc, char **argv) {
 
     // std::fprintf(stderr, "=== Buffer Stats\n");
     // std::fprintf(stderr, "Number of Buffers: %d\n", opt_gs_buffer_count);
-    // std::fprintf(stderr, "Number of Nodes: %d\n", (int)gs_node_count);
-    // std::fprintf(stderr, "Number of Edges: %d\n", (int)gs_edge_count);
+    // std::fprintf(stderr, "Number of Nodes: %d\n", (int)app_gs_node_count);
+    // std::fprintf(stderr, "Number of Edges: %d\n", (int)app_gs_edge_count);
 
     for (GLint i=0, n=opt_gs_buffer_count; i<n; ++i) {
         std::string &opt_gs_buffer_kind = opt_gs_buffer_kinds[i];
@@ -568,8 +605,8 @@ int main(int argc, char **argv) {
         std::string &opt_gs_buffer_name = opt_gs_buffer_names[i];
         std::string &opt_gs_buffer_bind = opt_gs_buffer_binds[i];
 
-        GLuint gl_buffer = gl_buffers[i];
-        GLsizeiptr gl_buffer_size = gl_buffer_sizes[i];
+        GLuint gl_buffer = app_gl_buffers[i];
+        GLsizeiptr gl_buffer_size = app_gl_buffer_sizes[i];
 
         // std::fprintf(stderr, "--- Buffer %d\n", i);
         // std::fprintf(stderr, "kind: %s\n", opt_gs_buffer_kind.c_str());
@@ -582,6 +619,10 @@ int main(int argc, char **argv) {
         // std::fprintf(stderr, "gl_buffer_size: %zu\n", gl_buffer_size);
     }
 
+} /* Data::init */
+
+
+void Shader::init() {
 
     //--- Shaders
 
@@ -617,11 +658,6 @@ int main(int argc, char **argv) {
     })                                                                                                                 \
     /* X_MAKE_SHADER */
 
-    std::string opt_gs_shader_common;
-    std::string opt_gs_shader_vertex;
-    std::string opt_gs_shader_geometry;
-    std::string opt_gs_shader_fragment;
-
     opt_gs_shader_common = X_OPTION(std::string, "GS_SHADER_COMMON");
     opt_gs_shader_vertex = X_OPTION(std::string, "GS_SHADER_VERTEX");
     opt_gs_shader_geometry = X_OPTION(std::string, "GS_SHADER_GEOMETRY");
@@ -636,7 +672,7 @@ int main(int argc, char **argv) {
 
     //--- Shader Program
 
-    GLuint gl_program = ({
+    app_gl_program = ({
         GLuint gl_program;
 
         gl_program = glCreateProgram();
@@ -685,15 +721,15 @@ int main(int argc, char **argv) {
         std::string &opt_gs_buffer_bind = opt_gs_buffer_binds[i];
 
         if (opt_gs_buffer_kind == "ATTRIBUTE") {
-            X_BIND_BUFFER(GL_SHADER_STORAGE_BUFFER, std::stoi(opt_gs_buffer_bind.c_str()), gl_buffers[i]);
+            X_BIND_BUFFER(GL_SHADER_STORAGE_BUFFER, std::stoi(opt_gs_buffer_bind.c_str()), app_gl_buffers[i]);
 
         } else if (opt_gs_buffer_kind == "SCRATCH") {
-            X_BIND_BUFFER(GL_SHADER_STORAGE_BUFFER, std::stoi(opt_gs_buffer_bind.c_str()), gl_buffers[i]);
+            X_BIND_BUFFER(GL_SHADER_STORAGE_BUFFER, std::stoi(opt_gs_buffer_bind.c_str()), app_gl_buffers[i]);
 
         } else if (opt_gs_buffer_kind == "ATOMIC") {
             GLenum target = GL_ATOMIC_COUNTER_BUFFER;
             GLuint index = 0;
-            GLuint buffer = gl_buffers[i];
+            GLuint buffer = app_gl_buffers[i];
             glBindBufferBase(target, index, buffer);
 
         }
@@ -701,6 +737,10 @@ int main(int argc, char **argv) {
 
 #   undef X_BIND_BUFFER
 
+} /* Shader::init */
+
+
+void Render::init() {
 
     //--- Uniforms
 
@@ -715,19 +755,33 @@ int main(int argc, char **argv) {
     })                                                                                                                 \
     /* X_UNIFORM */
 
-    GLfloat opt_gs_tile_x;
-    GLfloat opt_gs_tile_y;
-    GLfloat opt_gs_tile_z;
-
     opt_gs_tile_x = X_OPTION(std::stof, "GS_TILE_X");
     opt_gs_tile_y = X_OPTION(std::stof, "GS_TILE_Y");
     opt_gs_tile_z = X_OPTION(std::stof, "GS_TILE_Z");
 
-    X_UNIFORM1F(gl_program, "uTranslateX", -1.0f * opt_gs_tile_x);
-    X_UNIFORM1F(gl_program, "uTranslateY", -1.0f * opt_gs_tile_y);
-    X_UNIFORM1F(gl_program, "uScale", std::pow(2.0f, opt_gs_tile_z));
+    X_UNIFORM1F(app_gl_program, "uTranslateX", -1.0f * opt_gs_tile_x);
+    X_UNIFORM1F(app_gl_program, "uTranslateY", -1.0f * opt_gs_tile_y);
+    X_UNIFORM1F(app_gl_program, "uScale", std::pow(2.0f, opt_gs_tile_z));
 
 #   undef X_UNIFORM
+
+
+    //--- Clear buffers
+
+    GLfloat opt_gs_background_r;
+    GLfloat opt_gs_background_g;
+    GLfloat opt_gs_background_b;
+    GLfloat opt_gs_background_a;
+
+    opt_gs_background_r = X_OPTION(std::stof, "GS_BACKGROUND_R");
+    opt_gs_background_g = X_OPTION(std::stof, "GS_BACKGROUND_G");
+    opt_gs_background_b = X_OPTION(std::stof, "GS_BACKGROUND_B");
+    opt_gs_background_a = X_OPTION(std::stof, "GS_BACKGROUND_A");
+
+    glClearColor(opt_gs_background_r, opt_gs_background_g, opt_gs_background_b, opt_gs_background_a);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glFlush();
+
 
     //--- Render
 
@@ -737,7 +791,7 @@ int main(int argc, char **argv) {
         // glBindBuffer(target, buffer);
 
         GLenum mode = GL_LINES;
-        GLsizei count = gs_edge_count * 2;
+        GLsizei count = app_gs_edge_count * 2;
         GLenum type = GL_UNSIGNED_INT;
         GLvoid *indices = 0;
         std::fprintf(stderr, "glDrawElements(0x%x, %u, 0x%x, %p)\n", mode, count, type, indices);
@@ -766,20 +820,20 @@ int main(int argc, char **argv) {
         if (opt_gs_buffer_kind == "ATOMIC") {
             if (opt_gs_buffer_type == "GL_UNSIGNED_INT") {
                 GLenum target = GL_ATOMIC_COUNTER_BUFFER;
-                GLenum buffer = gl_buffers[i];
+                GLenum buffer = app_gl_buffers[i];
                 glBindBuffer(target, buffer);
 
                 GLuint *data;
                 GLintptr offset = 0;
-                GLsizeiptr size = gl_buffer_sizes[i];
+                GLsizeiptr size = app_gl_buffer_sizes[i];
                 data = new GLuint[size];
                 glGetBufferSubData(target, offset, size, static_cast<void *>(data));
                 
                 std::fprintf(stderr, "--- Atomics\n");
                 std::fprintf(stdout, "{\n");
                 std::fprintf(stdout, "  \"metadata\": {\n");
-                std::fprintf(stdout, "     \"nodes\": %zu,\n", gs_node_count);
-                std::fprintf(stdout, "     \"edges\": %zu\n", gs_edge_count);
+                std::fprintf(stdout, "     \"nodes\": %zu,\n", app_gs_node_count);
+                std::fprintf(stdout, "     \"edges\": %zu\n", app_gs_edge_count);
                 std::fprintf(stdout, "  },\n");
                 std::fprintf(stdout, "  \"atomics\": {\n");
                 for (GLint i=0, n=opt_gs_atomic_count; i<n; ++i) {
@@ -821,7 +875,7 @@ int main(int argc, char **argv) {
     GLvoid *rgba_data;
 
     std::tie(rgba_width, rgba_height, rgba_data) = ({
-        GLuint framebuffer = gl_framebuffer;
+        GLuint framebuffer = app_gl_framebuffer;
         GLenum mode = GL_COLOR_ATTACHMENT0;
         glNamedFramebufferReadBuffer(framebuffer, mode);
 
@@ -888,5 +942,43 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Wrote %zu bytes to %s\n", jpeg.size(), name);
     });
 
-    return 0;
+} /* Render::init */
+
+void Render::done() {
+} /* Render::done */
+
+void Shader::done() {
+} /* Shader::done */
+
+void Data::done() {
+} /* Data::done */
+
+void GL::done() {
+} /* GL::done */
+
+
+void EGL::done() {
+} /* EGL::done */
+
+
+} /* namespace gs */
+
+
+//--- Main Entrypoint
+
+int main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
+    ::gs::Render app;
+    app.::gs::EGL::init();
+    app.::gs::GL::init();
+    app.::gs::Data::init();
+    app.::gs::Shader::init();
+    app.::gs::Render::init();
+    app.::gs::Render::done();
+    app.::gs::Shader::done();
+    app.::gs::Data::done();
+    app.::gs::GL::done();
+    app.::gs::EGL::done();
 }
