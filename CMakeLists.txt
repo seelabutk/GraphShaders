@@ -18,6 +18,11 @@ add_executable(GraphShaderEngine
     src/glad_egl.c
 )
 
+target_compile_definitions(GraphShaderEngine
+    PRIVATE
+        _GS_MAIN_
+)
+
 target_include_directories(GraphShaderEngine
     PUBLIC
         src
@@ -33,6 +38,31 @@ install(
     TARGETS
         GraphShaderEngine
 )
+
+
+add_library(libgraphshader
+    SHARED
+        src/GraphShaderEngine.cpp
+        src/glad.c
+        src/glad_egl.c
+)
+
+target_include_directories(libgraphshader
+    PUBLIC
+        src
+)
+
+target_link_libraries(libgraphshader
+    PUBLIC
+        -lEGL
+        -ldl
+)
+
+install(
+    TARGETS
+        libgraphshader
+)
+
 
 install(
     PROGRAMS

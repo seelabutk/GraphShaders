@@ -8,6 +8,7 @@
 #include <string>
 #include <tuple>
 #include <vector>
+#include <map>
 
 // c stdlib
 #include <arpa/inet.h>
@@ -58,11 +59,11 @@ static void die(const char *msg) {
     return dief("%s", msg);
 }
 
-#define X_OPTION(PARSE, FORMAT, ...)                                                                                \
+#define X_OPTION(PARSE, FORMAT, ...)                                                                                   \
     ({                                                                                                                 \
         char name[128];                                                                                                \
         std::snprintf(name, sizeof(name), FORMAT, ## __VA_ARGS__);                                                     \
-        char *s = getenv(name);                                                                                        \
+        const char *s = getenv(name);                                                                                  \
         if (!s) dief("Missing required option: %s", name);                                                             \
         (PARSE)(s);                                                                                                    \
     })                                                                                                                 \
@@ -71,7 +72,31 @@ static void die(const char *msg) {
 
 namespace gs {
 
-struct EGL {
+struct Environment {
+    std::map<std::string, std::string> app_gs_options;
+
+    void init();
+    void done();
+
+    void clearenv() {
+        app_gs_options.clear();
+    }
+
+    void setenv(const std::string &name, const std::string &value) {
+        app_gs_options[name] = value;
+    }
+
+    const char *getenv(const std::string &name) {
+        auto it = app_gs_options.find(name);
+        if (it == app_gs_options.end()) {
+            return nullptr;
+        }
+
+        return it->second.c_str();
+    }
+};
+
+struct EGL : public Environment {
     void init();
     void done();
 };
@@ -126,6 +151,10 @@ struct Render : public Shader {
 };
 
 using Application = Render;
+
+
+void Environment::init() {
+} /* Environment::init */
 
 
 void EGL::init() {
@@ -960,25 +989,134 @@ void GL::done() {
 void EGL::done() {
 } /* EGL::done */
 
+void Environment::done() {
+} /* Environment::done */
+
 
 } /* namespace gs */
 
 
+extern "C"
+void *gsNewApplication(void) {
+    ::gs::Application *app = new ::gs::Render();
+    return static_cast<void *>(app);
+}
+
+extern "C"
+void gsEnvironmentInit(void *app_) {
+    ::gs::Application *app = static_cast<::gs::Application *>(app_);
+    app->::gs::Environment::init();
+}
+
+extern "C"
+void gsEnvironmentSet(void *app_, const char *name, const char *value) {
+    ::gs::Application *app = static_cast<::gs::Application *>(app_);
+    app->::gs::Environment::setenv(name, value);
+}
+
+extern "C"
+void gsEnvironmentDone(void *app_) {
+    ::gs::Application *app = static_cast<::gs::Application *>(app_);
+    app->::gs::Environment::done();
+}
+
+extern "C"
+void gsEGLInit(void *app_) {
+    ::gs::Application *app = static_cast<::gs::Application *>(app_);
+    app->::gs::EGL::init();
+}
+
+extern "C"
+void gsEGLDone(void *app_) {
+    ::gs::Application *app = static_cast<::gs::Application *>(app_);
+    app->::gs::EGL::done();
+}
+
+extern "C"
+void gsGLInit(void *app_) {
+    ::gs::Application *app = static_cast<::gs::Application *>(app_);
+    app->::gs::GL::init();
+}
+
+extern "C"
+void gsGLDone(void *app_) {
+    ::gs::Application *app = static_cast<::gs::Application *>(app_);
+    app->::gs::GL::done();
+}
+
+extern "C"
+void gsDataInit(void *app_) {
+    ::gs::Application *app = static_cast<::gs::Application *>(app_);
+    app->::gs::Data::init();
+}
+
+extern "C"
+void gsDataDone(void *app_) {
+    ::gs::Application *app = static_cast<::gs::Application *>(app_);
+    app->::gs::Data::done();
+}
+
+extern "C"
+void gsShaderInit(void *app_) {
+    ::gs::Application *app = static_cast<::gs::Application *>(app_);
+    app->::gs::Shader::init();
+}
+
+extern "C"
+void gsShaderDone(void *app_) {
+    ::gs::Application *app = static_cast<::gs::Application *>(app_);
+    app->::gs::Shader::done();
+}
+
+extern "C"
+void gsRenderInit(void *app_) {
+    ::gs::Application *app = static_cast<::gs::Application *>(app_);
+    app->::gs::Render::init();
+}
+
+extern "C"
+void gsRenderDone(void *app_) {
+    ::gs::Application *app = static_cast<::gs::Application *>(app_);
+    app->::gs::Render::done();
+}
+
+
+#ifdef _GS_MAIN_
+
 //--- Main Entrypoint
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv, char **envp) {
     (void)argc;
     (void)argv;
 
-    ::gs::Render app;
-    app.::gs::EGL::init();
-    app.::gs::GL::init();
-    app.::gs::Data::init();
-    app.::gs::Shader::init();
-    app.::gs::Render::init();
-    app.::gs::Render::done();
-    app.::gs::Shader::done();
-    app.::gs::Data::done();
-    app.::gs::GL::done();
-    app.::gs::EGL::done();
+    void *app = gsNewApplication();
+
+    gsEnvironmentInit(app);
+    for (char **env_=envp; *env_; ++env_) {
+        std::string env = *env_;
+        size_t index = env.find('=');
+        if (index == std::string::npos) {
+            continue;
+        }
+
+        std::string key = env.substr(0, index);
+        std::string value = env.substr(index + 1);
+        gsEnvironmentSet(app, key.c_str(), value.c_str());
+    }
+
+    gsEGLInit(app);
+    gsGLInit(app);
+    gsDataInit(app);
+    gsShaderInit(app);
+    gsRenderInit(app);
+
+    gsRenderDone(app);
+    gsShaderDone(app);
+    gsDataDone(app);
+    gsGLDone(app);
+    gsEGLDone(app);
+
+    gsEnvironmentDone(app);
 }
+
+#endif /* _GS_MAIN_ */
