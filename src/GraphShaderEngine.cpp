@@ -58,16 +58,7 @@ static void die(const char *msg) {
     return dief("%s", msg);
 }
 
-
-//--- Main Entrypoint
-
-int main(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-
-    //--- Configurable values
-
-#   define X_OPTION(PARSE, FORMAT, ...)                                                                                \
+#define X_OPTION(PARSE, FORMAT, ...)                                                                                \
     ({                                                                                                                 \
         char name[128];                                                                                                \
         std::snprintf(name, sizeof(name), FORMAT, ## __VA_ARGS__);                                                     \
@@ -75,53 +66,14 @@ int main(int argc, char **argv) {
         if (!s) dief("Missing required option: %s", name);                                                             \
         (PARSE)(s);                                                                                                    \
     })                                                                                                                 \
-    /* X_OPTION */
-
-    GLfloat opt_gs_background_r = X_OPTION(std::stof, "GS_BACKGROUND_R");
-    GLfloat opt_gs_background_g = X_OPTION(std::stof, "GS_BACKGROUND_G");
-    GLfloat opt_gs_background_b = X_OPTION(std::stof, "GS_BACKGROUND_B");
-    GLfloat opt_gs_background_a = X_OPTION(std::stof, "GS_BACKGROUND_A");
-    GLsizei opt_gs_tile_width = X_OPTION(std::stoi, "GS_TILE_WIDTH");
-    GLsizei opt_gs_tile_height = X_OPTION(std::stoi, "GS_TILE_HEIGHT");
-    GLfloat opt_gs_tile_x = X_OPTION(std::stof, "GS_TILE_X");
-    GLfloat opt_gs_tile_y = X_OPTION(std::stof, "GS_TILE_Y");
-    GLfloat opt_gs_tile_z = X_OPTION(std::stof, "GS_TILE_Z");
-    std::string opt_gs_output = X_OPTION(std::string, "GS_OUTPUT");
-
-    std::string opt_gs_shader_common = X_OPTION(std::string, "GS_SHADER_COMMON");
-    std::string opt_gs_shader_vertex = X_OPTION(std::string, "GS_SHADER_VERTEX");
-    std::string opt_gs_shader_geometry = X_OPTION(std::string, "GS_SHADER_GEOMETRY");
-    std::string opt_gs_shader_fragment = X_OPTION(std::string, "GS_SHADER_FRAGMENT");
-
-    GLint opt_gs_buffer_count = X_OPTION(std::stoi, "GS_BUFFER_COUNT");
-    std::string opt_gs_buffer_kinds[opt_gs_buffer_count];
-    std::string opt_gs_buffer_names[opt_gs_buffer_count];
-    std::string opt_gs_buffer_files[opt_gs_buffer_count];
-    std::string opt_gs_buffer_sizes[opt_gs_buffer_count];
-    std::string opt_gs_buffer_types[opt_gs_buffer_count];
-    std::string opt_gs_buffer_binds[opt_gs_buffer_count];
-    for (GLint i=0, n=opt_gs_buffer_count; i<n; ++i) {
-        opt_gs_buffer_kinds[i] = X_OPTION(std::string, "GS_BUFFER_KIND_%d", i);
-        opt_gs_buffer_names[i] = X_OPTION(std::string, "GS_BUFFER_NAME_%d", i);
-        opt_gs_buffer_files[i] = X_OPTION(std::string, "GS_BUFFER_FILE_%d", i);
-        opt_gs_buffer_sizes[i] = X_OPTION(std::string, "GS_BUFFER_SIZE_%d", i);
-        opt_gs_buffer_types[i] = X_OPTION(std::string, "GS_BUFFER_TYPE_%d", i);
-        opt_gs_buffer_binds[i] = X_OPTION(std::string, "GS_BUFFER_BIND_%d", i);
-    }
-
-    GLint opt_gs_atomic_count = X_OPTION(std::stoi, "GS_ATOMIC_COUNT");
-    std::string opt_gs_atomic_names[opt_gs_atomic_count];
-    for (GLint i=0, n=opt_gs_atomic_count; i<n; ++i) {
-        opt_gs_atomic_names[i] = X_OPTION(std::string, "GS_ATOMIC_NAME_%d", i);
-    }
+/* X_OPTION */
 
 
-#   undef X_OPTION
+//--- Main Entrypoint
 
-    // std::fprintf(stderr, "buffers[%d]:\n", opt_gs_buffer_count);
-    // for (GLint i=0, n=opt_gs_buffer_count; i<n; ++i) {
-    //     std::fprintf(stderr, "  %d: kind=%s; name=%s\n", i, opt_gs_buffer_kinds[i].c_str(), opt_gs_buffer_names[i].c_str());
-    // }
+int main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
 
 
     //--- Setup EGL
@@ -282,6 +234,9 @@ int main(int argc, char **argv) {
 
     // We need somewhere to store the color data from our framebuffer
 
+    GLsizei opt_gs_tile_width = X_OPTION(std::stoi, "GS_TILE_WIDTH");
+    GLsizei opt_gs_tile_height = X_OPTION(std::stoi, "GS_TILE_HEIGHT");
+
     GLuint gl_framebuffer_texture_color;
     glGenTextures(1, &gl_framebuffer_texture_color);
     glBindTexture(GL_TEXTURE_2D, gl_framebuffer_texture_color);
@@ -359,6 +314,11 @@ int main(int argc, char **argv) {
 
 
     //--- Clear buffers
+
+    GLfloat opt_gs_background_r = X_OPTION(std::stof, "GS_BACKGROUND_R");
+    GLfloat opt_gs_background_g = X_OPTION(std::stof, "GS_BACKGROUND_G");
+    GLfloat opt_gs_background_b = X_OPTION(std::stof, "GS_BACKGROUND_B");
+    GLfloat opt_gs_background_a = X_OPTION(std::stof, "GS_BACKGROUND_A");
 
     glClearColor(opt_gs_background_r, opt_gs_background_g, opt_gs_background_b, opt_gs_background_a);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -473,6 +433,22 @@ int main(int argc, char **argv) {
 
     GLsizeiptr gs_edge_count = 0;
     GLsizeiptr gs_node_count = 0;
+
+    GLint opt_gs_buffer_count = X_OPTION(std::stoi, "GS_BUFFER_COUNT");
+    std::string opt_gs_buffer_kinds[opt_gs_buffer_count];
+    std::string opt_gs_buffer_names[opt_gs_buffer_count];
+    std::string opt_gs_buffer_files[opt_gs_buffer_count];
+    std::string opt_gs_buffer_sizes[opt_gs_buffer_count];
+    std::string opt_gs_buffer_types[opt_gs_buffer_count];
+    std::string opt_gs_buffer_binds[opt_gs_buffer_count];
+    for (GLint i=0, n=opt_gs_buffer_count; i<n; ++i) {
+        opt_gs_buffer_kinds[i] = X_OPTION(std::string, "GS_BUFFER_KIND_%d", i);
+        opt_gs_buffer_names[i] = X_OPTION(std::string, "GS_BUFFER_NAME_%d", i);
+        opt_gs_buffer_files[i] = X_OPTION(std::string, "GS_BUFFER_FILE_%d", i);
+        opt_gs_buffer_sizes[i] = X_OPTION(std::string, "GS_BUFFER_SIZE_%d", i);
+        opt_gs_buffer_types[i] = X_OPTION(std::string, "GS_BUFFER_TYPE_%d", i);
+        opt_gs_buffer_binds[i] = X_OPTION(std::string, "GS_BUFFER_BIND_%d", i);
+    }
 
     GLuint gl_buffers[opt_gs_buffer_count];
     GLsizeiptr gl_buffer_sizes[opt_gs_buffer_count];
@@ -626,6 +602,11 @@ int main(int argc, char **argv) {
     })                                                                                                                 \
     /* X_MAKE_SHADER */
 
+    std::string opt_gs_shader_common = X_OPTION(std::string, "GS_SHADER_COMMON");
+    std::string opt_gs_shader_vertex = X_OPTION(std::string, "GS_SHADER_VERTEX");
+    std::string opt_gs_shader_geometry = X_OPTION(std::string, "GS_SHADER_GEOMETRY");
+    std::string opt_gs_shader_fragment = X_OPTION(std::string, "GS_SHADER_FRAGMENT");
+
     GLuint gl_shader_vertex = X_MAKE_SHADER(GL_VERTEX_SHADER, opt_gs_shader_common.c_str(), opt_gs_shader_vertex.c_str());
     GLuint gl_shader_geometry = X_MAKE_SHADER(GL_GEOMETRY_SHADER, opt_gs_shader_common.c_str(), opt_gs_shader_geometry.c_str());
     GLuint gl_shader_fragment = X_MAKE_SHADER(GL_FRAGMENT_SHADER, opt_gs_shader_common.c_str(), opt_gs_shader_fragment.c_str());
@@ -714,6 +695,10 @@ int main(int argc, char **argv) {
     })                                                                                                                 \
     /* X_UNIFORM */
 
+    GLfloat opt_gs_tile_x = X_OPTION(std::stof, "GS_TILE_X");
+    GLfloat opt_gs_tile_y = X_OPTION(std::stof, "GS_TILE_Y");
+    GLfloat opt_gs_tile_z = X_OPTION(std::stof, "GS_TILE_Z");
+
     X_UNIFORM1F(gl_program, "uTranslateX", -1.0f * opt_gs_tile_x);
     X_UNIFORM1F(gl_program, "uTranslateY", -1.0f * opt_gs_tile_y);
     X_UNIFORM1F(gl_program, "uScale", std::pow(2.0f, opt_gs_tile_z));
@@ -737,6 +722,12 @@ int main(int argc, char **argv) {
 
 
     //--- Query Buffers
+
+    GLint opt_gs_atomic_count = X_OPTION(std::stoi, "GS_ATOMIC_COUNT");
+    std::string opt_gs_atomic_names[opt_gs_atomic_count];
+    for (GLint i=0, n=opt_gs_atomic_count; i<n; ++i) {
+        opt_gs_atomic_names[i] = X_OPTION(std::string, "GS_ATOMIC_NAME_%d", i);
+    }
 
     for (GLint i=0, n=opt_gs_buffer_count; i<n; ++i) {
         std::string &opt_gs_buffer_kind = opt_gs_buffer_kinds[i];
@@ -855,6 +846,8 @@ int main(int argc, char **argv) {
 
 
     //--- Write JPEG to Disk
+
+    std::string opt_gs_output = X_OPTION(std::string, "GS_OUTPUT");
 
     ({
         GLchar name[128];
