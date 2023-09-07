@@ -40,19 +40,19 @@ install(
 )
 
 
-add_library(libgraphshader
+add_library(graphshader
     SHARED
         src/GraphShaderEngine.cpp
         src/glad.c
         src/glad_egl.c
 )
 
-target_include_directories(libgraphshader
+target_include_directories(graphshader
     PUBLIC
         src
 )
 
-target_link_libraries(libgraphshader
+target_link_libraries(graphshader
     PUBLIC
         -lEGL
         -ldl
@@ -60,7 +60,7 @@ target_link_libraries(libgraphshader
 
 install(
     TARGETS
-        libgraphshader
+        graphshader
 )
 
 
