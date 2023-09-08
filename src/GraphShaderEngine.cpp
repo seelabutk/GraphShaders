@@ -154,7 +154,17 @@ struct Render : public Shader {
     GLfloat opt_gs_tile_y;
     GLfloat opt_gs_tile_z;
 
+    GLsizei app_rgba_width;
+    GLsizei app_rgba_height;
+    GLvoid *app_rgba_data;
+    std::vector<uint8_t> app_jpeg;
+
     void init();
+    void get(void **jpeg, size_t *jpeglen) {
+        *jpeg = app_jpeg.data();
+        *jpeglen = app_jpeg.size();
+    }
+
     void done();
 };
 
@@ -566,14 +576,17 @@ void Data::init() {
         std::string &opt_gs_buffer_size = opt_gs_buffer_sizes[i];
         std::string &opt_gs_buffer_type = opt_gs_buffer_types[i];
 
-        std::fprintf(stderr, (
-            "buffer %d\n"
-            "  name: %s\n"
-            "  kind: %s\n"
-            "  file: %s\n"
-            "  size: %s\n"
-            "  type: %s\n"
-        ), i, opt_gs_buffer_name, opt_gs_buffer_kind, opt_gs_buffer_file, opt_gs_buffer_size, opt_gs_buffer_type);
+#       define X(suffix) \
+        std::fprintf(stderr, ("  " #suffix ": %s\n"), opt_gs_buffer_##suffix.c_str())
+
+        std::fprintf(stderr, "buffer %d\n", i);
+        X(name);
+        X(kind);
+        X(file);
+        X(size);
+        X(type);
+
+#       undef X
 
         auto it = app_data_buffers.find(opt_gs_buffer_name);
         const char *app_data_buffer = it != app_data_buffers.end()
@@ -948,11 +961,7 @@ void Render::init() {
 
     //--- Read RGBA Colors
 
-    GLsizei rgba_width;
-    GLsizei rgba_height;
-    GLvoid *rgba_data;
-
-    std::tie(rgba_width, rgba_height, rgba_data) = ({
+    std::tie(app_rgba_width, app_rgba_height, app_rgba_data) = ({
         GLuint framebuffer = app_gl_framebuffer;
         GLenum mode = GL_COLOR_ATTACHMENT0;
         glNamedFramebufferReadBuffer(framebuffer, mode);
@@ -972,26 +981,24 @@ void Render::init() {
 
     //--- Encode RGBA to JPEG
 
-    std::vector<uint8_t> jpeg;
-
     ({
-        jpeg.clear();
-        jpeg.reserve(1000000);
+        app_jpeg.clear();
+        app_jpeg.reserve(1000000);
 
-        void *context = static_cast<void *>(&jpeg);
-        int width = rgba_width;
-        int height = rgba_height;
+        void *context = static_cast<void *>(&app_jpeg);
+        int width = app_rgba_width;
+        int height = app_rgba_height;
         int components = 4;
-        void *rgba = rgba_data;
+        void *rgba = app_rgba_data;
         int quality = 95;
         auto callback = +[](void *context, void *data, int size) {
             // std::fprintf(stderr, "Writing %zu bytes\n", (size_t)size);
-            std::vector<uint8_t> &jpeg = *static_cast<std::vector<uint8_t> *>(context);
+            std::vector<uint8_t> &app_jpeg = *static_cast<std::vector<uint8_t> *>(context);
             uint8_t *bytes = static_cast<uint8_t *>(data);
-            if (jpeg.capacity() < jpeg.size() + size) {
-                jpeg.reserve(jpeg.capacity() + 10000);
+            if (app_jpeg.capacity() < app_jpeg.size() + size) {
+                app_jpeg.reserve(app_jpeg.capacity() + 10000);
             }
-            std::copy(bytes, bytes + size, std::back_inserter(jpeg));
+            std::copy(bytes, bytes + size, std::back_inserter(app_jpeg));
         };
 
         std::fprintf(stderr, "JPEG: %dx%d\n", width, height);
@@ -1010,15 +1017,17 @@ void Render::init() {
 
     opt_gs_output = X_OPTION(std::string, "GS_OUTPUT");
 
-    ({
-        GLchar name[128];
-        snprintf(name, sizeof(name), "%s", opt_gs_output.c_str());
+    if (opt_gs_output != "<MEMORY>") {
+        ({
+            GLchar name[128];
+            snprintf(name, sizeof(name), "%s", opt_gs_output.c_str());
 
-        FILE *file = fopen(name, "wb");
-        fwrite(jpeg.data(), 1, jpeg.size(), file);
+            FILE *file = fopen(name, "wb");
+            fwrite(app_jpeg.data(), 1, app_jpeg.size(), file);
 
-        fprintf(stderr, "Wrote %zu bytes to %s\n", jpeg.size(), name);
-    });
+            fprintf(stderr, "Wrote %zu bytes to %s\n", app_jpeg.size(), name);
+        });
+    }
 
 } /* Render::init */
 
@@ -1054,85 +1063,91 @@ void *gsNewApplication(void) {
 extern "C"
 void gsEnvironmentInit(void *app_) {
     ::gs::Application *app = static_cast<::gs::Application *>(app_);
-    app->::gs::Environment::init();
+    return app->::gs::Environment::init();
 }
 
 extern "C"
 void gsEnvironmentSet(void *app_, const char *name, const char *value) {
     ::gs::Application *app = static_cast<::gs::Application *>(app_);
-    app->::gs::Environment::setenv(name, value);
+    return app->::gs::Environment::setenv(name, value);
 }
 
 extern "C"
 void gsEnvironmentDone(void *app_) {
     ::gs::Application *app = static_cast<::gs::Application *>(app_);
-    app->::gs::Environment::done();
+    return app->::gs::Environment::done();
 }
 
 extern "C"
 void gsEGLInit(void *app_) {
     ::gs::Application *app = static_cast<::gs::Application *>(app_);
-    app->::gs::EGL::init();
+    return app->::gs::EGL::init();
 }
 
 extern "C"
 void gsEGLDone(void *app_) {
     ::gs::Application *app = static_cast<::gs::Application *>(app_);
-    app->::gs::EGL::done();
+    return app->::gs::EGL::done();
 }
 
 extern "C"
 void gsGLInit(void *app_) {
     ::gs::Application *app = static_cast<::gs::Application *>(app_);
-    app->::gs::GL::init();
+    return app->::gs::GL::init();
 }
 
 extern "C"
 void gsGLDone(void *app_) {
     ::gs::Application *app = static_cast<::gs::Application *>(app_);
-    app->::gs::GL::done();
+    return app->::gs::GL::done();
 }
 
 extern "C"
 void gsDataSet(void *app_, const char *name, const char *buffer, size_t buflen) {
     ::gs::Application *app = static_cast<::gs::Application *>(app_);
-    app->::gs::Data::set(name, buffer, buflen);
+    return app->::gs::Data::set(name, buffer, buflen);
 }
 
 extern "C"
 void gsDataInit(void *app_) {
     ::gs::Application *app = static_cast<::gs::Application *>(app_);
-    app->::gs::Data::init();
+    return app->::gs::Data::init();
 }
 
 extern "C"
 void gsDataDone(void *app_) {
     ::gs::Application *app = static_cast<::gs::Application *>(app_);
-    app->::gs::Data::done();
+    return app->::gs::Data::done();
 }
 
 extern "C"
 void gsShaderInit(void *app_) {
     ::gs::Application *app = static_cast<::gs::Application *>(app_);
-    app->::gs::Shader::init();
+    return app->::gs::Shader::init();
 }
 
 extern "C"
 void gsShaderDone(void *app_) {
     ::gs::Application *app = static_cast<::gs::Application *>(app_);
-    app->::gs::Shader::done();
+    return app->::gs::Shader::done();
 }
 
 extern "C"
 void gsRenderInit(void *app_) {
     ::gs::Application *app = static_cast<::gs::Application *>(app_);
-    app->::gs::Render::init();
+    return app->::gs::Render::init();
+}
+
+extern "C"
+void gsRenderGet(void *app_, void **jpeg, size_t *jpeglen) {
+    ::gs::Application *app = static_cast<::gs::Application *>(app_);
+    return app->::gs::Render::get(jpeg, jpeglen);
 }
 
 extern "C"
 void gsRenderDone(void *app_) {
     ::gs::Application *app = static_cast<::gs::Application *>(app_);
-    app->::gs::Render::done();
+    return app->::gs::Render::done();
 }
 
 

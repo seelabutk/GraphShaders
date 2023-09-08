@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-
 from __future__ import annotations
 import ctypes
 import os
 import typing
 import dataclasses
 import contextlib
+
+import numpy as np
+
 
 __all__ = [
     'load_library',
@@ -43,6 +45,7 @@ def load_library(name: str, /) -> ctypes.CDLL:
     DeclareInitDone('gsGLInit', 'gsGLDone')
 
     Declare('gsDataSet', None,
+        ctypes.c_void_p,
         ctypes.c_char_p,
         ctypes.c_void_p,
         ctypes.c_size_t,
@@ -50,7 +53,13 @@ def load_library(name: str, /) -> ctypes.CDLL:
     DeclareInitDone('gsDataInit', 'gsDataDone')
 
     DeclareInitDone('gsShaderInit', 'gsShaderDone')
+
     DeclareInitDone('gsRenderInit', 'gsRenderDone')
+    Declare('gsRenderGet', None,
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_size_t),
+    )
 
     return lib
 
@@ -72,9 +81,17 @@ class GS:
         if isinstance(value, str):
             value = value.encode('ascii')
             self.lib.gsEnvironmentSet(self.app, name, value)
+
+        elif isinstance(value, np.ndarray):
+            buffer = value.ctypes.data_as(ctypes.c_void_p)
+            buflen = value.nbytes
+            self.lib.gsDataSet(self.app, name, buffer, buflen)
         
         elif isinstance(value, bytes):
             self.lib.gsDataSet(self.app, name, value, len(value))
+
+        else:
+            raise NotImplementedError(f"{type(value)=!r}")
 
     @contextlib.contextmanager
     def environment(self: typing.Self, /):
@@ -107,9 +124,16 @@ class GS:
         self.lib.gsShaderDone(self.app)
 
     @contextlib.contextmanager
-    def render(self: typing.Self, /):
+    def render(self: typing.Self, /) -> iter[bytes]:
         self.lib.gsRenderInit(self.app)
-        yield self
+
+        jpeg = ctypes.c_void_p(0)
+        jpeglen = ctypes.c_size_t(0)
+        self.lib.gsRenderGet(self.app, ctypes.byref(jpeg), ctypes.byref(jpeglen))
+
+        jpeg = ctypes.string_at(jpeg.value, jpeglen.value)
+        yield jpeg
+
         self.lib.gsRenderDone(self.app)
 
 
