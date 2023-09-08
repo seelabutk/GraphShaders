@@ -148,7 +148,7 @@ def main(
             NAME=f'_{name}',
             TYPE=OPENGL(type),
             SIZE=count,
-            FILE=datafiles[name],
+            FILE=datafiles.get(name, '<NONE>'),
             BIND=str(g._ssbo_binding),
         )
 
@@ -239,10 +239,10 @@ def main(
     
     APPEND('GS_BUFFER',
         KIND='ELEMENT',
-        NAME='<NONE>',
+        NAME='_ELEMENT',
         TYPE=OPENGL('uint'),
         SIZE='2E',
-        FILE=datafiles['element'],
+        FILE=datafiles.get('element', '<NONE>'),
         BIND='<NONE>',
     )
 
@@ -255,7 +255,7 @@ def main(
     if g._scratch_atomic_exists:
         APPEND('GS_BUFFER',
             KIND='ATOMIC',
-            NAME='<NONE>',
+            NAME='_ATOMIC',
             TYPE=OPENGL('uint'),
             SIZE=g._scratch_atomic_offset,
             FILE='<NONE>',

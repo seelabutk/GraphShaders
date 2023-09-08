@@ -125,6 +125,14 @@ struct Data : public GL {
     GLsizeiptr app_gs_edge_count;
     GLsizeiptr app_gs_node_count;
 
+    struct DataBuffer {
+        const char *buffer;
+        size_t buflen;
+    };
+
+    std::map<std::string, DataBuffer> app_data_buffers;
+
+    void set(const std::string &name, const char *buffer, size_t buflen);
     void init();
     void done();
 };
@@ -426,6 +434,11 @@ void GL::init() {
 } /* GL::init */
 
 
+void Data::set(const std::string &name, const char *buffer, size_t buflen) {
+    app_data_buffers.emplace(name, DataBuffer{ buffer, buflen });
+} /* Data::set */
+
+
 void Data::init() {
 
     //--- We need a Vertex Array Object (VAO)
@@ -513,6 +526,18 @@ void Data::init() {
     })                                                                                                                 \
     /* X_BUFFER_FROM_ZERO */
 
+#   define X_BUFFER_FROM_MEMORY(TARGET, USAGE, MEM, MEMLEN) \
+    ({ \
+        GLenum target = (TARGET);                                                                                      \
+        GLsizeiptr size = (MEMLEN);                                                                                    \
+        const GLvoid *data = static_cast<const GLvoid *>(MEM);                                                         \
+        GLenum usage = (USAGE);                                                                                        \
+        glBufferData(target, size, data, usage);                                                                       \
+                                                                                                                       \
+        size;                                                                                                          \
+    }) \
+    /* X_BUFFER_FROM_MEMORY */
+
     opt_gs_buffer_count = X_OPTION(std::stoi, "GS_BUFFER_COUNT");
     opt_gs_buffer_kinds.resize(opt_gs_buffer_count);
     opt_gs_buffer_names.resize(opt_gs_buffer_count);
@@ -535,14 +560,36 @@ void Data::init() {
     app_gs_edge_count = 0;
     app_gs_node_count = 0;
     for (GLint i=0, n=opt_gs_buffer_count; i<n; ++i) {
+        std::string &opt_gs_buffer_name = opt_gs_buffer_names[i];
         std::string &opt_gs_buffer_kind = opt_gs_buffer_kinds[i];
         std::string &opt_gs_buffer_file = opt_gs_buffer_files[i];
         std::string &opt_gs_buffer_size = opt_gs_buffer_sizes[i];
         std::string &opt_gs_buffer_type = opt_gs_buffer_types[i];
 
+        std::fprintf(stderr, (
+            "buffer %d\n"
+            "  name: %s\n"
+            "  kind: %s\n"
+            "  file: %s\n"
+            "  size: %s\n"
+            "  type: %s\n"
+        ), i, opt_gs_buffer_name, opt_gs_buffer_kind, opt_gs_buffer_file, opt_gs_buffer_size, opt_gs_buffer_type);
+
+        auto it = app_data_buffers.find(opt_gs_buffer_name);
+        const char *app_data_buffer = it != app_data_buffers.end()
+            ? it->second.buffer
+            : nullptr;
+        size_t app_data_buflen = it != app_data_buffers.end()
+            ? it->second.buflen
+            : 0;
+        
+        std::fprintf(stderr, "app_data_buffer = %p; app_data_buflen = %zu\n", app_data_buffer, app_data_buflen);
+
         if (opt_gs_buffer_kind == "ATTRIBUTE") {
             app_gl_buffers[i] = X_MAKE_BUFFER(GL_SHADER_STORAGE_BUFFER);
-            app_gl_buffer_sizes[i] = X_BUFFER_FROM_FILE(GL_SHADER_STORAGE_BUFFER, "%s", opt_gs_buffer_file.c_str());
+            app_gl_buffer_sizes[i] = app_data_buffer
+                ? X_BUFFER_FROM_MEMORY(GL_SHADER_STORAGE_BUFFER, GL_STATIC_DRAW, app_data_buffer, app_data_buflen)
+                : X_BUFFER_FROM_FILE(GL_SHADER_STORAGE_BUFFER, "%s", opt_gs_buffer_file.c_str());
 
             if (opt_gs_buffer_type == "GL_FLOAT" && opt_gs_buffer_size == "N") {
                 app_gs_node_count = app_gl_buffer_sizes[i] / sizeof(GLfloat);
@@ -560,7 +607,9 @@ void Data::init() {
 
         } else if (opt_gs_buffer_kind == "ELEMENT") {
             app_gl_buffers[i] = X_MAKE_BUFFER(GL_ELEMENT_ARRAY_BUFFER);
-            app_gl_buffer_sizes[i] = X_BUFFER_FROM_FILE(GL_ELEMENT_ARRAY_BUFFER, "%s", opt_gs_buffer_file.c_str());
+            app_gl_buffer_sizes[i] = app_data_buffer
+                ? X_BUFFER_FROM_MEMORY(GL_ELEMENT_ARRAY_BUFFER, GL_STATIC_DRAW, app_data_buffer, app_data_buflen)
+                : X_BUFFER_FROM_FILE(GL_ELEMENT_ARRAY_BUFFER, "%s", opt_gs_buffer_file.c_str());
 
             if (opt_gs_buffer_type == "GL_UNSIGNED_INT" && opt_gs_buffer_size == "2E") {
                 app_gs_edge_count = app_gl_buffer_sizes[i] / sizeof(GLuint) / 2;
@@ -1042,6 +1091,12 @@ extern "C"
 void gsGLDone(void *app_) {
     ::gs::Application *app = static_cast<::gs::Application *>(app_);
     app->::gs::GL::done();
+}
+
+extern "C"
+void gsDataSet(void *app_, const char *name, const char *buffer, size_t buflen) {
+    ::gs::Application *app = static_cast<::gs::Application *>(app_);
+    app->::gs::Data::set(name, buffer, buflen);
 }
 
 extern "C"

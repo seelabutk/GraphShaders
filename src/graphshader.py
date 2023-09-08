@@ -41,7 +41,14 @@ def load_library(name: str, /) -> ctypes.CDLL:
 
     DeclareInitDone('gsEGLInit', 'gsEGLDone')
     DeclareInitDone('gsGLInit', 'gsGLDone')
+
+    Declare('gsDataSet', None,
+        ctypes.c_char_p,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+    )
     DeclareInitDone('gsDataInit', 'gsDataDone')
+
     DeclareInitDone('gsShaderInit', 'gsShaderDone')
     DeclareInitDone('gsRenderInit', 'gsRenderDone')
 
@@ -59,10 +66,15 @@ class GS:
         app = lib.gsNewApplication()
         return cls(lib, app)
     
-    def __setitem__(self: typing.Self, name: str, value: str, /) -> typing.Literal[None]:
+    def __setitem__(self: typing.Self, name: str, value: str | bytes, /) -> typing.Literal[None]:
         name = name.encode('ascii')
-        value = value.encode('ascii')
-        self.lib.gsEnvironmentSet(self.app, name, value)
+        
+        if isinstance(value, str):
+            value = value.encode('ascii')
+            self.lib.gsEnvironmentSet(self.app, name, value)
+        
+        elif isinstance(value, bytes):
+            self.lib.gsDataSet(self.app, name, value, len(value))
 
     @contextlib.contextmanager
     def environment(self: typing.Self, /):

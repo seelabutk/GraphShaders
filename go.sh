@@ -6,6 +6,32 @@ self=${BASH_SOURCE[0]:?}
 project=${root##*/}
 
 
+#--- Jupyter
+
+go-jupyter() {
+    "${FUNCNAME[0]:?}-$@"
+}
+
+go-jupyter-notebook() {
+    exec "${self:?}" \
+        --docker \
+        --jupyter-notebook \
+        --port=$(,address gs/jupyter@kavir +%P) \
+        --port-retries=0 \
+    ##
+}
+
+go---jupyter-notebook() {
+    JUPYTER_TOKEN=168baa157591be6f6e8188b791b67784dc3e185d8b552a2d \
+    HOME="${root:?}/tmp" \
+    exec "${root:?}/venv/bin/jupyter" \
+        notebook \
+        --no-browser \
+        "$@" \
+    ##
+}
+
+
 #--- Python
 
 go-python() {
