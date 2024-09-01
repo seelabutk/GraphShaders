@@ -21,3 +21,6 @@ logs/*.log
 /*.json
 /stage
 /venv
+/cache
+/out.jpg
+*.pyc
